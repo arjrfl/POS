@@ -1,12 +1,14 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import engine, get_db
+from app.routers import auth, customers, products, ws
 
 
 @asynccontextmanager
@@ -26,6 +28,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"data": None, "error": exc.detail},
+        headers=exc.headers,
+    )
+
+
+app.include_router(auth.router)
+app.include_router(customers.router)
+app.include_router(products.router)
+app.include_router(ws.router)
 
 
 @app.get("/api/health")
