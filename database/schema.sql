@@ -1,0 +1,409 @@
+-- =============================================================
+-- LASH MEATSHOP POS DATABASE SCHEMA
+-- PostgreSQL version
+-- =============================================================
+
+CREATE DATABASE lash_meatshop_db;
+\c lash_meatshop_db;
+
+-- =============================================================
+-- REUSABLE TRIGGER FUNCTION FOR updated_at
+-- Write once, applied to every table that needs it
+-- =============================================================
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- =============================================================
+-- ENUMS
+-- Enforces allowed values at the database level
+-- =============================================================
+
+CREATE TYPE customer_status_enum AS ENUM (
+    'active',
+    'inactive'
+);
+
+CREATE TYPE product_status_enum AS ENUM (
+    'active',
+    'inactive'
+);
+
+CREATE TYPE customer_type_enum AS ENUM (
+    'walk_in',
+    'online'
+);
+
+CREATE TYPE transaction_status_enum AS ENUM (
+    'pending_payment',
+    -- walk_in:  Walk-In done, waiting for Team Payment
+    -- online:   Releasing done, waiting for Team Payment
+    'pending_settlement',
+    -- walk_in:  Payment done, waiting for Team Releasing to confirm weight
+    -- online:   Walk-In done, goes DIRECTLY to Releasing (skips Payment first)
+    'settled',
+    -- Releasing confirmed weight, adjustment/refund generated if needed
+    'completed',
+    -- Fully done, no pending actions
+    'voided'
+    -- Cancelled
+);
+
+CREATE TYPE transaction_type_enum AS ENUM (
+    'original',           -- standard / first transaction
+    'adjustment',         -- substandard: customer pays extra
+    'refund',             -- substandard: store returns money
+    'balance_settlement', -- customer paying their utang
+    'credit_usage'        -- customer using their credit
+);
+
+CREATE TYPE queue_status_enum AS ENUM (
+    'waiting',    -- in queue, available for any team member to grab
+    'processing', -- claimed by a team member, locked from others
+    'parked',     -- temporarily set aside (e.g. customer online payment pending)
+    'done'        -- phase completed, moved to next queue
+);
+
+CREATE TYPE item_type_enum AS ENUM (
+    'product',            -- regular order item
+    'balance_settlement', -- paying off utang from a previous transaction
+    'credit_usage'        -- using stored credit (deduction)
+);
+
+CREATE TYPE ledger_entry_type_enum AS ENUM (
+    'balance_added',    -- releasing found item heavier, customer chose utang
+    'balance_settled',  -- customer paid off utang
+    'credit_added',     -- releasing found item lighter, customer chose to save as credit
+    'credit_used',      -- customer applied credit to a transaction
+    'credit_auto_used'  -- system auto-deducted credit to cover balance at releasing
+);
+
+CREATE TYPE audit_change_type_enum AS ENUM (
+    'transaction_status', -- phase moved (e.g. pending_payment → pending_settlement)
+    'queue_status'        -- queue state changed (e.g. waiting → processing)
+);
+
+-- =============================================================
+-- ROLE
+-- =============================================================
+CREATE TABLE role (
+    id        SERIAL PRIMARY KEY,
+    role_name VARCHAR(50) NOT NULL UNIQUE
+    -- 'walk_in' | 'payment' | 'releasing' | 'admin'
+);
+
+-- =============================================================
+-- USER
+-- =============================================================
+CREATE TABLE "user" (
+    id            SERIAL PRIMARY KEY,
+    full_name     VARCHAR(100) NOT NULL,
+    username      VARCHAR(50)  NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    role_id       INT          NOT NULL REFERENCES role(id) ON DELETE RESTRICT,
+    is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE TRIGGER trg_user_updated_at
+    BEFORE UPDATE ON "user"
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =============================================================
+-- CUSTOMER
+-- =============================================================
+CREATE TABLE customer (
+    id              SERIAL PRIMARY KEY,
+    full_name       VARCHAR(100)         NOT NULL,
+    address         VARCHAR(255),
+    contact_number  VARCHAR(20),
+    customer_status customer_status_enum NOT NULL DEFAULT 'active',
+
+    -- NET ledger balance (always up to date)
+    -- positive = customer has CREDIT (store owes customer)
+    -- negative = customer has BALANCE/utang (customer owes store)
+    net_balance     DECIMAL(10,2)        NOT NULL DEFAULT 0.00,
+
+    created_at      TIMESTAMPTZ          NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ          NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_customer_status ON customer (customer_status);
+
+CREATE TRIGGER trg_customer_updated_at
+    BEFORE UPDATE ON customer
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =============================================================
+-- PRODUCT
+-- =============================================================
+CREATE TABLE product (
+    id              SERIAL PRIMARY KEY,
+    product_name    VARCHAR(100)        NOT NULL,
+    brand_name      VARCHAR(100),
+    unit_weight_kg  DECIMAL(10,3),               -- expected weight per unit/box
+    unit_price_php  DECIMAL(10,2)       NOT NULL, -- price per kg
+    stock_quantity  DECIMAL(10,3)       NOT NULL DEFAULT 0,
+    product_status  product_status_enum NOT NULL DEFAULT 'active',
+
+    created_at      TIMESTAMPTZ         NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ         NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_product_status ON product (product_status);
+
+CREATE TRIGGER trg_product_updated_at
+    BEFORE UPDATE ON product
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =============================================================
+-- PAYMENT METHOD
+-- e.g. 'cash', 'gcash', 'maya', 'bank_transfer'
+-- =============================================================
+CREATE TABLE payment_method (
+    id                  SERIAL PRIMARY KEY,
+    payment_method_name VARCHAR(50) NOT NULL UNIQUE
+);
+
+-- =============================================================
+-- SALES TRANSACTION
+-- One record per transaction. Adjustments and refunds are
+-- also rows here, linked via parent_transaction_id.
+-- =============================================================
+CREATE TABLE sales_transaction (
+    id                    SERIAL PRIMARY KEY,
+    order_number          VARCHAR(50)              NOT NULL UNIQUE,
+
+    -- relationships
+    parent_transaction_id INT                      NULL REFERENCES sales_transaction(id) ON DELETE RESTRICT,
+    -- NULL for originals; points to the original for adjustments/refunds
+
+    transaction_type      transaction_type_enum    NOT NULL,
+    transaction_status    transaction_status_enum  NOT NULL,
+
+    -- customer channel — determines the workflow order
+    customer_type         customer_type_enum       NOT NULL DEFAULT 'walk_in',
+    -- 'walk_in' → Walk-In → Payment → Releasing
+    -- 'online'  → Walk-In → Releasing → Payment → Releasing (ship)
+
+    -- team members who touched this transaction
+    walkin_user_id        INT                      NULL REFERENCES "user"(id) ON DELETE RESTRICT,
+    payment_user_id       INT                      NULL REFERENCES "user"(id) ON DELETE RESTRICT,
+    releasing_user_id     INT                      NULL REFERENCES "user"(id) ON DELETE RESTRICT,
+
+    customer_id           INT                      NOT NULL REFERENCES customer(id) ON DELETE RESTRICT,
+
+    -- amounts
+    estimated_amount      DECIMAL(10,2)            NOT NULL DEFAULT 0.00,
+    -- total as computed at Walk-In phase (what customer is expected to pay)
+
+    actual_amount         DECIMAL(10,2)            NULL,
+    -- filled in by Releasing after weight confirmation
+    -- NULL until releasing confirms
+
+    balance_due           DECIMAL(10,2)            GENERATED ALWAYS AS (
+                              CASE
+                                  WHEN actual_amount IS NOT NULL
+                                  THEN actual_amount - estimated_amount
+                                  ELSE NULL
+                              END
+                          ) STORED,
+    -- positive = customer owes more (adjustment needed)
+    -- negative = store owes customer (refund needed)
+    -- zero     = exact weight, no action needed
+
+    -- credit/balance applied at Walk-In phase
+    credit_applied        DECIMAL(10,2)            NOT NULL DEFAULT 0.00,
+    -- amount of customer's existing credit used in this transaction
+
+    balance_settled       DECIMAL(10,2)            NOT NULL DEFAULT 0.00,
+    -- amount of customer's existing utang added to this transaction
+
+    -- final amount customer actually pays at Team Payment
+    -- walk_in: estimated_amount + balance_settled - credit_applied
+    -- online:  actual_amount (set by Releasing) + balance_settled - credit_applied
+    total_due             DECIMAL(10,2)            NOT NULL DEFAULT 0.00,
+
+    -- payment details (filled by Team Payment)
+    cash_tendered         DECIMAL(10,2)            NOT NULL DEFAULT 0.00,
+    -- physical cash handed by customer at payment time
+    -- only relevant when payment includes a cash portion
+
+    change_given          DECIMAL(10,2)            NOT NULL DEFAULT 0.00,
+    -- change returned to customer
+    -- = cash_tendered - cash portion of total_due
+
+    invoice_pdf           VARCHAR(255)             NULL,
+
+    -- timestamps per phase
+    walkin_at             TIMESTAMPTZ              NULL,
+    payment_at            TIMESTAMPTZ              NULL,
+    releasing_at          TIMESTAMPTZ              NULL,
+
+    -- =========================================================
+    -- QUEUE CONTROL
+    -- Prevents two team members from grabbing the same transaction
+    -- =========================================================
+    queue_status          queue_status_enum        NOT NULL DEFAULT 'waiting',
+    -- resets to 'waiting' each time transaction moves to next phase
+
+    processing_by_user_id INT                      NULL REFERENCES "user"(id) ON DELETE RESTRICT,
+    -- which team member currently has this transaction locked
+    -- NULL when queue_status is 'waiting', 'parked', or 'done'
+
+    processing_started_at TIMESTAMPTZ              NULL,
+    -- when the team member grabbed it
+    -- useful for admin to detect stuck/abandoned transactions
+
+    parked_by_user_id     INT                      NULL REFERENCES "user"(id) ON DELETE RESTRICT,
+    -- who parked this transaction (accountability)
+    -- NULL when queue_status is not 'parked'
+
+    parked_at             TIMESTAMPTZ              NULL,
+    -- when the transaction was parked
+    -- admin can flag transactions parked beyond a threshold (e.g. 30 mins)
+    -- reset to NULL when transaction is unparked
+
+    created_at            TIMESTAMPTZ              NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ              NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_st_parent_transaction   ON sales_transaction (parent_transaction_id);
+CREATE INDEX idx_st_transaction_status   ON sales_transaction (transaction_status);
+CREATE INDEX idx_st_transaction_type     ON sales_transaction (transaction_type);
+CREATE INDEX idx_st_customer             ON sales_transaction (customer_id);
+CREATE INDEX idx_st_queue_status         ON sales_transaction (queue_status);
+CREATE INDEX idx_st_customer_type        ON sales_transaction (customer_type);
+CREATE INDEX idx_st_processing_by        ON sales_transaction (processing_by_user_id);
+CREATE INDEX idx_st_parked_by            ON sales_transaction (parked_by_user_id);
+
+CREATE TRIGGER trg_sales_transaction_updated_at
+    BEFORE UPDATE ON sales_transaction
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =============================================================
+-- TRANSACTION ITEM
+-- Line items of a transaction.
+-- Includes regular product items, balance settlement lines,
+-- and credit usage lines.
+-- =============================================================
+CREATE TABLE transaction_item (
+    id                       SERIAL PRIMARY KEY,
+    transaction_id           INT           NOT NULL REFERENCES sales_transaction(id) ON DELETE CASCADE,
+
+    item_type                item_type_enum NOT NULL DEFAULT 'product',
+    -- 'product'            → regular order item
+    -- 'balance_settlement' → paying off utang from a previous transaction
+    -- 'credit_usage'       → using stored credit (deduction)
+
+    -- for product items
+    product_id               INT           NULL REFERENCES product(id) ON DELETE RESTRICT,
+    estimated_weight_kg      DECIMAL(10,3) NULL,   -- what Walk-In input
+    actual_weight_kg         DECIMAL(10,3) NULL,   -- what Releasing confirmed
+    unit_price               DECIMAL(10,2) NULL,
+
+    -- for balance_settlement and credit_usage items
+    -- points to which transaction this balance/credit came from
+    reference_transaction_id INT           NULL REFERENCES sales_transaction(id) ON DELETE RESTRICT,
+
+    -- computed at Walk-In for product items; fixed for balance/credit lines
+    subtotal                 DECIMAL(10,2) NOT NULL DEFAULT 0.00
+    -- for balance_settlement: positive (adds to total)
+    -- for credit_usage: negative (deducts from total)
+);
+
+CREATE INDEX idx_ti_transaction ON transaction_item (transaction_id);
+CREATE INDEX idx_ti_item_type   ON transaction_item (item_type);
+
+-- =============================================================
+-- PAYMENT DETAIL
+-- Supports split payment (e.g. part cash, part GCash)
+-- =============================================================
+CREATE TABLE payment_detail (
+    id                SERIAL PRIMARY KEY,
+    transaction_id    INT           NOT NULL REFERENCES sales_transaction(id) ON DELETE CASCADE,
+    payment_method_id INT           NOT NULL REFERENCES payment_method(id)    ON DELETE RESTRICT,
+    ref_number        VARCHAR(100)  NULL,         -- for online payment reference
+    tendered_amount   DECIMAL(10,2) NULL,         -- only for cash rows
+    amount            DECIMAL(10,2) NOT NULL,
+    created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_pd_transaction ON payment_detail (transaction_id);
+
+-- =============================================================
+-- CUSTOMER LEDGER
+-- Append-only log of every credit/balance movement per customer.
+-- net_balance on customer table is always the running sum of this.
+-- =============================================================
+CREATE TABLE customer_ledger (
+    id              SERIAL PRIMARY KEY,
+    customer_id     INT                    NOT NULL REFERENCES customer(id)           ON DELETE RESTRICT,
+    transaction_id  INT                    NOT NULL REFERENCES sales_transaction(id)  ON DELETE CASCADE,
+
+    entry_type      ledger_entry_type_enum NOT NULL,
+
+    amount          DECIMAL(10,2)          NOT NULL,
+    -- always positive; entry_type tells you the direction
+
+    running_balance DECIMAL(10,2)          NOT NULL,
+    -- snapshot of customer net_balance after this entry was applied
+    -- positive = credit, negative = utang
+
+    notes           VARCHAR(255)           NULL,
+    created_at      TIMESTAMPTZ            NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_cl_customer    ON customer_ledger (customer_id);
+CREATE INDEX idx_cl_transaction ON customer_ledger (transaction_id);
+
+-- =============================================================
+-- TRANSACTION VOID LOG
+-- Only for voided transactions. Requires supervisor action.
+-- =============================================================
+CREATE TABLE transaction_void_log (
+    id                SERIAL PRIMARY KEY,
+    transaction_id    INT         NOT NULL REFERENCES sales_transaction(id) ON DELETE CASCADE,
+    void_reason       TEXT        NOT NULL,
+    voided_by_user_id INT         NOT NULL REFERENCES "user"(id)            ON DELETE RESTRICT,
+    voided_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- =============================================================
+-- TRANSACTION AUDIT LOG
+-- Tracks every status AND queue status change on a transaction.
+-- Full traceability: who did what, when, and at which phase.
+-- =============================================================
+CREATE TABLE transaction_audit_log (
+    id                 SERIAL PRIMARY KEY,
+    transaction_id     INT                    NOT NULL REFERENCES sales_transaction(id) ON DELETE CASCADE,
+    changed_by_user_id INT                    NOT NULL REFERENCES "user"(id)            ON DELETE RESTRICT,
+
+    change_type        audit_change_type_enum NOT NULL,
+    -- 'transaction_status' → phase moved (e.g. pending_payment → pending_settlement)
+    -- 'queue_status'       → queue state changed (e.g. waiting → processing)
+
+    old_value          VARCHAR(50)            NULL,     -- previous value
+    new_value          VARCHAR(50)            NOT NULL, -- new value
+
+    notes              TEXT                   NULL,
+    changed_at         TIMESTAMPTZ            NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_tal_transaction ON transaction_audit_log (transaction_id);
+CREATE INDEX idx_tal_change_type ON transaction_audit_log (change_type);
+
+-- =============================================================
+-- SEED DATA
+-- =============================================================
+
+INSERT INTO role (role_name)
+VALUES ('walk_in'), ('payment'), ('releasing'), ('admin');
+
+INSERT INTO payment_method (payment_method_name)
+VALUES ('cash'), ('gcash'), ('maya'), ('bank_transfer');
