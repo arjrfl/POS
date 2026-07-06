@@ -1,0 +1,47 @@
+services:
+  nginx:
+    image: nginx:stable
+    ports: ['80:80']
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./frontend/dist:/usr/share/nginx/html
+    depends_on: [backend]
+    restart: always
+
+  backend:
+    build: ./backend
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://pos:${DB_PASSWORD}@postgres:5432/lash_meatshop_db
+      - SECRET_KEY=${SECRET_KEY}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+      - ENVIRONMENT=${ENVIRONMENT}
+    depends_on: [postgres]
+    restart: always
+
+  postgres:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=pos
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=lash_meatshop_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    restart: always
+
+  backup:
+    image: postgres:16
+    entrypoint: [
+      '/bin/sh', '-c',
+      'while true; do sleep 86400;
+       pg_dump -h postgres -U pos lash_meatshop_db
+       > /backups/lash_meatshop_$(date +%F).sql; done'
+    ]
+    environment:
+      - PGPASSWORD=${DB_PASSWORD}
+    volumes:
+      - ./backups:/backups
+    depends_on: [postgres]
+
+volumes:
+  pgdata:

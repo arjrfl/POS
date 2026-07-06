@@ -1,10 +1,12 @@
 -- =============================================================
 -- LASH MEATSHOP POS DATABASE SCHEMA
 -- PostgreSQL version
+--
+-- Assumes it is run against an already-existing, already-connected
+-- database (POSTGRES_DB via docker-entrypoint-initdb.d, or `psql -d
+-- lash_meatshop_db -f schema.sql` manually) — it does not create or
+-- connect to the database itself.
 -- =============================================================
-
-CREATE DATABASE lash_meatshop_db;
-\c lash_meatshop_db;
 
 -- =============================================================
 -- REUSABLE TRIGGER FUNCTION FOR updated_at
