@@ -1,0 +1,18 @@
+# All text files use LF (Linux line endings) — important for Docker containers
+* text=auto eol=lf
+
+# Explicitly force LF for these file types
+*.py    text eol=lf
+*.sh    text eol=lf
+*.sql   text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.env   text eol=lf
+*.conf  text eol=lf
+*.txt   text eol=lf
+
+# Windows-only files can keep CRLF
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
