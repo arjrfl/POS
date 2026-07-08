@@ -6,6 +6,7 @@ class ConnectionManager:
         self.rooms: dict[str, set[WebSocket]] = {
             "payment-queue": set(),
             "releasing-queue": set(),
+            "receiver-queue": set(),
             "admin": set(),
         }
 

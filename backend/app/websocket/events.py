@@ -6,6 +6,7 @@ ADMIN_ROOM = "admin"
 STATUS_TEAM_ROOM: dict[str, str] = {
     "pending_payment": "payment-queue",
     "pending_settlement": "releasing-queue",
+    "pending_edit": "receiver-queue",
 }
 
 

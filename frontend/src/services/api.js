@@ -26,7 +26,9 @@ async function request(path, { method = 'GET', body, headers } = {}) {
   }
 
   if (!res.ok || envelope?.error) {
-    throw new Error(envelope?.error || `Request failed with status ${res.status}`)
+    const error = new Error(envelope?.error || `Request failed with status ${res.status}`)
+    error.status = res.status
+    throw error
   }
 
   return envelope?.data

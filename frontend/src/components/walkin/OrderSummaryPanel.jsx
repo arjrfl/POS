@@ -1,11 +1,6 @@
 import { Card } from '../ui/Card'
-import { Button } from '../ui/Button'
 import { formatCurrency } from '../../utils/currency'
-
-const CUSTOMER_TYPE_BADGE = {
-  walk_in: { label: 'Walk-In', className: 'bg-blue-100 text-blue-800' },
-  online: { label: 'Online', className: 'bg-orange-100 text-orange-800' },
-}
+import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 
 function TrashIcon() {
   return (
@@ -28,16 +23,7 @@ function TrashIcon() {
   )
 }
 
-export function OrderSummaryPanel({
-  customer,
-  customerType,
-  items,
-  total,
-  onRemoveItem,
-  onSubmit,
-  submitting,
-  error,
-}) {
+export function OrderSummaryPanel({ customer, customerType, items, total, onRemoveItem, footer }) {
   const typeBadge = customerType ? CUSTOMER_TYPE_BADGE[customerType] : null
 
   return (
@@ -110,11 +96,7 @@ export function OrderSummaryPanel({
           <span className="text-2xl font-bold text-primary">{formatCurrency(total)}</span>
         </div>
 
-        {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
-
-        <Button type="button" className="w-full mt-3" disabled={submitting} onClick={onSubmit}>
-          {submitting ? 'Submitting...' : 'Submit Transaction'}
-        </Button>
+        {footer}
       </div>
     </Card>
   )

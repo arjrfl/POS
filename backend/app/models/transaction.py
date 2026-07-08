@@ -26,6 +26,7 @@ class TransactionStatusEnum(str, enum.Enum):
     settled = "settled"
     completed = "completed"
     voided = "voided"
+    pending_edit = "pending_edit"
 
 
 class TransactionTypeEnum(str, enum.Enum):

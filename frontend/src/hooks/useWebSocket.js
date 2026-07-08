@@ -6,10 +6,10 @@ import { useNotificationStore } from '../store/notificationStore'
 const INITIAL_RECONNECT_DELAY_MS = 1000
 const MAX_RECONNECT_DELAY_MS = 30000
 
-// Receiver has no queue room: it never subscribes (see backend/app/routers/ws.py).
 const ROLE_ROOM = {
   payment: 'payment-queue',
   releasing: 'releasing-queue',
+  receiver: 'receiver-queue',
   admin: 'admin',
 }
 

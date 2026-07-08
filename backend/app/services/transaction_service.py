@@ -42,6 +42,7 @@ _WITH_CHILDREN = selectinload(SalesTransaction.children, recursion_depth=-1)
 ROLE_QUEUE_STATUS: dict[str, TransactionStatusEnum] = {
     "payment": TransactionStatusEnum.pending_payment,
     "releasing": TransactionStatusEnum.pending_settlement,
+    "receiver": TransactionStatusEnum.pending_edit,
 }
 
 
@@ -61,6 +62,10 @@ class SubstandardValidationError(Exception):
     """The submitted outcome doesn't apply to this transaction's balance_due."""
 
 
+class TransactionEditFlowError(Exception):
+    """The transaction isn't in a state that allows this return-to-receiver/edit/resubmit action."""
+
+
 def _initial_status(customer_type: CustomerTypeEnum) -> TransactionStatusEnum:
     if customer_type == CustomerTypeEnum.walk_in:
         return TransactionStatusEnum.pending_payment
@@ -76,24 +81,31 @@ async def _next_order_number(db: AsyncSession) -> str:
     return f"{prefix}{sequence:04d}"
 
 
+async def _product_item_subtotal(
+    db: AsyncSession, item: TransactionItemCreate
+) -> tuple[Decimal, Decimal | None, Decimal | None]:
+    """Returns (subtotal, estimated_weight_kg, quantity_kg) for a product-type item."""
+    if item.product_id is None or item.unit_price is None:
+        raise ValueError("product items require product_id and unit_price")
+    if item.unit_count is None or item.unit_count < 1:
+        raise ValueError("product items require unit_count >= 1")
+    if item.quantity_kg is None or item.quantity_kg <= 0:
+        raise ValueError("product items require quantity_kg > 0")
+
+    product = await db.get(Product, item.product_id)
+    if product is None:
+        raise ValueError(f"Product {item.product_id} not found")
+
+    subtotal = (item.quantity_kg * item.unit_price).quantize(Decimal("0.01"))
+    return subtotal, item.estimated_weight_kg, item.quantity_kg
+
+
 async def _item_subtotal(
     db: AsyncSession, item: TransactionItemCreate, data: TransactionCreate
 ) -> tuple[Decimal, Decimal | None, Decimal | None]:
     """Returns (subtotal, estimated_weight_kg, quantity_kg). The weight fields are only set for product items."""
     if item.item_type == ItemTypeEnum.product:
-        if item.product_id is None or item.unit_price is None:
-            raise ValueError("product items require product_id and unit_price")
-        if item.unit_count is None or item.unit_count < 1:
-            raise ValueError("product items require unit_count >= 1")
-        if item.quantity_kg is None or item.quantity_kg <= 0:
-            raise ValueError("product items require quantity_kg > 0")
-
-        product = await db.get(Product, item.product_id)
-        if product is None:
-            raise ValueError(f"Product {item.product_id} not found")
-
-        subtotal = (item.quantity_kg * item.unit_price).quantize(Decimal("0.01"))
-        return subtotal, item.estimated_weight_kg, item.quantity_kg
+        return await _product_item_subtotal(db, item)
 
     if item.reference_transaction_id is None:
         raise ValueError(f"{item.item_type.value} items require reference_transaction_id")
@@ -238,6 +250,7 @@ async def list_transactions(
     customer_type: CustomerTypeEnum | None = None,
     customer_id: int | None = None,
     walkin_user_id: int | None = None,
+    include_pending_edit: bool = False,
     walkin_at_from: datetime | None = None,
     walkin_at_to: datetime | None = None,
 ) -> TransactionListResponse:
@@ -249,7 +262,17 @@ async def list_transactions(
     if customer_id is not None:
         filters.append(SalesTransaction.customer_id == customer_id)
     if walkin_user_id is not None:
-        filters.append(SalesTransaction.walkin_user_id == walkin_user_id)
+        if include_pending_edit:
+            # returned transactions are visible to every receiver, not just
+            # whoever originally created them
+            filters.append(
+                or_(
+                    SalesTransaction.walkin_user_id == walkin_user_id,
+                    SalesTransaction.transaction_status == TransactionStatusEnum.pending_edit,
+                )
+            )
+        else:
+            filters.append(SalesTransaction.walkin_user_id == walkin_user_id)
     if walkin_at_from is not None:
         filters.append(SalesTransaction.walkin_at >= walkin_at_from)
     if walkin_at_to is not None:
@@ -785,6 +808,169 @@ async def resolve_substandard(
             new_status=transaction.transaction_status.value,
             customer_type=transaction.customer_type.value,
         )
+    await manager.broadcast_multi(rooms, event)
+
+    return await get_transaction(db, transaction.id)
+
+
+async def return_to_receiver(db: AsyncSession, transaction_id: int, payment_user_id: int) -> TransactionResponse:
+    transaction = await db.get(SalesTransaction, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    if transaction.customer_type != CustomerTypeEnum.walk_in:
+        raise TransactionEditFlowError("Online orders cannot be returned to Receiver")
+    if transaction.transaction_status != TransactionStatusEnum.pending_payment:
+        raise TransactionEditFlowError(f"transaction {transaction_id} is not pending payment")
+    if transaction.queue_status != QueueStatusEnum.processing:
+        raise TransactionEditFlowError(f"transaction {transaction_id} has not been grabbed for payment")
+    if transaction.processing_by_user_id != payment_user_id:
+        raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
+
+    try:
+        old_status = transaction.transaction_status.value
+
+        transaction.transaction_status = TransactionStatusEnum.pending_edit
+        transaction.queue_status = QueueStatusEnum.waiting
+        transaction.processing_by_user_id = None
+        transaction.processing_started_at = None
+
+        db.add(
+            TransactionAuditLog(
+                transaction_id=transaction.id,
+                changed_by_user_id=payment_user_id,
+                change_type=AuditChangeTypeEnum.transaction_status,
+                old_value=old_status,
+                new_value=transaction.transaction_status.value,
+            )
+        )
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    rooms, event = transaction_status_changed(
+        transaction_id=transaction.id,
+        old_status=old_status,
+        new_status=transaction.transaction_status.value,
+        customer_type=transaction.customer_type.value,
+    )
+    await manager.broadcast_multi(rooms, event)
+
+    return await get_transaction(db, transaction.id)
+
+
+async def edit_transaction_items(
+    db: AsyncSession,
+    transaction_id: int,
+    items: list[TransactionItemCreate],
+    receiver_user_id: int,
+) -> TransactionResponse:
+    transaction = await db.get(SalesTransaction, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    if transaction.transaction_status != TransactionStatusEnum.pending_edit:
+        raise TransactionEditFlowError(f"transaction {transaction_id} is not pending edit")
+    if transaction.queue_status != QueueStatusEnum.processing:
+        raise TransactionEditFlowError(f"transaction {transaction_id} has not been grabbed for editing")
+    if transaction.processing_by_user_id != receiver_user_id:
+        raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
+    if any(item.item_type != ItemTypeEnum.product for item in items):
+        raise TransactionEditFlowError("only product items can be edited at Receiver")
+
+    try:
+        for existing_item in list(transaction.items):
+            await db.delete(existing_item)
+        await db.flush()
+
+        estimated_amount = Decimal("0.00")
+        for item in items:
+            try:
+                subtotal, estimated_weight_kg, quantity_kg = await _product_item_subtotal(db, item)
+            except ValueError as exc:
+                raise TransactionEditFlowError(str(exc)) from exc
+            estimated_amount += subtotal
+
+            db.add(
+                TransactionItem(
+                    transaction_id=transaction.id,
+                    item_type=item.item_type,
+                    product_id=item.product_id,
+                    unit_count=item.unit_count,
+                    estimated_weight_kg=estimated_weight_kg,
+                    quantity_kg=quantity_kg,
+                    unit_price=item.unit_price,
+                    reference_transaction_id=item.reference_transaction_id,
+                    subtotal=subtotal,
+                )
+            )
+
+        transaction.estimated_amount = estimated_amount
+        # no credit/balance applied at Receiver — total_due is just the new estimate
+        transaction.total_due = estimated_amount
+
+        db.add(
+            TransactionAuditLog(
+                transaction_id=transaction.id,
+                changed_by_user_id=receiver_user_id,
+                change_type=AuditChangeTypeEnum.transaction_status,
+                old_value=TransactionStatusEnum.pending_edit.value,
+                new_value=TransactionStatusEnum.pending_edit.value,
+                notes="items edited by receiver",
+            )
+        )
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    return await get_transaction(db, transaction.id)
+
+
+async def resubmit_to_payment(db: AsyncSession, transaction_id: int, receiver_user_id: int) -> TransactionResponse:
+    transaction = await db.get(SalesTransaction, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    if transaction.transaction_status != TransactionStatusEnum.pending_edit:
+        raise TransactionEditFlowError(f"transaction {transaction_id} is not pending edit")
+    if transaction.queue_status != QueueStatusEnum.processing:
+        raise TransactionEditFlowError(f"transaction {transaction_id} has not been grabbed for editing")
+    if transaction.processing_by_user_id != receiver_user_id:
+        raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
+
+    try:
+        old_status = transaction.transaction_status.value
+
+        transaction.transaction_status = TransactionStatusEnum.pending_payment
+        transaction.queue_status = QueueStatusEnum.waiting
+        transaction.processing_by_user_id = None
+        transaction.processing_started_at = None
+
+        db.add(
+            TransactionAuditLog(
+                transaction_id=transaction.id,
+                changed_by_user_id=receiver_user_id,
+                change_type=AuditChangeTypeEnum.transaction_status,
+                old_value=old_status,
+                new_value=transaction.transaction_status.value,
+            )
+        )
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    rooms, event = transaction_status_changed(
+        transaction_id=transaction.id,
+        old_status=old_status,
+        new_status=transaction.transaction_status.value,
+        customer_type=transaction.customer_type.value,
+    )
     await manager.broadcast_multi(rooms, event)
 
     return await get_transaction(db, transaction.id)

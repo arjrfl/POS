@@ -62,3 +62,26 @@ export function useAdminQueue(status) {
 
   return query
 }
+
+// The receiver role's own GET /transactions filter is server-driven (see
+// app/routers/transactions.py): it returns their own created transactions
+// PLUS every pending_edit transaction regardless of creator, in one response.
+// Like admin, that's two cross-cutting criteria rather than one status, so
+// any event on the receiver-queue room is a reasonable reason to refresh.
+export function useReceiverQueue() {
+  const queryClient = useQueryClient()
+  const lastEvent = useNotificationStore((state) => state.lastEvent)
+
+  const query = useQuery({
+    queryKey: ['transactions', { receiverQueue: true }],
+    queryFn: () => get('/transactions?page_size=100'),
+    refetchOnWindowFocus: true,
+  })
+
+  useEffect(() => {
+    if (!lastEvent) return
+    queryClient.invalidateQueries({ queryKey: ['transactions'] })
+  }, [lastEvent, queryClient])
+
+  return query
+}

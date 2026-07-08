@@ -51,8 +51,10 @@ CREATE TYPE transaction_status_enum AS ENUM (
     -- Releasing confirmed weight, adjustment/refund generated if needed
     'completed',
     -- Fully done, no pending actions
-    'voided'
+    'voided',
     -- Cancelled
+    'pending_edit'
+    -- walk_in only: returned from Payment to Receiver for item editing
 );
 
 CREATE TYPE transaction_type_enum AS ENUM (

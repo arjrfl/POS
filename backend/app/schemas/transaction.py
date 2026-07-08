@@ -151,6 +151,10 @@ class WeightConfirmRequest(BaseModel):
     items: list[WeightConfirmItem]
 
 
+class TransactionItemsEditRequest(BaseModel):
+    items: list[TransactionItemCreate]
+
+
 class SubstandardOutcomeRequest(BaseModel):
     # only relevant when balance_due != 0
     outcome: Literal["pay_now", "utang", "refund_now", "save_credit"]

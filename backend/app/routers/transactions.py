@@ -10,6 +10,7 @@ from app.schemas.transaction import (
     PaymentProcessRequest,
     SubstandardOutcomeRequest,
     TransactionCreate,
+    TransactionItemsEditRequest,
     WeightConfirmRequest,
 )
 from app.services import transaction_service
@@ -55,13 +56,17 @@ async def list_transactions(
 ):
     role_name = current_user.get("role_name")
     walkin_user_id = None
+    include_pending_edit = False
 
     if role_name == "admin":
         pass  # no forced filter — admin sees everything
+    elif role_name == "receiver":
+        # own transactions, plus anything returned by Payment for editing —
+        # visible to every receiver, not just whoever created it
+        walkin_user_id = current_user["user_id"]
+        include_pending_edit = True
     elif role_name in transaction_service.ROLE_QUEUE_STATUS:
         status_filter = transaction_service.ROLE_QUEUE_STATUS[role_name]
-    elif role_name == "receiver":
-        walkin_user_id = current_user["user_id"]
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
@@ -84,6 +89,7 @@ async def list_transactions(
         customer_type=customer_type,
         customer_id=customer_id,
         walkin_user_id=walkin_user_id,
+        include_pending_edit=include_pending_edit,
         walkin_at_from=walkin_at_from,
         walkin_at_to=walkin_at_to,
     )
@@ -108,7 +114,7 @@ async def get_transaction_chain(transaction_id: int, db: AsyncSession = Depends(
     return {"data": chain, "error": None}
 
 
-@router.post("/{transaction_id}/grab", dependencies=[Depends(require_role("payment", "releasing"))])
+@router.post("/{transaction_id}/grab", dependencies=[Depends(require_role("payment", "releasing", "receiver"))])
 async def grab_transaction(
     transaction_id: int,
     current_user: dict = Depends(get_current_user),
@@ -142,7 +148,7 @@ async def park_transaction(
     return {"data": transaction, "error": None}
 
 
-@router.post("/{transaction_id}/release", dependencies=[Depends(require_role("payment", "releasing"))])
+@router.post("/{transaction_id}/release", dependencies=[Depends(require_role("payment", "releasing", "receiver"))])
 async def release_transaction(
     transaction_id: int,
     current_user: dict = Depends(get_current_user),
@@ -260,5 +266,59 @@ async def resolve_substandard(
     except transaction_service.QueueConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except transaction_service.SubstandardValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return {"data": transaction, "error": None}
+
+
+@router.post("/{transaction_id}/return-to-receiver", dependencies=[Depends(require_role("payment"))])
+async def return_to_receiver(
+    transaction_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        transaction = await transaction_service.return_to_receiver(db, transaction_id, current_user["user_id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except transaction_service.QueuePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except transaction_service.TransactionEditFlowError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return {"data": transaction, "error": None}
+
+
+@router.patch("/{transaction_id}/items", dependencies=[Depends(require_role("receiver"))])
+async def edit_transaction_items(
+    transaction_id: int,
+    payload: TransactionItemsEditRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        transaction = await transaction_service.edit_transaction_items(
+            db, transaction_id, payload.items, current_user["user_id"]
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except transaction_service.QueuePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except transaction_service.TransactionEditFlowError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return {"data": transaction, "error": None}
+
+
+@router.post("/{transaction_id}/resubmit", dependencies=[Depends(require_role("receiver"))])
+async def resubmit_to_payment(
+    transaction_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        transaction = await transaction_service.resubmit_to_payment(db, transaction_id, current_user["user_id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except transaction_service.QueuePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except transaction_service.TransactionEditFlowError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return {"data": transaction, "error": None}
