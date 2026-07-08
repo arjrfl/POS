@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.dependencies import require_role
+from app.core.dependencies import get_current_user, require_role
 from app.models.customer import Customer, CustomerStatusEnum
 from app.schemas.customer import (
     CustomerCreate,
@@ -12,10 +12,12 @@ from app.schemas.customer import (
     CustomerUpdate,
 )
 
+# Reads are open to any authenticated role — payment/releasing screens need
+# customer names too. Writes stay restricted to the roles that manage customers.
 router = APIRouter(
     prefix="/api/customers",
     tags=["customers"],
-    dependencies=[Depends(require_role("admin", "walk_in"))],
+    dependencies=[Depends(get_current_user)],
 )
 
 
@@ -47,7 +49,7 @@ async def get_customer(customer_id: int, db: AsyncSession = Depends(get_db)):
     return {"data": detail, "error": None}
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_role("admin", "walk_in"))])
 async def create_customer(payload: CustomerCreate, db: AsyncSession = Depends(get_db)):
     customer = Customer(**payload.model_dump())
     db.add(customer)
@@ -56,7 +58,7 @@ async def create_customer(payload: CustomerCreate, db: AsyncSession = Depends(ge
     return {"data": CustomerResponse.model_validate(customer), "error": None}
 
 
-@router.patch("/{customer_id}")
+@router.patch("/{customer_id}", dependencies=[Depends(require_role("admin", "walk_in"))])
 async def update_customer(customer_id: int, payload: CustomerUpdate, db: AsyncSession = Depends(get_db)):
     customer = await _get_customer_or_404(customer_id, db)
 
@@ -68,7 +70,7 @@ async def update_customer(customer_id: int, payload: CustomerUpdate, db: AsyncSe
     return {"data": CustomerResponse.model_validate(customer), "error": None}
 
 
-@router.delete("/{customer_id}")
+@router.delete("/{customer_id}", dependencies=[Depends(require_role("admin", "walk_in"))])
 async def delete_customer(customer_id: int, db: AsyncSession = Depends(get_db)):
     customer = await _get_customer_or_404(customer_id, db)
 

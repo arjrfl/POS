@@ -1,11 +1,15 @@
 import asyncio
+from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
 from app.core.security import hash_password
 from app.models.customer import Customer
+from app.models.ledger import CustomerLedger, LedgerEntryTypeEnum
 from app.models.product import Product
+from app.models.transaction import CustomerTypeEnum, QueueStatusEnum, SalesTransaction, TransactionStatusEnum, TransactionTypeEnum
 from app.models.user import Role, User
 
 PASSWORD = "password123"
@@ -132,6 +136,57 @@ async def seed() -> None:
             if existing.scalar_one_or_none() is not None:
                 continue
             db.add(Customer(**entry))
+
+        await db.flush()  # assigns ids to any customers just added, needed below
+
+        # A customer's net_balance must trace back to a real ledger entry (Walk-In
+        # looks up the most recent one to satisfy transaction_item.reference_transaction_id
+        # for balance_settlement/credit_usage lines) — seed data sets net_balance
+        # directly, so back it with a placeholder transaction + ledger entry here.
+        walkin_user = (
+            await db.execute(select(User).where(User.username == "walk_in_user"))
+        ).scalar_one_or_none()
+
+        for entry in CUSTOMERS:
+            net_balance = Decimal(entry["net_balance"])
+            if net_balance == 0:
+                continue
+
+            customer = (
+                await db.execute(select(Customer).where(Customer.full_name == entry["full_name"]))
+            ).scalar_one()
+
+            has_ledger_entry = (
+                await db.execute(select(CustomerLedger).where(CustomerLedger.customer_id == customer.id))
+            ).scalar_one_or_none()
+            if has_ledger_entry is not None:
+                continue
+
+            placeholder_transaction = SalesTransaction(
+                order_number=f"TXN-SEED-{customer.id:04d}",
+                transaction_type=TransactionTypeEnum.original,
+                transaction_status=TransactionStatusEnum.completed,
+                customer_type=CustomerTypeEnum.walk_in,
+                walkin_user_id=walkin_user.id if walkin_user else None,
+                customer_id=customer.id,
+                queue_status=QueueStatusEnum.done,
+                walkin_at=datetime.now(timezone.utc),
+            )
+            db.add(placeholder_transaction)
+            await db.flush()  # assigns transaction.id
+
+            db.add(
+                CustomerLedger(
+                    customer_id=customer.id,
+                    transaction_id=placeholder_transaction.id,
+                    entry_type=LedgerEntryTypeEnum.credit_added
+                    if net_balance > 0
+                    else LedgerEntryTypeEnum.balance_added,
+                    amount=abs(net_balance),
+                    running_balance=net_balance,
+                    notes="Seed data — opening balance",
+                )
+            )
 
         for entry in PRODUCTS:
             existing = await db.execute(select(Product).where(Product.product_name == entry["product_name"]))

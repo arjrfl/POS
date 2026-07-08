@@ -29,6 +29,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         access_token=access_token,
         user_id=user.id,
         username=user.username,
+        full_name=user.full_name,
         role_name=user.role.role_name,
     )
     return {"data": token_response, "error": None}

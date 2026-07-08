@@ -1,0 +1,41 @@
+import { useAuth } from '../../hooks/useAuth'
+import { Button } from '../ui/Button'
+import logo from '../../assets/meatshop-logo.png'
+
+const ROLE_BADGE_STYLES = {
+  walk_in: 'bg-blue-100 text-blue-800',
+  payment: 'bg-yellow-100 text-yellow-800',
+  releasing: 'bg-orange-100 text-orange-800',
+  admin: 'bg-red-100 text-red-800',
+}
+
+export function Navbar({ title }) {
+  const { user, logout } = useAuth()
+
+  return (
+    <header className="grid grid-cols-3 items-center gap-4 px-6 py-3 bg-primary text-white">
+      <div className="flex items-center gap-3">
+        <img src={logo} alt="Lash Meatshop" className="h-8 w-8 object-contain" />
+        <span className="font-semibold">Lash Meatshop POS</span>
+      </div>
+
+      <h1 className="text-center font-medium truncate">{title}</h1>
+
+      <div className="flex items-center justify-end gap-3">
+        {user && (
+          <>
+            <span className="text-sm">{user.full_name}</span>
+            <span
+              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${ROLE_BADGE_STYLES[user.role_name] || 'bg-gray-100 text-gray-700'}`}
+            >
+              {user.role_name?.replace('_', ' ')}
+            </span>
+          </>
+        )}
+        <Button variant="secondary" onClick={logout}>
+          Log out
+        </Button>
+      </div>
+    </header>
+  )
+}

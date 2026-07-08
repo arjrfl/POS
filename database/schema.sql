@@ -191,7 +191,7 @@ CREATE TABLE sales_transaction (
     -- customer channel — determines the workflow order
     customer_type         customer_type_enum       NOT NULL DEFAULT 'walk_in',
     -- 'walk_in' → Walk-In → Payment → Releasing
-    -- 'online'  → Walk-In → Releasing → Payment → Releasing (ship)
+    -- 'online'  → Walk-In → Releasing → Payment (ship)
 
     -- team members who touched this transaction
     walkin_user_id        INT                      NULL REFERENCES "user"(id) ON DELETE RESTRICT,
@@ -203,10 +203,12 @@ CREATE TABLE sales_transaction (
     -- amounts
     estimated_amount      DECIMAL(10,2)            NOT NULL DEFAULT 0.00,
     -- total as computed at Walk-In phase (what customer is expected to pay)
+    -- = SUM(unit_price × unit_weight_kg × unit_count) for all product items
 
     actual_amount         DECIMAL(10,2)            NULL,
     -- filled in by Releasing after weight confirmation
     -- NULL until releasing confirms
+    -- for online orders: set equal to estimated_amount by confirm_items_ready
 
     balance_due           DECIMAL(10,2)            GENERATED ALWAYS AS (
                               CASE
@@ -296,7 +298,7 @@ CREATE TRIGGER trg_sales_transaction_updated_at
 -- =============================================================
 CREATE TABLE transaction_item (
     id                       SERIAL PRIMARY KEY,
-    transaction_id           INT           NOT NULL REFERENCES sales_transaction(id) ON DELETE CASCADE,
+    transaction_id           INT            NOT NULL REFERENCES sales_transaction(id) ON DELETE CASCADE,
 
     item_type                item_type_enum NOT NULL DEFAULT 'product',
     -- 'product'            → regular order item
@@ -304,19 +306,37 @@ CREATE TABLE transaction_item (
     -- 'credit_usage'       → using stored credit (deduction)
 
     -- for product items
-    product_id               INT           NULL REFERENCES product(id) ON DELETE RESTRICT,
-    estimated_weight_kg      DECIMAL(10,3) NULL,   -- what Walk-In input
-    actual_weight_kg         DECIMAL(10,3) NULL,   -- what Releasing confirmed
-    unit_price               DECIMAL(10,2) NULL,
+    product_id               INT            NULL REFERENCES product(id) ON DELETE RESTRICT,
+
+    unit_count               INT            NULL,
+    -- number of units/boxes ordered (product items only)
+    -- NULL for balance_settlement and credit_usage items
+    -- estimated_weight_kg = product.unit_weight_kg × unit_count (computed at creation)
+
+    estimated_weight_kg      DECIMAL(10,3)  NULL,
+    -- computed at Walk-In: product.unit_weight_kg × unit_count
+    -- NOT manually input — always derived from unit_count
+    -- NULL for balance_settlement and credit_usage items
+
+    actual_weight_kg         DECIMAL(10,3)  NULL,
+    -- confirmed by Releasing team after physical weighing
+    -- NULL until Releasing confirms
+    -- NULL for balance_settlement and credit_usage items
+
+    unit_price               DECIMAL(10,2)  NULL,
+    -- price per kg at time of transaction
+    -- snapshotted from product.unit_price_php at Walk-In
+    -- NULL for balance_settlement and credit_usage items
 
     -- for balance_settlement and credit_usage items
+    reference_transaction_id INT            NULL REFERENCES sales_transaction(id) ON DELETE RESTRICT,
     -- points to which transaction this balance/credit came from
-    reference_transaction_id INT           NULL REFERENCES sales_transaction(id) ON DELETE RESTRICT,
+    -- NULL for product items
 
-    -- computed at Walk-In for product items; fixed for balance/credit lines
-    subtotal                 DECIMAL(10,2) NOT NULL DEFAULT 0.00
-    -- for balance_settlement: positive (adds to total)
-    -- for credit_usage: negative (deducts from total)
+    subtotal                 DECIMAL(10,2)  NOT NULL DEFAULT 0.00
+    -- product items:            unit_price × estimated_weight_kg (= unit_price × unit_weight_kg × unit_count)
+    -- balance_settlement items: positive amount (adds to total_due)
+    -- credit_usage items:       negative amount (deducts from total_due)
 );
 
 CREATE INDEX idx_ti_transaction ON transaction_item (transaction_id);
@@ -330,9 +350,9 @@ CREATE TABLE payment_detail (
     id                SERIAL PRIMARY KEY,
     transaction_id    INT           NOT NULL REFERENCES sales_transaction(id) ON DELETE CASCADE,
     payment_method_id INT           NOT NULL REFERENCES payment_method(id)    ON DELETE RESTRICT,
-    ref_number        VARCHAR(100)  NULL,         -- for online payment reference
-    tendered_amount   DECIMAL(10,2) NULL,         -- only for cash rows
-    amount            DECIMAL(10,2) NOT NULL,
+    ref_number        VARCHAR(100)  NULL,         -- for online payment reference (GCash, Maya, etc.)
+    tendered_amount   DECIMAL(10,2) NULL,         -- only for cash rows; NULL for online
+    amount            DECIMAL(10,2) NOT NULL,     -- actual amount credited for this method
     created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 
@@ -349,13 +369,19 @@ CREATE TABLE customer_ledger (
     transaction_id  INT                    NOT NULL REFERENCES sales_transaction(id)  ON DELETE CASCADE,
 
     entry_type      ledger_entry_type_enum NOT NULL,
+    -- 'balance_added'    → releasing found item heavier, customer chose utang
+    -- 'balance_settled'  → customer paid off utang (via Walk-In line item or standalone)
+    -- 'credit_added'     → releasing found item lighter, customer chose to save as credit
+    -- 'credit_used'      → customer applied credit to a transaction at Walk-In
+    -- 'credit_auto_used' → system auto-deducted credit to cover balance at Releasing
 
     amount          DECIMAL(10,2)          NOT NULL,
     -- always positive; entry_type tells you the direction
 
     running_balance DECIMAL(10,2)          NOT NULL,
-    -- snapshot of customer net_balance after this entry was applied
-    -- positive = credit, negative = utang
+    -- snapshot of customer.net_balance after this entry was applied
+    -- positive = credit (store owes customer)
+    -- negative = utang (customer owes store)
 
     notes           VARCHAR(255)           NULL,
     created_at      TIMESTAMPTZ            NOT NULL DEFAULT NOW()

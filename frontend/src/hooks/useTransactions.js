@@ -1,0 +1,30 @@
+import { useQuery } from '@tanstack/react-query'
+import { get } from '../services/api'
+
+// Generic filtered/paginated transaction list — the admin dashboard, the
+// transactions table, and a customer's transaction history all just need
+// different slices of GET /transactions, so they all go through here.
+export function useTransactions(filters = {}) {
+  const { status, customerType, customerId, dateFrom, dateTo, page = 1, pageSize = 20 } = filters
+
+  const params = new URLSearchParams()
+  if (status) params.set('status', status)
+  if (customerType) params.set('customer_type', customerType)
+  if (customerId) params.set('customer_id', customerId)
+  if (dateFrom) params.set('date_from', dateFrom)
+  if (dateTo) params.set('date_to', dateTo)
+  params.set('page', String(page))
+  params.set('page_size', String(pageSize))
+
+  const queryString = params.toString()
+
+  return useQuery({
+    // Nested under the same 'transactions' prefix the queue hooks already
+    // invalidate on relevant WebSocket events (see useQueue.js) — react-query
+    // matches invalidateQueries({queryKey: ['transactions']}) by prefix, so
+    // this view refreshes on live events too without any new WS wiring.
+    queryKey: ['transactions', 'list', { status, customerType, customerId, dateFrom, dateTo, page, pageSize }],
+    queryFn: () => get(`/transactions?${queryString}`),
+    staleTime: 30 * 1000,
+  })
+}

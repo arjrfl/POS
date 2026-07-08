@@ -10,6 +10,7 @@ services:
 
   backend:
     build: ./backend
+    ports: ['8000:8000']
     environment:
       - DATABASE_URL=postgresql+asyncpg://pos:${DB_PASSWORD}@postgres:5432/lash_meatshop_db
       - SECRET_KEY=${SECRET_KEY}

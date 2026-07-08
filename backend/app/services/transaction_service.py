@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.customer import Customer
 from app.models.ledger import AuditChangeTypeEnum, CustomerLedger, LedgerEntryTypeEnum, TransactionAuditLog
+from app.models.product import Product
 from app.models.transaction import (
     CustomerTypeEnum,
     ItemTypeEnum,
@@ -75,18 +76,32 @@ async def _next_order_number(db: AsyncSession) -> str:
     return f"{prefix}{sequence:04d}"
 
 
-def _item_subtotal(item: TransactionItemCreate, data: TransactionCreate) -> Decimal:
+async def _item_subtotal(
+    db: AsyncSession, item: TransactionItemCreate, data: TransactionCreate
+) -> tuple[Decimal, Decimal | None]:
+    """Returns (subtotal, estimated_weight_kg). estimated_weight_kg is only set for product items."""
     if item.item_type == ItemTypeEnum.product:
-        if item.product_id is None or item.estimated_weight_kg is None or item.unit_price is None:
-            raise ValueError("product items require product_id, estimated_weight_kg, and unit_price")
-        return (item.estimated_weight_kg * item.unit_price).quantize(Decimal("0.01"))
+        if item.product_id is None or item.unit_price is None:
+            raise ValueError("product items require product_id and unit_price")
+        if item.unit_count is None or item.unit_count < 1:
+            raise ValueError("product items require unit_count >= 1")
+
+        product = await db.get(Product, item.product_id)
+        if product is None:
+            raise ValueError(f"Product {item.product_id} not found")
+        if product.unit_weight_kg is None:
+            raise ValueError(f"Product {item.product_id} has no unit_weight_kg configured")
+
+        estimated_weight_kg = (product.unit_weight_kg * item.unit_count).quantize(Decimal("0.001"))
+        subtotal = (estimated_weight_kg * item.unit_price).quantize(Decimal("0.01"))
+        return subtotal, estimated_weight_kg
 
     if item.reference_transaction_id is None:
         raise ValueError(f"{item.item_type.value} items require reference_transaction_id")
 
     if item.item_type == ItemTypeEnum.balance_settlement:
-        return data.balance_settled
-    return -data.credit_applied  # credit_usage
+        return data.balance_settled, None
+    return -data.credit_applied, None  # credit_usage
 
 
 async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_user_id: int) -> TransactionResponse:
@@ -114,7 +129,7 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
 
         estimated_amount = Decimal("0.00")
         for item in data.items:
-            subtotal = _item_subtotal(item, data)
+            subtotal, estimated_weight_kg = await _item_subtotal(db, item, data)
             if item.item_type == ItemTypeEnum.product:
                 estimated_amount += subtotal
 
@@ -123,7 +138,8 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
                     transaction_id=transaction.id,
                     item_type=item.item_type,
                     product_id=item.product_id,
-                    estimated_weight_kg=item.estimated_weight_kg,
+                    unit_count=item.unit_count,
+                    estimated_weight_kg=estimated_weight_kg,
                     unit_price=item.unit_price,
                     reference_transaction_id=item.reference_transaction_id,
                     subtotal=subtotal,
@@ -322,6 +338,22 @@ async def park_transaction(db: AsyncSession, transaction_id: int, user_id: int) 
     transaction.processing_by_user_id = None
     transaction.parked_by_user_id = user_id
     transaction.parked_at = datetime.now(timezone.utc)
+
+    return await _finalize_queue_change(db, transaction, old_queue_status, user_id)
+
+
+async def release_transaction(db: AsyncSession, transaction_id: int, user_id: int) -> TransactionResponse:
+    transaction = await db.get(SalesTransaction, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    if transaction.processing_by_user_id != user_id:
+        raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
+
+    old_queue_status = transaction.queue_status.value
+    transaction.queue_status = QueueStatusEnum.waiting
+    transaction.processing_by_user_id = None
+    transaction.processing_started_at = None
 
     return await _finalize_queue_change(db, transaction, old_queue_status, user_id)
 

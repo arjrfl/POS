@@ -46,7 +46,8 @@ async def list_transactions(
     status_filter: TransactionStatusEnum | None = Query(default=None, alias="status"),
     customer_type: CustomerTypeEnum | None = Query(default=None),
     customer_id: int | None = Query(default=None),
-    date_filter: date | None = Query(default=None, alias="date"),
+    date_from_filter: date | None = Query(default=None, alias="date_from"),
+    date_to_filter: date | None = Query(default=None, alias="date_to"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
@@ -64,10 +65,16 @@ async def list_transactions(
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 
-    walkin_at_from = walkin_at_to = None
-    if date_filter is not None:
-        walkin_at_from = datetime.combine(date_filter, time.min, tzinfo=timezone.utc)
-        walkin_at_to = walkin_at_from + timedelta(days=1)
+    # date_to is inclusive of the whole day, so the actual upper bound is midnight
+    # the day after — matches date_from's own midnight-start convention.
+    walkin_at_from = (
+        datetime.combine(date_from_filter, time.min, tzinfo=timezone.utc) if date_from_filter is not None else None
+    )
+    walkin_at_to = (
+        datetime.combine(date_to_filter, time.min, tzinfo=timezone.utc) + timedelta(days=1)
+        if date_to_filter is not None
+        else None
+    )
 
     result = await transaction_service.list_transactions(
         db,
@@ -128,6 +135,21 @@ async def park_transaction(
 ):
     try:
         transaction = await transaction_service.park_transaction(db, transaction_id, current_user["user_id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except transaction_service.QueuePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    return {"data": transaction, "error": None}
+
+
+@router.post("/{transaction_id}/release", dependencies=[Depends(require_role("payment", "releasing"))])
+async def release_transaction(
+    transaction_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        transaction = await transaction_service.release_transaction(db, transaction_id, current_user["user_id"])
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except transaction_service.QueuePermissionError as exc:

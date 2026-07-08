@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Computed, DateTime, Enum, ForeignKey, Numeric, String, func, text
+from sqlalchemy import Computed, DateTime, Enum, ForeignKey, Integer, Numeric, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -74,6 +74,7 @@ class TransactionItem(Base):
 
     # for product items
     product_id: Mapped[Optional[int]] = mapped_column(ForeignKey("product.id", ondelete="RESTRICT"))
+    unit_count: Mapped[Optional[int]] = mapped_column(Integer)
     estimated_weight_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
     actual_weight_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
     unit_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
