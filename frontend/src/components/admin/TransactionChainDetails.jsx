@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { Badge } from '../ui/Badge'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 
 export function TransactionChainDetails({ transactionId }) {
   const { data: chain, isLoading } = useQuery({

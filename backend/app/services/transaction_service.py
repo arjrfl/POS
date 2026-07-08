@@ -327,6 +327,15 @@ async def _finalize_queue_change(
     return await get_transaction(db, transaction.id)
 
 
+async def _get_transaction_for_update(db: AsyncSession, transaction_id: int) -> SalesTransaction | None:
+    # Queue transitions are read-check-write on queue_status/processing_by_user_id —
+    # without a row lock, two concurrent requests can both read 'waiting' before
+    # either commits, and both succeed. FOR UPDATE serializes them: the second
+    # request blocks until the first commits, then re-reads the now-updated row.
+    result = await db.execute(select(SalesTransaction).where(SalesTransaction.id == transaction_id).with_for_update())
+    return result.scalar_one_or_none()
+
+
 async def grab_transaction(
     db: AsyncSession, transaction_id: int, user_id: int, user_role: str
 ) -> TransactionResponse:
@@ -334,7 +343,7 @@ async def grab_transaction(
     if required_status is None:
         raise QueuePermissionError(f"role '{user_role}' does not have a transaction queue")
 
-    transaction = await db.get(SalesTransaction, transaction_id)
+    transaction = await _get_transaction_for_update(db, transaction_id)
     if transaction is None:
         raise ValueError(f"Transaction {transaction_id} not found")
 
@@ -352,7 +361,7 @@ async def grab_transaction(
 
 
 async def park_transaction(db: AsyncSession, transaction_id: int, user_id: int) -> TransactionResponse:
-    transaction = await db.get(SalesTransaction, transaction_id)
+    transaction = await _get_transaction_for_update(db, transaction_id)
     if transaction is None:
         raise ValueError(f"Transaction {transaction_id} not found")
 
@@ -369,7 +378,7 @@ async def park_transaction(db: AsyncSession, transaction_id: int, user_id: int) 
 
 
 async def release_transaction(db: AsyncSession, transaction_id: int, user_id: int) -> TransactionResponse:
-    transaction = await db.get(SalesTransaction, transaction_id)
+    transaction = await _get_transaction_for_update(db, transaction_id)
     if transaction is None:
         raise ValueError(f"Transaction {transaction_id} not found")
 
@@ -385,7 +394,7 @@ async def release_transaction(db: AsyncSession, transaction_id: int, user_id: in
 
 
 async def unpark_transaction(db: AsyncSession, transaction_id: int, user_id: int) -> TransactionResponse:
-    transaction = await db.get(SalesTransaction, transaction_id)
+    transaction = await _get_transaction_for_update(db, transaction_id)
     if transaction is None:
         raise ValueError(f"Transaction {transaction_id} not found")
 
@@ -448,10 +457,28 @@ async def process_payment(
     if transaction.processing_by_user_id != payment_user_id:
         raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
 
+    customer = await db.get(Customer, transaction.customer_id)
+
+    if data.balance_settled > 0:
+        if customer.net_balance >= 0:
+            raise PaymentValidationError("customer does not have an outstanding balance")
+        if data.balance_settled > abs(customer.net_balance):
+            raise PaymentValidationError("balance_settled exceeds the customer's outstanding balance")
+
+    if data.credit_applied > 0:
+        if customer.net_balance <= 0:
+            raise PaymentValidationError("customer does not have credit available")
+        if data.credit_applied > customer.net_balance:
+            raise PaymentValidationError("credit_applied exceeds the customer's available credit")
+
+    # balance/credit applied at Payment time shift the amount actually owed —
+    # entries must sum to this, not the original total_due
+    final_amount = transaction.total_due + data.balance_settled - data.credit_applied
+
     total_paid = sum((payment.amount for payment in data.payments), Decimal("0"))
-    if total_paid != transaction.total_due:
+    if total_paid != final_amount:
         raise PaymentValidationError(
-            f"payment total {total_paid} does not match amount due {transaction.total_due}"
+            f"payment total {total_paid} does not match amount due {final_amount}"
         )
 
     method_ids = {payment.payment_method_id for payment in data.payments}
@@ -487,6 +514,34 @@ async def process_payment(
 
         if cash_tendered < cash_portion:
             raise PaymentValidationError("cash tendered is less than the cash portion of the amount due")
+
+        if data.balance_settled > 0:
+            customer.net_balance += data.balance_settled
+            db.add(
+                CustomerLedger(
+                    customer_id=customer.id,
+                    transaction_id=transaction.id,
+                    entry_type=LedgerEntryTypeEnum.balance_settled,
+                    amount=data.balance_settled,
+                    running_balance=customer.net_balance,
+                )
+            )
+            transaction.balance_settled = data.balance_settled
+            transaction.total_due += data.balance_settled
+
+        if data.credit_applied > 0:
+            customer.net_balance -= data.credit_applied
+            db.add(
+                CustomerLedger(
+                    customer_id=customer.id,
+                    transaction_id=transaction.id,
+                    entry_type=LedgerEntryTypeEnum.credit_used,
+                    amount=data.credit_applied,
+                    running_balance=customer.net_balance,
+                )
+            )
+            transaction.credit_applied = data.credit_applied
+            transaction.total_due -= data.credit_applied
 
         old_transaction_status = transaction.transaction_status.value
         old_queue_status = transaction.queue_status.value

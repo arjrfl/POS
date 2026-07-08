@@ -1,7 +1,7 @@
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { useCustomer } from '../../hooks/useCustomer'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 import { timeAgo } from '../../utils/time'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 

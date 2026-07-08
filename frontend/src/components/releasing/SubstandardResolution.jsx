@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Button } from '../ui/Button'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 
 export function SubstandardResolution({ transaction, customer, onResolve, submitting }) {
   const balanceDue = Number(transaction.balance_due)

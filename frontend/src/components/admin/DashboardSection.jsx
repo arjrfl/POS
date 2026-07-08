@@ -3,7 +3,7 @@ import { usePaymentQueue, useReleasingQueue } from '../../hooks/useQueue'
 import { useTransactions } from '../../hooks/useTransactions'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10)

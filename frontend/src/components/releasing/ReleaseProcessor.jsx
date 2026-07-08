@@ -5,7 +5,7 @@ import { SubstandardResolution } from './SubstandardResolution'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 
 export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights, onResolve, submitting }) {
   const { data: customer } = useCustomer(transaction.customer_id)

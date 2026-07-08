@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { Input } from '../ui/Input'
 import { AddCustomerModal } from './AddCustomerModal'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 
 function BalanceLine({ netBalance }) {
   const amount = Number(netBalance)

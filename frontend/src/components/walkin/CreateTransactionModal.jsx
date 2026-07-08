@@ -6,7 +6,7 @@ import { CustomerSelector } from './CustomerSelector'
 import { ProductSelector } from './ProductSelector'
 import { OrderSummaryPanel } from './OrderSummaryPanel'
 import { post } from '../../services/api'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
 
 function initialState() {

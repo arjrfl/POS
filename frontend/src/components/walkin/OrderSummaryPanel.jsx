@@ -1,5 +1,5 @@
 import { Card } from '../ui/Card'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 
 function TrashIcon() {
@@ -23,13 +23,25 @@ function TrashIcon() {
   )
 }
 
-export function OrderSummaryPanel({ customer, customerType, items, total, onRemoveItem, footer }) {
+export function OrderSummaryPanel({
+  customer,
+  customerType,
+  items,
+  total,
+  onRemoveItem,
+  footer,
+  readOnly = false,
+  orderNumber = null,
+  totalLabel = 'TOTAL',
+  headingLabel = 'Order Summary',
+}) {
   const typeBadge = customerType ? CUSTOMER_TYPE_BADGE[customerType] : null
 
   return (
     <Card className="h-full flex flex-col overflow-hidden">
       <div className="flex-shrink-0 mb-3">
-        <h2 className="text-sm font-medium text-gray-700 mb-1">Order Summary</h2>
+        {headingLabel && <h2 className="text-sm font-medium text-gray-700 mb-1">{headingLabel}</h2>}
+        {orderNumber && <div className="text-lg font-bold text-gray-900 mb-1">{orderNumber}</div>}
         {customer ? (
           <>
             <div className="text-xl font-bold text-primary">{customer.full_name}</div>
@@ -59,7 +71,7 @@ export function OrderSummaryPanel({ customer, customerType, items, total, onRemo
                 <th className="py-2 pr-2 font-medium">ARTICLES</th>
                 <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
                 <th className="py-2 pr-2 font-medium">AMOUNT</th>
-                <th className="py-2"></th>
+                {!readOnly && <th className="py-2"></th>}
               </tr>
             </thead>
             <tbody>
@@ -73,16 +85,18 @@ export function OrderSummaryPanel({ customer, customerType, items, total, onRemo
                   </td>
                   <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
                   <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
-                  <td className="py-2 pl-1">
-                    <button
-                      type="button"
-                      onClick={() => onRemoveItem(item.id)}
-                      className="text-red-600 hover:text-red-800"
-                      aria-label="Remove item"
-                    >
-                      <TrashIcon />
-                    </button>
-                  </td>
+                  {!readOnly && (
+                    <td className="py-2 pl-1">
+                      <button
+                        type="button"
+                        onClick={() => onRemoveItem(item.id)}
+                        className="text-red-600 hover:text-red-800"
+                        aria-label="Remove item"
+                      >
+                        <TrashIcon />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -92,7 +106,7 @@ export function OrderSummaryPanel({ customer, customerType, items, total, onRemo
 
       <div className="flex-shrink-0">
         <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
-          <span className="font-semibold text-gray-900">TOTAL</span>
+          <span className="font-semibold text-gray-900">{totalLabel}</span>
           <span className="text-2xl font-bold text-primary">{formatCurrency(total)}</span>
         </div>
 

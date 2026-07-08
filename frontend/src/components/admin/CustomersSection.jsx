@@ -4,7 +4,7 @@ import { CustomerDetailPanel } from './CustomerDetailPanel'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Input } from '../ui/Input'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 
 function NetBalanceCell({ netBalance }) {
   const amount = Number(netBalance)

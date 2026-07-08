@@ -1,0 +1,178 @@
+import { useState } from 'react'
+import { FullScreenModal } from '../ui/FullScreenModal'
+import { Button } from '../ui/Button'
+import { post } from '../../services/api'
+import { formatCurrency } from '../../utils/format'
+import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
+import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
+
+export function PaymentConfirmationModal({
+  open,
+  transaction,
+  customer,
+  displayItems,
+  entries,
+  totalDue,
+  balanceSettled,
+  creditApplied,
+  finalAmount,
+  onBack,
+  onDone,
+}) {
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  if (!open) return null
+
+  const enteredTotal = entries.reduce((sum, e) => sum + e.amount, 0)
+  const changeTotal = entries.reduce(
+    (sum, e) => sum + Math.max((e.tendered_amount ?? e.amount) - e.amount, 0),
+    0,
+  )
+
+  const submitPayment = () =>
+    post(`/transactions/${transaction.id}/pay`, {
+      payments: entries.map((e) => ({
+        payment_method_id: e.payment_method_id,
+        amount: e.amount,
+        tendered_amount: e.tendered_amount,
+        ref_number: e.ref_number,
+      })),
+      credit_applied: creditApplied,
+      balance_settled: balanceSettled,
+    })
+
+  const handleConfirmAndPrint = async () => {
+    setError('')
+    setSubmitting(true)
+    try {
+      const paid = await submitPayment()
+      window.print()
+      onDone(paid)
+    } catch (err) {
+      setError(err.message)
+      setSubmitting(false)
+    }
+  }
+
+  const handleConfirmAndDone = async () => {
+    setError('')
+    setSubmitting(true)
+    try {
+      const paid = await submitPayment()
+      onDone(paid)
+    } catch (err) {
+      setError(err.message)
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <FullScreenModal open={open} onClose={onBack} title="Confirm Payment">
+      <div className="max-w-3xl mx-auto h-full flex flex-col min-h-0">
+        <button type="button" onClick={onBack} className="self-start text-sm text-primary hover:underline mb-3">
+          &larr; Back
+        </button>
+
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4">
+          <div className="p-3 border border-gray-200 rounded-md">
+            <div className="font-semibold text-gray-900">{customer?.full_name}</div>
+            {customer?.address && <div className="text-sm text-gray-500">{customer.address}</div>}
+            {customer?.contact_number && <div className="text-sm text-gray-500">{customer.contact_number}</div>}
+            <div className="text-sm text-gray-700 mt-1">
+              Customer Type: {CUSTOMER_TYPE_LABEL[transaction.customer_type]}
+            </div>
+          </div>
+
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500 border-b border-gray-200">
+                <th className="py-2 pr-2 font-medium">QTY</th>
+                <th className="py-2 pr-2 font-medium">UNIT</th>
+                <th className="py-2 pr-2 font-medium">ARTICLES</th>
+                <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
+                <th className="py-2 pr-2 font-medium">AMOUNT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {displayItems.map((item) => (
+                <tr key={item.id} className="border-b border-gray-100 last:border-b-0 align-top">
+                  <td className="py-2 pr-2 text-gray-700">{item.quantity_kg.toFixed(3)}</td>
+                  <td className="py-2 pr-2 text-gray-700">{item.unit_count}</td>
+                  <td className="py-2 pr-2">
+                    <div className="font-medium text-gray-900">{item.product_name}</div>
+                    {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
+                  </td>
+                  <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
+                  <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="p-3 border border-gray-200 rounded-md flex flex-col gap-1 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-700">Original Total</span>
+              <span className="text-gray-900">{formatCurrency(totalDue)}</span>
+            </div>
+            {balanceSettled > 0 && (
+              <div className="flex justify-between text-red-600">
+                <span>Balance Collected</span>
+                <span>+{formatCurrency(balanceSettled)}</span>
+              </div>
+            )}
+            {creditApplied > 0 && (
+              <div className="flex justify-between text-green-700">
+                <span>Credit Applied</span>
+                <span>-{formatCurrency(creditApplied)}</span>
+              </div>
+            )}
+            <div className="border-t border-gray-200 pt-2 mt-1 flex justify-between font-semibold text-gray-900">
+              <span>Amount to Collect</span>
+              <span>{formatCurrency(finalAmount)}</span>
+            </div>
+
+            <div className="mt-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Payment Breakdown</div>
+            {entries.map((e) => (
+              <div key={e.id} className="flex justify-between text-gray-700">
+                <span>
+                  {PAYMENT_METHOD_LABEL[e.method_name] ?? e.method_name}
+                  {e.ref_number ? ` — Ref: ${e.ref_number}` : ''}
+                </span>
+                <span>{formatCurrency(e.amount)}</span>
+              </div>
+            ))}
+
+            <div className="border-t border-gray-200 pt-2 mt-1 flex justify-between">
+              <span className="text-gray-700">Total Paid</span>
+              <span className="font-semibold text-gray-900">{formatCurrency(enteredTotal)}</span>
+            </div>
+            {changeTotal > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-700">Change</span>
+                <span className="font-semibold text-gray-900">{formatCurrency(changeTotal)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+
+        <div className="flex-shrink-0 flex gap-2 mt-3">
+          <Button type="button" className="flex-1" disabled={submitting} onClick={handleConfirmAndPrint}>
+            {submitting ? 'Processing...' : 'Confirm & Print Receipt'}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            className="flex-1"
+            disabled={submitting}
+            onClick={handleConfirmAndDone}
+          >
+            Confirm & Done
+          </Button>
+        </div>
+      </div>
+    </FullScreenModal>
+  )
+}

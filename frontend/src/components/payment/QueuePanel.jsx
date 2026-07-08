@@ -3,11 +3,23 @@ import { QueueTransactionCard } from './QueueTransactionCard'
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-16 h-16">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h18l-1.5 11.5a2 2 0 0 1-2 1.5H6.5a2 2 0 0 1-2-1.5L3 7Z" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V5a4 4 0 0 1 8 0v2" />
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        className="w-16 h-16"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M22 12h-6l-2 3h-4l-2-3H2" />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"
+        />
       </svg>
-      <p className="mt-3 text-sm">No transactions in queue</p>
+      <p className="mt-3 text-sm font-medium text-gray-500">No transactions in queue</p>
+      <p className="mt-1 text-xs text-gray-400">Transactions will appear here when receivers submit orders</p>
     </div>
   )
 }
@@ -17,29 +29,21 @@ export function QueuePanel({ transactions, isLoading, onProcess }) {
     return <p className="text-gray-500">Loading queue...</p>
   }
 
-  const waiting = transactions.filter((t) => t.queue_status === 'waiting')
-  const parked = transactions.filter((t) => t.queue_status === 'parked')
-
-  if (waiting.length === 0 && parked.length === 0) {
+  if (transactions.length === 0) {
     return <EmptyState />
   }
 
+  // Parked transactions sink to the bottom of the list, visually distinct
+  // (yellow left border) but otherwise part of the same flat list.
+  const active = transactions.filter((t) => t.queue_status !== 'parked')
+  const parked = transactions.filter((t) => t.queue_status === 'parked')
+  const ordered = [...active, ...parked]
+
   return (
     <div className="flex flex-col gap-3">
-      {waiting.map((transaction) => (
+      {ordered.map((transaction) => (
         <QueueTransactionCard key={transaction.id} transaction={transaction} onProcess={onProcess} />
       ))}
-
-      {parked.length > 0 && (
-        <>
-          <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide border-t border-gray-200 pt-3 mt-1">
-            Parked
-          </h3>
-          {parked.map((transaction) => (
-            <QueueTransactionCard key={transaction.id} transaction={transaction} onProcess={onProcess} />
-          ))}
-        </>
-      )}
     </div>
   )
 }

@@ -169,3 +169,5 @@ class PaymentProcessItem(BaseModel):
 
 class PaymentProcessRequest(BaseModel):
     payments: list[PaymentProcessItem]
+    credit_applied: Decimal = Decimal("0")
+    balance_settled: Decimal = Decimal("0")

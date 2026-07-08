@@ -3,7 +3,7 @@ import { useCustomer } from '../../hooks/useCustomer'
 import { useAdminQueue } from '../../hooks/useQueue'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 import { timeAgo } from '../../utils/time'
 
 const PARKED_ALERT_THRESHOLD_MS = 30 * 60 * 1000

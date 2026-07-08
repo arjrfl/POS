@@ -1,25 +1,29 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { PageLayout } from '../components/layout/PageLayout'
 import { usePaymentQueue } from '../hooks/useQueue'
 import { QueuePanel } from '../components/payment/QueuePanel'
-import { PaymentProcessor } from '../components/payment/PaymentProcessor'
-import { ReceiptModal } from '../components/payment/ReceiptModal'
-import { Card } from '../components/ui/Card'
+import { TransactionDetailPanel } from '../components/payment/TransactionDetailPanel'
+import { PaymentModal } from '../components/payment/PaymentModal'
+import { Toast } from '../components/ui/Toast'
 import { post } from '../services/api'
-
-const initialPaymentState = { payments: [], isValid: false, changeGiven: 0 }
 
 export default function Payment() {
   const { data, isLoading } = usePaymentQueue()
   const queryClient = useQueryClient()
 
   const [selectedTransaction, setSelectedTransaction] = useState(null)
-  const [paymentState, setPaymentState] = useState(initialPaymentState)
-  const [receiptTransaction, setReceiptTransaction] = useState(null)
-  const [submitting, setSubmitting] = useState(false)
+  const [payModalOpen, setPayModalOpen] = useState(false)
+  const [toast, setToast] = useState(null)
+  const toastTimerRef = useRef(null)
 
   const refreshQueue = () => queryClient.invalidateQueries({ queryKey: ['transactions'] })
+
+  const showToast = (message, variant = 'info') => {
+    window.clearTimeout(toastTimerRef.current)
+    setToast({ message, variant })
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 3500)
+  }
 
   const handleProcess = async (transaction) => {
     try {
@@ -28,82 +32,75 @@ export default function Payment() {
       const endpoint = transaction.queue_status === 'parked' ? 'unpark' : 'grab'
       const grabbed = await post(`/transactions/${transaction.id}/${endpoint}`)
       setSelectedTransaction(grabbed)
-      setPaymentState(initialPaymentState)
       refreshQueue()
     } catch (err) {
-      window.alert(err.message)
-    }
-  }
-
-  const handleConfirmPayment = async () => {
-    if (!paymentState.isValid) return
-    setSubmitting(true)
-    try {
-      const paid = await post(`/transactions/${selectedTransaction.id}/pay`, { payments: paymentState.payments })
-      setReceiptTransaction(paid)
-      setSelectedTransaction(null)
-      setPaymentState(initialPaymentState)
-      refreshQueue()
-    } catch (err) {
-      window.alert(err.message)
-    } finally {
-      setSubmitting(false)
+      showToast(
+        err.status === 409 ? 'This transaction is already being processed by another team member' : err.message,
+        'error',
+      )
     }
   }
 
   const handlePark = async () => {
-    setSubmitting(true)
     try {
       await post(`/transactions/${selectedTransaction.id}/park`)
       setSelectedTransaction(null)
-      setPaymentState(initialPaymentState)
       refreshQueue()
     } catch (err) {
-      window.alert(err.message)
-    } finally {
-      setSubmitting(false)
+      showToast(err.message, 'error')
     }
   }
 
-  const handleRelease = async () => {
-    setSubmitting(true)
+  const handleReturnToReceiver = async () => {
     try {
-      await post(`/transactions/${selectedTransaction.id}/release`)
+      await post(`/transactions/${selectedTransaction.id}/return-to-receiver`)
       setSelectedTransaction(null)
-      setPaymentState(initialPaymentState)
       refreshQueue()
+      showToast('Order returned to Receiver team', 'success')
     } catch (err) {
-      window.alert(err.message)
-    } finally {
-      setSubmitting(false)
+      showToast(err.message, 'error')
     }
   }
 
-  const handleCloseReceipt = () => {
-    setReceiptTransaction(null)
+  const handlePaid = () => {
+    setPayModalOpen(false)
+    setSelectedTransaction(null)
+    refreshQueue()
   }
 
   return (
     <PageLayout title="Payment Queue">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <QueuePanel transactions={data?.items ?? []} isLoading={isLoading} onProcess={handleProcess} />
-        </Card>
+      <div className="h-full flex gap-6 min-h-0">
+        <div className="flex-[55] h-full min-h-0 flex flex-col">
+          <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Queue</span>
+          <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4">
+            <QueuePanel transactions={data?.items ?? []} isLoading={isLoading} onProcess={handleProcess} />
+          </div>
+        </div>
 
-        {selectedTransaction && (
-          <PaymentProcessor
-            transaction={selectedTransaction}
-            paymentState={paymentState}
-            onPaymentFormChange={setPaymentState}
-            onConfirmPayment={handleConfirmPayment}
-            onPark={handlePark}
-            onRelease={handleRelease}
-            submitting={submitting}
-          />
-        )}
+        <div className="flex-[45] h-full min-h-0 flex flex-col">
+          <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Order Details</span>
+          <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg p-4">
+            <TransactionDetailPanel
+              transaction={selectedTransaction}
+              onPay={() => setPayModalOpen(true)}
+              onPark={handlePark}
+              onReturnToReceiver={handleReturnToReceiver}
+            />
+          </div>
+        </div>
       </div>
 
-      <ReceiptModal transaction={receiptTransaction} onClose={handleCloseReceipt} />
+      {selectedTransaction && (
+        <PaymentModal
+          open={payModalOpen}
+          transaction={selectedTransaction}
+          onClose={() => setPayModalOpen(false)}
+          onPaid={handlePaid}
+        />
+      )}
+
+      <Toast toast={toast} />
     </PageLayout>
   )
 }

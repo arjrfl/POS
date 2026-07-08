@@ -2,7 +2,7 @@ import { useCustomer } from '../../hooks/useCustomer'
 import { useTransactions } from '../../hooks/useTransactions'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 
 function NetBalance({ netBalance }) {
   const amount = Number(netBalance)

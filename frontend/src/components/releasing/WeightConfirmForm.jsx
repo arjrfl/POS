@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useProducts } from '../../hooks/useProducts'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 
 export function WeightConfirmForm({ transaction, onConfirm, submitting }) {
   const { data: products } = useProducts()

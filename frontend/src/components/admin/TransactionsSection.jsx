@@ -8,7 +8,7 @@ import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/format'
 
 const STATUSES = ['pending_payment', 'pending_settlement', 'settled', 'completed', 'voided']
 const SELECT_CLASSES =
