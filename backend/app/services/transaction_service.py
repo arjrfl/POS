@@ -247,6 +247,7 @@ async def list_transactions(
     page: int = 1,
     page_size: int = 20,
     transaction_status: TransactionStatusEnum | None = None,
+    queue_status: QueueStatusEnum | None = None,
     customer_type: CustomerTypeEnum | None = None,
     customer_id: int | None = None,
     walkin_user_id: int | None = None,
@@ -257,6 +258,8 @@ async def list_transactions(
     filters = []
     if transaction_status is not None:
         filters.append(SalesTransaction.transaction_status == transaction_status)
+    if queue_status is not None:
+        filters.append(SalesTransaction.queue_status == queue_status)
     if customer_type is not None:
         filters.append(SalesTransaction.customer_type == customer_type)
     if customer_id is not None:

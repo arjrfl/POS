@@ -7,11 +7,9 @@ import { EditOrderModal } from '../components/walkin/EditOrderModal'
 import { Toast } from '../components/ui/Toast'
 import { Button } from '../components/ui/Button'
 import { useReceiverQueue } from '../hooks/useQueue'
-import { useAuth } from '../hooks/useAuth'
 import { post } from '../services/api'
 
 export default function WalkIn() {
-  const { user } = useAuth()
   const { data, isLoading } = useReceiverQueue()
   const queryClient = useQueryClient()
 
@@ -60,13 +58,8 @@ export default function WalkIn() {
           </Button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <QueuePanel
-            transactions={data?.items ?? []}
-            isLoading={isLoading}
-            currentUserId={user?.id}
-            onEditOrder={handleEditOrder}
-          />
+        <div className="flex-1 min-h-0 overflow-y-auto border border-gray-300 rounded-lg p-4">
+          <QueuePanel transactions={data?.items ?? []} isLoading={isLoading} onEditOrder={handleEditOrder} />
         </div>
       </div>
 

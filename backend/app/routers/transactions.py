@@ -5,7 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_role
-from app.models.transaction import CustomerTypeEnum, ItemTypeEnum, TransactionStatusEnum, TransactionTypeEnum
+from app.models.transaction import (
+    CustomerTypeEnum,
+    ItemTypeEnum,
+    QueueStatusEnum,
+    TransactionStatusEnum,
+    TransactionTypeEnum,
+)
 from app.schemas.transaction import (
     PaymentProcessRequest,
     SubstandardOutcomeRequest,
@@ -45,6 +51,7 @@ async def create_transaction(
 @router.get("")
 async def list_transactions(
     status_filter: TransactionStatusEnum | None = Query(default=None, alias="status"),
+    queue_status_filter: QueueStatusEnum | None = Query(default=None, alias="queue_status"),
     customer_type: CustomerTypeEnum | None = Query(default=None),
     customer_id: int | None = Query(default=None),
     date_from_filter: date | None = Query(default=None, alias="date_from"),
@@ -86,6 +93,7 @@ async def list_transactions(
         page=page,
         page_size=page_size,
         transaction_status=status_filter,
+        queue_status=queue_status_filter,
         customer_type=customer_type,
         customer_id=customer_id,
         walkin_user_id=walkin_user_id,
