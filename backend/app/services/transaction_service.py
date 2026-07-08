@@ -78,30 +78,29 @@ async def _next_order_number(db: AsyncSession) -> str:
 
 async def _item_subtotal(
     db: AsyncSession, item: TransactionItemCreate, data: TransactionCreate
-) -> tuple[Decimal, Decimal | None]:
-    """Returns (subtotal, estimated_weight_kg). estimated_weight_kg is only set for product items."""
+) -> tuple[Decimal, Decimal | None, Decimal | None]:
+    """Returns (subtotal, estimated_weight_kg, quantity_kg). The weight fields are only set for product items."""
     if item.item_type == ItemTypeEnum.product:
         if item.product_id is None or item.unit_price is None:
             raise ValueError("product items require product_id and unit_price")
         if item.unit_count is None or item.unit_count < 1:
             raise ValueError("product items require unit_count >= 1")
+        if item.quantity_kg is None or item.quantity_kg <= 0:
+            raise ValueError("product items require quantity_kg > 0")
 
         product = await db.get(Product, item.product_id)
         if product is None:
             raise ValueError(f"Product {item.product_id} not found")
-        if product.unit_weight_kg is None:
-            raise ValueError(f"Product {item.product_id} has no unit_weight_kg configured")
 
-        estimated_weight_kg = (product.unit_weight_kg * item.unit_count).quantize(Decimal("0.001"))
-        subtotal = (estimated_weight_kg * item.unit_price).quantize(Decimal("0.01"))
-        return subtotal, estimated_weight_kg
+        subtotal = (item.quantity_kg * item.unit_price).quantize(Decimal("0.01"))
+        return subtotal, item.estimated_weight_kg, item.quantity_kg
 
     if item.reference_transaction_id is None:
         raise ValueError(f"{item.item_type.value} items require reference_transaction_id")
 
     if item.item_type == ItemTypeEnum.balance_settlement:
-        return data.balance_settled, None
-    return -data.credit_applied, None  # credit_usage
+        return data.balance_settled, None, None
+    return -data.credit_applied, None, None  # credit_usage
 
 
 async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_user_id: int) -> TransactionResponse:
@@ -129,7 +128,7 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
 
         estimated_amount = Decimal("0.00")
         for item in data.items:
-            subtotal, estimated_weight_kg = await _item_subtotal(db, item, data)
+            subtotal, estimated_weight_kg, quantity_kg = await _item_subtotal(db, item, data)
             if item.item_type == ItemTypeEnum.product:
                 estimated_amount += subtotal
 
@@ -140,6 +139,7 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
                     product_id=item.product_id,
                     unit_count=item.unit_count,
                     estimated_weight_kg=estimated_weight_kg,
+                    quantity_kg=quantity_kg,
                     unit_price=item.unit_price,
                     reference_transaction_id=item.reference_transaction_id,
                     subtotal=subtotal,

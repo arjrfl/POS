@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { PageLayout } from '../components/layout/PageLayout'
 import { CustomerSelector } from '../components/walkin/CustomerSelector'
 import { ProductSelector } from '../components/walkin/ProductSelector'
-import { OrderItemsList } from '../components/walkin/OrderItemsList'
 import { OrderSummaryPanel } from '../components/walkin/OrderSummaryPanel'
 import { Card } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
 import { post } from '../services/api'
+import { formatCurrency } from '../utils/currency'
 
 function initialState() {
   return { customer: null, customerType: 'walk_in', items: [] }
@@ -22,6 +22,7 @@ export default function WalkIn() {
   const netBalance = customer ? Number(customer.net_balance) : 0
   const hasBalanceItem = items.some((item) => item.item_type === 'balance_settlement')
   const hasCreditItem = items.some((item) => item.item_type === 'credit_usage')
+  const hasProductItem = items.some((item) => item.item_type === 'product')
 
   const subtotal = items
     .filter((item) => item.item_type === 'product')
@@ -30,8 +31,15 @@ export default function WalkIn() {
   const creditApplied = items.find((item) => item.item_type === 'credit_usage')?.amount ?? 0
   const totalDue = subtotal + balanceSettled - creditApplied
 
+  const canSubmit = !!customer && (hasProductItem || hasBalanceItem)
+
   const handleSelectCustomer = (selected) => {
     setState((prev) => ({ ...prev, customer: selected, items: [] }))
+    setError('')
+  }
+
+  const handleClearCustomer = () => {
+    setState((prev) => ({ ...prev, customer: null, items: [] }))
     setError('')
   }
 
@@ -93,7 +101,6 @@ export default function WalkIn() {
   function validate() {
     if (!customer) return 'Select a customer first.'
 
-    const hasProductItem = items.some((item) => item.item_type === 'product')
     if (!hasProductItem && !hasBalanceItem) {
       return 'Add at least one product, or settle a balance.'
     }
@@ -128,8 +135,10 @@ export default function WalkIn() {
             ? {
                 item_type: 'product',
                 product_id: item.product_id,
-                unit_count: item.unit_count,
+                estimated_weight_kg: item.estimated_weight_kg,
                 unit_price: item.unit_price,
+                unit_count: item.unit_count,
+                quantity_kg: item.quantity_kg,
               }
             : {
                 item_type: item.item_type,
@@ -141,7 +150,12 @@ export default function WalkIn() {
       }
 
       const transaction = await post('/transactions', payload)
-      setConfirmation({ order_number: transaction.order_number })
+      setConfirmation({
+        order_number: transaction.order_number,
+        customer_name: customer.full_name,
+        total_due: totalDue,
+        customer_type: customerType,
+      })
     } catch (err) {
       setError(err.message)
     } finally {
@@ -157,11 +171,12 @@ export default function WalkIn() {
 
   return (
     <PageLayout title="Walk-In — New Transaction">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
+        <Card className="h-full flex flex-col gap-6">
           <CustomerSelector
             value={customer}
             onSelect={handleSelectCustomer}
+            onClear={handleClearCustomer}
             onAddBalanceSettlement={handleAddBalanceSettlement}
             onAddCreditUsage={handleAddCreditUsage}
             hasBalanceItem={hasBalanceItem}
@@ -189,27 +204,20 @@ export default function WalkIn() {
           </div>
 
           <ProductSelector onAddItem={handleAddProduct} />
-
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Order items</h3>
-            <OrderItemsList
-              items={items}
-              onRemove={handleRemoveItem}
-              onUpdateAmount={handleUpdateAmount}
-              maxBalanceAmount={Math.abs(netBalance)}
-              maxCreditAmount={netBalance}
-            />
-          </div>
         </Card>
 
         <OrderSummaryPanel
           customer={customer}
-          customerType={customerType}
           items={items}
           subtotal={subtotal}
           balanceSettled={balanceSettled}
           creditApplied={creditApplied}
           totalDue={totalDue}
+          onRemoveItem={handleRemoveItem}
+          onUpdateAmount={handleUpdateAmount}
+          maxBalanceAmount={Math.abs(netBalance)}
+          maxCreditAmount={netBalance}
+          canSubmit={canSubmit}
           onSubmit={handleSubmit}
           submitting={submitting}
           error={error}
@@ -217,9 +225,19 @@ export default function WalkIn() {
       </div>
 
       <Modal open={!!confirmation} onClose={handleNewTransaction} title="Transaction Created">
-        <p className="text-gray-700">
-          Order number: <strong>{confirmation?.order_number}</strong>
-        </p>
+        <div className="flex flex-col gap-1">
+          <div className="text-3xl font-bold text-primary">{confirmation?.order_number}</div>
+          <div className="text-gray-900 font-medium">{confirmation?.customer_name}</div>
+          <div className="text-gray-700">{formatCurrency(confirmation?.total_due ?? 0)}</div>
+          <div className="text-sm text-gray-500">
+            {confirmation?.customer_type === 'walk_in' ? 'Walk-In' : 'Online'}
+          </div>
+          <p className="text-sm text-gray-600 mt-2">
+            {confirmation?.customer_type === 'walk_in'
+              ? 'Walk-In: Customer directed to Payment team'
+              : 'Online: Order sent to Releasing team'}
+          </p>
+        </div>
         <Button className="w-full mt-4" onClick={handleNewTransaction}>
           New Transaction
         </Button>

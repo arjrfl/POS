@@ -9,7 +9,10 @@ export function ProductSelector({ onAddItem }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState(null)
+  const [estimatedWeight, setEstimatedWeight] = useState('')
   const [unitCount, setUnitCount] = useState('')
+  const [qty, setQty] = useState('')
+  const [itemError, setItemError] = useState('')
 
   // Small, static catalog and the search endpoint only matches product_name —
   // fetch once and filter name/brand client-side instead of round-tripping per keystroke.
@@ -25,128 +28,196 @@ export function ProductSelector({ onAddItem }) {
       )
     : products
 
-  const handleSelect = (product) => {
-    setSelectedProduct(product)
-    setSearchTerm(product.product_name)
-    setIsOpen(false)
-    setUnitCount('1')
+  const resetItemFields = () => {
+    setEstimatedWeight('')
+    setUnitCount('')
+    setQty('')
+    setItemError('')
   }
 
-  const unitWeight = selectedProduct?.unit_weight_kg != null ? Number(selectedProduct.unit_weight_kg) : null
-  const unitPrice = selectedProduct ? Number(selectedProduct.unit_price_php) : 0
-  const parsedCount = Number(unitCount)
-  const qty = unitWeight != null ? unitWeight * (parsedCount || 0) : 0
-  const total = unitPrice * qty
+  const handleSelect = (product) => {
+    setSelectedProduct(product)
+    setSearchTerm('')
+    setIsOpen(false)
+    setEstimatedWeight(product.unit_weight_kg != null ? String(product.unit_weight_kg) : '')
+    setUnitCount('')
+    setQty('')
+    setItemError('')
+  }
 
-  const canAdd = selectedProduct && unitWeight != null && Number.isInteger(parsedCount) && parsedCount >= 1
+  const handleDeselect = () => {
+    setSelectedProduct(null)
+    resetItemFields()
+  }
+
+  const unitPrice = selectedProduct ? Number(selectedProduct.unit_price_php) : 0
+
+  // "Last touched wins" — whichever of Estimated Weight / Unit Count the user
+  // edited most recently overwrites QTY with its raw value. QTY itself is
+  // always freely editable and never re-derived once the user types into it.
+  const handleWeightChange = (value) => {
+    setEstimatedWeight(value)
+    setQty(value)
+  }
+
+  const handleUnitCountChange = (value) => {
+    setUnitCount(value)
+    setQty(value)
+  }
+
+  const handleQtyChange = (value) => {
+    setQty(value)
+  }
+
+  const parsedUnitCount = unitCount === '' ? null : Number(unitCount)
+  const parsedQty = qty === '' ? null : Number(qty)
+  const parsedWeight = estimatedWeight === '' ? null : Number(estimatedWeight)
+  const subtotal = (parsedQty || 0) * unitPrice
 
   const handleAdd = () => {
-    if (!canAdd) return
+    if (!parsedUnitCount || parsedUnitCount <= 0) {
+      setItemError('Unit count is required')
+      return
+    }
+    if (!parsedQty || parsedQty <= 0) {
+      setItemError('QTY is required')
+      return
+    }
+
     onAddItem({
       item_type: 'product',
       product_id: selectedProduct.id,
       product_name: selectedProduct.product_name,
       brand_name: selectedProduct.brand_name,
-      unit_weight_kg: unitWeight,
+      estimated_weight_kg: parsedWeight,
       unit_price: unitPrice,
-      unit_count: parsedCount,
-      qty,
-      subtotal: total,
+      unit_count: parsedUnitCount,
+      quantity_kg: parsedQty,
+      subtotal,
     })
     setSelectedProduct(null)
     setSearchTerm('')
-    setUnitCount('')
+    resetItemFields()
   }
 
   return (
     <div>
-      <div className="relative">
-        <Input
-          id="product-search"
-          label="Product"
-          placeholder="Search product by name or brand..."
-          value={searchTerm}
-          onChange={(e) => {
-            setSearchTerm(e.target.value)
-            setSelectedProduct(null)
-          }}
-          onFocus={() => setIsOpen(true)}
-          onBlur={() => setTimeout(() => setIsOpen(false), 150)}
-          autoComplete="off"
-        />
-
-        {isOpen && (
-          <div className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg">
-            {filtered?.length ? (
-              filtered.map((product) => (
-                <button
-                  type="button"
-                  key={product.id}
-                  onMouseDown={() => handleSelect(product)}
-                  className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                >
-                  <div className="font-medium text-gray-900">
-                    {product.product_name}
-                    {product.brand_name && <span className="text-gray-500 font-normal"> — {product.brand_name}</span>}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    {product.unit_weight_kg && `${Number(product.unit_weight_kg)}kg · `}
-                    {formatCurrency(product.unit_price_php)}/kg
-                  </div>
-                </button>
-              ))
-            ) : (
-              <div className="px-3 py-2 text-sm text-gray-500">No products found.</div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {selectedProduct && (
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <div>
-            <span className="text-sm font-medium text-gray-700">Product Name</span>
-            <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900">{selectedProduct.product_name}</div>
-          </div>
-          <div>
-            <span className="text-sm font-medium text-gray-700">Brand</span>
-            <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900">{selectedProduct.brand_name ?? '—'}</div>
-          </div>
-          <div>
-            <span className="text-sm font-medium text-gray-700">Unit Weight</span>
-            <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900">
-              {unitWeight != null ? `${unitWeight.toFixed(3)}kg` : '—'}
-            </div>
-          </div>
-          <div>
-            <span className="text-sm font-medium text-gray-700">Unit Price</span>
-            <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900">{formatCurrency(unitPrice)}</div>
-          </div>
-
+      {!selectedProduct && (
+        <div className="relative">
           <Input
-            id="unit-count"
-            label="Unit Count"
-            type="number"
-            step="1"
-            min="1"
-            value={unitCount}
-            onChange={(e) => setUnitCount(e.target.value)}
+            id="product-search"
+            label="Product"
+            placeholder="Search product by name or brand..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onFocus={() => setIsOpen(true)}
+            onBlur={() => setTimeout(() => setIsOpen(false), 150)}
+            autoComplete="off"
           />
-          <div>
-            <span className="text-sm font-medium text-gray-700">QTY</span>
-            <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900">{qty.toFixed(3)}kg</div>
-          </div>
 
-          <div className="col-span-2">
-            <span className="text-sm font-medium text-gray-700">Total</span>
-            <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900 font-semibold">{formatCurrency(total)}</div>
-          </div>
+          {isOpen && (
+            <div className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg">
+              {filtered?.length ? (
+                filtered.map((product) => (
+                  <button
+                    type="button"
+                    key={product.id}
+                    onMouseDown={() => handleSelect(product)}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                  >
+                    <div className="font-medium text-gray-900">
+                      {product.product_name}
+                      {product.brand_name && (
+                        <span className="text-gray-500 font-normal"> — {product.brand_name}</span>
+                      )}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {product.unit_weight_kg && `${Number(product.unit_weight_kg)}kg · `}
+                      {formatCurrency(product.unit_price_php)}/kg
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-2 text-sm text-gray-500">No products found.</div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      <Button type="button" disabled={!canAdd} onClick={handleAdd} className="mt-3">
-        Add Item
-      </Button>
+      {selectedProduct && (
+        <div className="flex flex-col gap-3">
+          <div>
+            <span className="text-sm font-medium text-gray-700">Product</span>
+            <div className="mt-1">
+              <span className="inline-flex items-center gap-1 pl-3 pr-1 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
+                {selectedProduct.product_name}
+                {selectedProduct.brand_name && (
+                  <span className="text-primary/70 font-normal"> — {selectedProduct.brand_name}</span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleDeselect}
+                  className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-primary/20"
+                  aria-label="Deselect product"
+                >
+                  &#10005;
+                </button>
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="estimated-weight"
+              label="Estimated Weight (kg)"
+              type="number"
+              step="0.001"
+              placeholder="0.000"
+              value={estimatedWeight}
+              onChange={(e) => handleWeightChange(e.target.value)}
+            />
+            <div>
+              <span className="text-sm font-medium text-gray-700">Unit Price</span>
+              <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900">{formatCurrency(unitPrice)}</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              id="unit-count"
+              label="Unit Count"
+              type="number"
+              step="1"
+              placeholder="0"
+              value={unitCount}
+              onChange={(e) => handleUnitCountChange(e.target.value)}
+            />
+            <Input
+              id="qty"
+              label="QTY (kg)"
+              type="number"
+              step="0.001"
+              placeholder="0.000"
+              value={qty}
+              onChange={(e) => handleQtyChange(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <span className="text-sm font-medium text-gray-700">Subtotal</span>
+            <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900 font-semibold">
+              {formatCurrency(subtotal)}
+            </div>
+          </div>
+
+          {itemError && <p className="text-sm text-red-600">{itemError}</p>}
+
+          <Button type="button" onClick={handleAdd} className="w-full">
+            + Add to Order
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

@@ -311,11 +311,16 @@ CREATE TABLE transaction_item (
     unit_count               INT            NULL,
     -- number of units/boxes ordered (product items only)
     -- NULL for balance_settlement and credit_usage items
-    -- estimated_weight_kg = product.unit_weight_kg × unit_count (computed at creation)
 
     estimated_weight_kg      DECIMAL(10,3)  NULL,
-    -- computed at Walk-In: product.unit_weight_kg × unit_count
-    -- NOT manually input — always derived from unit_count
+    -- pre-filled from product.unit_weight_kg at Walk-In, editable by Receiver
+    -- purely an estimate for reference — does NOT drive subtotal
+    -- NULL for balance_settlement and credit_usage items, and may be left NULL for product items
+
+    quantity_kg              DECIMAL(10,3)  NULL,
+    -- QTY — the value that actually drives subtotal for product items
+    -- defaults to Estimated Weight or Unit Count depending on which the
+    -- Receiver last edited, but is always freely overridable
     -- NULL for balance_settlement and credit_usage items
 
     actual_weight_kg         DECIMAL(10,3)  NULL,
@@ -334,7 +339,7 @@ CREATE TABLE transaction_item (
     -- NULL for product items
 
     subtotal                 DECIMAL(10,2)  NOT NULL DEFAULT 0.00
-    -- product items:            unit_price × estimated_weight_kg (= unit_price × unit_weight_kg × unit_count)
+    -- product items:            unit_price × quantity_kg
     -- balance_settlement items: positive amount (adds to total_due)
     -- credit_usage items:       negative amount (deducts from total_due)
 );

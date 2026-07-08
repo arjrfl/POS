@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
+import { AddCustomerModal } from './AddCustomerModal'
 import { formatCurrency } from '../../utils/currency'
 
 function BalanceLine({ netBalance }) {
@@ -15,6 +16,7 @@ function BalanceLine({ netBalance }) {
 export function CustomerSelector({
   value,
   onSelect,
+  onClear,
   onAddBalanceSettlement,
   onAddCreditUsage,
   hasBalanceItem,
@@ -23,6 +25,8 @@ export function CustomerSelector({
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedTerm, setDebouncedTerm] = useState('')
   const [isOpen, setIsOpen] = useState(false)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     const handle = setTimeout(() => setDebouncedTerm(searchTerm), 300)
@@ -32,7 +36,7 @@ export function CustomerSelector({
   const { data: customers } = useQuery({
     queryKey: ['customers', debouncedTerm],
     queryFn: () => get(`/customers${debouncedTerm ? `?search=${encodeURIComponent(debouncedTerm)}` : ''}`),
-    enabled: isOpen,
+    enabled: isOpen && !value,
   })
 
   // Needed for reference_transaction_id on balance_settlement/credit_usage items —
@@ -49,24 +53,55 @@ export function CustomerSelector({
     onSelect(customer)
     setSearchTerm('')
     setIsOpen(false)
+    setShowAddModal(false)
+  }
+
+  const handleCreated = (customer) => {
+    queryClient.invalidateQueries({ queryKey: ['customers'] })
+    handleSelect(customer)
+  }
+
+  const handleClear = () => {
+    onClear()
+    setSearchTerm('')
   }
 
   const latestLedgerTransactionId = customerDetail?.ledger_entries?.at(-1)?.transaction_id ?? null
 
+  const trimmedTerm = debouncedTerm.trim()
+  const noResults = !!customers && customers.length === 0 && trimmedTerm.length >= 2
+
   return (
     <div className="relative">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-sm font-medium text-gray-700">Customer</span>
+        {value && (
+          <span className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full bg-primary/10 text-primary text-sm font-medium">
+            {value.full_name}
+            <button
+              type="button"
+              onClick={handleClear}
+              className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-primary/20"
+              aria-label="Clear selected customer"
+            >
+              &#10005;
+            </button>
+          </span>
+        )}
+      </div>
+
       <Input
         id="customer-search"
-        label="Customer"
-        placeholder="Search customer by name..."
-        value={searchTerm}
+        placeholder="Search customer..."
+        value={value ? '' : searchTerm}
+        disabled={!!value}
         onChange={(e) => setSearchTerm(e.target.value)}
         onFocus={() => setIsOpen(true)}
         onBlur={() => setTimeout(() => setIsOpen(false), 150)}
         autoComplete="off"
       />
 
-      {isOpen && (
+      {isOpen && !value && (
         <div className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg">
           {customers?.length ? (
             customers.map((customer) => (
@@ -77,45 +112,60 @@ export function CustomerSelector({
                 className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
               >
                 <div className="font-medium text-gray-900">{customer.full_name}</div>
-                <BalanceLine netBalance={customer.net_balance} />
+                {customer.contact_number && <div className="text-sm text-gray-500">{customer.contact_number}</div>}
               </button>
             ))
           ) : (
-            <div className="px-3 py-2 text-sm text-gray-500">No customers found.</div>
+            <div className="px-3 py-2 text-sm text-gray-500">
+              {trimmedTerm.length > 0 ? 'No customers found.' : 'Start typing to search.'}
+            </div>
+          )}
+
+          {noResults && (
+            <button
+              type="button"
+              onMouseDown={() => setShowAddModal(true)}
+              className="w-full text-left px-3 py-2 border-t border-gray-200 bg-primary text-white font-medium hover:bg-primary-dark"
+            >
+              No customer found — + Add Customer
+            </button>
           )}
         </div>
       )}
 
-      {value && (
-        <div className="mt-3 p-3 bg-gray-50 rounded-md">
-          <div className="font-medium text-gray-900">{value.full_name}</div>
-          <BalanceLine netBalance={value.net_balance} />
+      {value && netBalance !== 0 && (
+        <div className="mt-2 flex flex-col items-start gap-1">
+          <BalanceLine netBalance={netBalance} />
 
           {netBalance < 0 && !hasBalanceItem && (
             <Button
               type="button"
-              variant="secondary"
-              className="mt-2"
+              variant="danger"
               disabled={!latestLedgerTransactionId}
               onClick={() => onAddBalanceSettlement(Math.abs(netBalance), latestLedgerTransactionId)}
             >
-              + Add balance to settle
+              + Add Balance to Settle
             </Button>
           )}
 
           {netBalance > 0 && !hasCreditItem && (
             <Button
               type="button"
-              variant="secondary"
-              className="mt-2"
               disabled={!latestLedgerTransactionId}
               onClick={() => onAddCreditUsage(netBalance, latestLedgerTransactionId)}
             >
-              - Apply credit
+              - Apply Credit
             </Button>
           )}
         </div>
       )}
+
+      <AddCustomerModal
+        open={showAddModal}
+        initialName={searchTerm}
+        onClose={() => setShowAddModal(false)}
+        onCreated={handleCreated}
+      />
     </div>
   )
 }

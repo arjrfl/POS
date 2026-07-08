@@ -20,10 +20,12 @@ from app.models.transaction import (
 class TransactionItemCreate(BaseModel):
     item_type: ItemTypeEnum = ItemTypeEnum.product
 
-    # for product items — estimated_weight_kg is derived server-side from
-    # product.unit_weight_kg * unit_count, never taken as direct input
+    # for product items
     product_id: int | None = None
     unit_count: int | None = None
+    estimated_weight_kg: Decimal | None = None
+    # QTY — required for product items, drives subtotal (quantity_kg * unit_price)
+    quantity_kg: Decimal | None = None
     unit_price: Decimal | None = None
 
     # for balance_settlement and credit_usage items
@@ -52,6 +54,7 @@ class TransactionItemResponse(BaseModel):
     product_id: int | None
     unit_count: int | None
     estimated_weight_kg: Decimal | None
+    quantity_kg: Decimal | None
     actual_weight_kg: Decimal | None
     unit_price: Decimal | None
     reference_transaction_id: int | None

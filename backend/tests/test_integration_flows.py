@@ -95,7 +95,7 @@ with TestClient(app) as client:
             json={
                 "customer_id": jose["id"],
                 "customer_type": "walk_in",
-                "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_price": price}],
+                "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_count": 1, "quantity_kg": "1.000", "unit_price": price}],
             },
             headers=auth("walk_in"),
         )
@@ -186,7 +186,7 @@ with TestClient(app) as client:
         json={
             "customer_id": ana["id"],
             "customer_type": "walk_in",
-            "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_price": price}],
+            "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_count": 1, "quantity_kg": "1.000", "unit_price": price}],
         },
         headers=auth("walk_in"),
     )
@@ -275,7 +275,7 @@ with TestClient(app) as client:
         json={
             "customer_id": ana["id"],
             "customer_type": "walk_in",
-            "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_price": price}],
+            "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_count": 1, "quantity_kg": "1.000", "unit_price": price}],
         },
         headers=auth("walk_in"),
     )
@@ -336,7 +336,7 @@ with TestClient(app) as client:
         json={
             "customer_id": juan["id"],
             "customer_type": "walk_in",
-            "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "2.000", "unit_price": price}],
+            "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "2.000", "unit_count": 1, "quantity_kg": "2.000", "unit_price": price}],
         },
         headers=auth("walk_in"),
     )
@@ -398,7 +398,7 @@ with TestClient(app) as client:
             "customer_id": maria["id"],
             "customer_type": "walk_in",
             "items": [
-                {"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_price": price},
+                {"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_count": 1, "quantity_kg": "1.000", "unit_price": price},
                 {"item_type": "balance_settlement", "reference_transaction_id": flow1_tx_id},
             ],
             "balance_settled": "150.00",
@@ -520,7 +520,7 @@ with TestClient(app) as client:
             json={
                 "customer_id": pedro["id"],
                 "customer_type": "online",
-                "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_price": price}],
+                "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_count": 1, "quantity_kg": "1.000", "unit_price": price}],
             },
             headers=auth("walk_in"),
         )
@@ -568,7 +568,7 @@ with TestClient(app) as client:
         json={
             "customer_id": pedro["id"],
             "customer_type": "online",
-            "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_price": price}],
+            "items": [{"item_type": "product", "product_id": chicken_id, "estimated_weight_kg": "1.000", "unit_count": 1, "quantity_kg": "1.000", "unit_price": price}],
         },
         headers=auth("walk_in"),
     )
