@@ -2,26 +2,17 @@ import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { Input } from '../ui/Input'
-import { Button } from '../ui/Button'
 import { AddCustomerModal } from './AddCustomerModal'
 import { formatCurrency } from '../../utils/currency'
 
 function BalanceLine({ netBalance }) {
   const amount = Number(netBalance)
-  if (amount > 0) return <span className="text-sm text-green-700">Credit: {formatCurrency(amount)}</span>
-  if (amount < 0) return <span className="text-sm text-red-600">Balance: {formatCurrency(Math.abs(amount))}</span>
+  if (amount > 0) return <span className="text-sm text-green-700">Has credit: {formatCurrency(amount)}</span>
+  if (amount < 0) return <span className="text-sm text-red-600">Has balance: {formatCurrency(Math.abs(amount))}</span>
   return null
 }
 
-export function CustomerSelector({
-  value,
-  onSelect,
-  onClear,
-  onAddBalanceSettlement,
-  onAddCreditUsage,
-  hasBalanceItem,
-  hasCreditItem,
-}) {
+export function CustomerSelector({ value, onSelect, onClear }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedTerm, setDebouncedTerm] = useState('')
   const [isOpen, setIsOpen] = useState(false)
@@ -39,15 +30,7 @@ export function CustomerSelector({
     enabled: isOpen && !value,
   })
 
-  // Needed for reference_transaction_id on balance_settlement/credit_usage items —
-  // the most recent ledger entry is used as the "originating transaction" since
-  // net_balance is a single running total with no one true source transaction.
   const netBalance = value ? Number(value.net_balance) : 0
-  const { data: customerDetail } = useQuery({
-    queryKey: ['customer-detail', value?.id],
-    queryFn: () => get(`/customers/${value.id}`),
-    enabled: !!value && netBalance !== 0,
-  })
 
   const handleSelect = (customer) => {
     onSelect(customer)
@@ -65,8 +48,6 @@ export function CustomerSelector({
     onClear()
     setSearchTerm('')
   }
-
-  const latestLedgerTransactionId = customerDetail?.ledger_entries?.at(-1)?.transaction_id ?? null
 
   const trimmedTerm = debouncedTerm.trim()
   const noResults = !!customers && customers.length === 0 && trimmedTerm.length >= 2
@@ -134,29 +115,8 @@ export function CustomerSelector({
       )}
 
       {value && netBalance !== 0 && (
-        <div className="mt-2 flex flex-col items-start gap-1">
+        <div className="mt-2">
           <BalanceLine netBalance={netBalance} />
-
-          {netBalance < 0 && !hasBalanceItem && (
-            <Button
-              type="button"
-              variant="danger"
-              disabled={!latestLedgerTransactionId}
-              onClick={() => onAddBalanceSettlement(Math.abs(netBalance), latestLedgerTransactionId)}
-            >
-              + Add Balance to Settle
-            </Button>
-          )}
-
-          {netBalance > 0 && !hasCreditItem && (
-            <Button
-              type="button"
-              disabled={!latestLedgerTransactionId}
-              onClick={() => onAddCreditUsage(netBalance, latestLedgerTransactionId)}
-            >
-              - Apply Credit
-            </Button>
-          )}
         </div>
       )}
 

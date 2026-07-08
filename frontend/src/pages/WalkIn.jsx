@@ -9,8 +9,10 @@ import { Modal } from '../components/ui/Modal'
 import { post } from '../services/api'
 import { formatCurrency } from '../utils/currency'
 
+const CUSTOMER_TYPE_LABEL = { walk_in: 'Walk-In', online: 'Online' }
+
 function initialState() {
-  return { customer: null, customerType: 'walk_in', items: [] }
+  return { customer: null, customerType: null, items: [] }
 }
 
 export default function WalkIn() {
@@ -18,33 +20,51 @@ export default function WalkIn() {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [confirmation, setConfirmation] = useState(null)
+  const [changeGuard, setChangeGuard] = useState(null) // null | 'customer' | 'customer_type'
 
-  const netBalance = customer ? Number(customer.net_balance) : 0
-  const hasBalanceItem = items.some((item) => item.item_type === 'balance_settlement')
-  const hasCreditItem = items.some((item) => item.item_type === 'credit_usage')
-  const hasProductItem = items.some((item) => item.item_type === 'product')
+  const total = items.reduce((sum, item) => sum + item.subtotal, 0)
 
-  const subtotal = items
-    .filter((item) => item.item_type === 'product')
-    .reduce((sum, item) => sum + item.subtotal, 0)
-  const balanceSettled = items.find((item) => item.item_type === 'balance_settlement')?.amount ?? 0
-  const creditApplied = items.find((item) => item.item_type === 'credit_usage')?.amount ?? 0
-  const totalDue = subtotal + balanceSettled - creditApplied
+  const clearCustomer = () => {
+    setState((prev) => ({ ...prev, customer: null, items: [] }))
+    setError('')
+  }
 
-  const canSubmit = !!customer && (hasProductItem || hasBalanceItem)
+  const clearCustomerType = () => {
+    setState((prev) => ({ ...prev, customerType: null, items: [] }))
+    setError('')
+  }
 
   const handleSelectCustomer = (selected) => {
     setState((prev) => ({ ...prev, customer: selected, items: [] }))
     setError('')
   }
 
-  const handleClearCustomer = () => {
-    setState((prev) => ({ ...prev, customer: null, items: [] }))
-    setError('')
+  const requestClearCustomer = () => {
+    if (items.length > 0) {
+      setChangeGuard('customer')
+    } else {
+      clearCustomer()
+    }
   }
 
+  const requestClearCustomerType = () => {
+    if (items.length > 0) {
+      setChangeGuard('customer_type')
+    } else {
+      clearCustomerType()
+    }
+  }
+
+  const handleConfirmChangeGuard = () => {
+    if (changeGuard === 'customer') clearCustomer()
+    else if (changeGuard === 'customer_type') clearCustomerType()
+    setChangeGuard(null)
+  }
+
+  const handleCancelChangeGuard = () => setChangeGuard(null)
+
   const handleCustomerTypeChange = (type) => {
-    setState((prev) => ({ ...prev, customerType: type }))
+    setState((prev) => ({ ...prev, customerType: type || null }))
   }
 
   const handleAddProduct = (product) => {
@@ -56,63 +76,14 @@ export default function WalkIn() {
     }))
   }
 
-  const handleAddBalanceSettlement = (amount, referenceTransactionId) => {
-    setState((prev) => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        {
-          id: crypto.randomUUID(),
-          item_type: 'balance_settlement',
-          amount,
-          reference_transaction_id: referenceTransactionId,
-        },
-      ],
-    }))
-  }
-
-  const handleAddCreditUsage = (amount, referenceTransactionId) => {
-    setState((prev) => ({
-      ...prev,
-      items: [
-        ...prev.items,
-        {
-          id: crypto.randomUUID(),
-          item_type: 'credit_usage',
-          amount,
-          reference_transaction_id: referenceTransactionId,
-        },
-      ],
-    }))
-  }
-
   const handleRemoveItem = (id) => {
     setState((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== id) }))
   }
 
-  const handleUpdateAmount = (id, rawAmount) => {
-    const amount = Number(rawAmount)
-    setState((prev) => ({
-      ...prev,
-      items: prev.items.map((item) => (item.id === id ? { ...item, amount } : item)),
-    }))
-  }
-
   function validate() {
-    if (!customer) return 'Select a customer first.'
-
-    if (!hasProductItem && !hasBalanceItem) {
-      return 'Add at least one product, or settle a balance.'
-    }
-
-    if (creditApplied > 0 && creditApplied > netBalance) {
-      return "Cannot apply more credit than the customer's balance."
-    }
-
-    if (balanceSettled > 0 && balanceSettled > Math.abs(netBalance)) {
-      return 'Cannot settle more than the customer owes.'
-    }
-
+    if (!customer) return 'Please select a customer'
+    if (!customerType) return 'Please select a customer type'
+    if (items.length === 0) return 'Please add at least one item'
     return null
   }
 
@@ -130,30 +101,21 @@ export default function WalkIn() {
       const payload = {
         customer_id: customer.id,
         customer_type: customerType,
-        items: items.map((item) =>
-          item.item_type === 'product'
-            ? {
-                item_type: 'product',
-                product_id: item.product_id,
-                estimated_weight_kg: item.estimated_weight_kg,
-                unit_price: item.unit_price,
-                unit_count: item.unit_count,
-                quantity_kg: item.quantity_kg,
-              }
-            : {
-                item_type: item.item_type,
-                reference_transaction_id: item.reference_transaction_id,
-              },
-        ),
-        credit_applied: creditApplied,
-        balance_settled: balanceSettled,
+        items: items.map((item) => ({
+          item_type: 'product',
+          product_id: item.product_id,
+          estimated_weight_kg: item.estimated_weight_kg,
+          unit_price: item.unit_price,
+          unit_count: item.unit_count,
+          quantity_kg: item.quantity_kg,
+        })),
       }
 
       const transaction = await post('/transactions', payload)
       setConfirmation({
         order_number: transaction.order_number,
         customer_name: customer.full_name,
-        total_due: totalDue,
+        total_due: total,
         customer_type: customerType,
       })
     } catch (err) {
@@ -170,37 +132,41 @@ export default function WalkIn() {
   }
 
   return (
-    <PageLayout title="Walk-In — New Transaction">
+    <PageLayout title="Receiver — New Transaction">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full">
         <Card className="h-full flex flex-col gap-6">
-          <CustomerSelector
-            value={customer}
-            onSelect={handleSelectCustomer}
-            onClear={handleClearCustomer}
-            onAddBalanceSettlement={handleAddBalanceSettlement}
-            onAddCreditUsage={handleAddCreditUsage}
-            hasBalanceItem={hasBalanceItem}
-            hasCreditItem={hasCreditItem}
-          />
+          <CustomerSelector value={customer} onSelect={handleSelectCustomer} onClear={requestClearCustomer} />
 
           <div>
-            <span className="text-sm font-medium text-gray-700">Customer type</span>
-            <div className="mt-1 flex gap-2">
-              {['walk_in', 'online'].map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => handleCustomerTypeChange(type)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium border ${
-                    customerType === type
-                      ? 'bg-primary text-white border-primary'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  {type === 'walk_in' ? 'Walk-In' : 'Online'}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-medium text-gray-700">Customer Type</span>
+              {customerType && (
+                <span className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full bg-primary/10 text-primary text-sm font-medium">
+                  {CUSTOMER_TYPE_LABEL[customerType]}
+                  <button
+                    type="button"
+                    onClick={requestClearCustomerType}
+                    className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-primary/20"
+                    aria-label="Clear customer type"
+                  >
+                    &#10005;
+                  </button>
+                </span>
+              )}
             </div>
+            <select
+              id="customer-type-select"
+              value={customerType ?? ''}
+              disabled={!!customerType}
+              onChange={(e) => handleCustomerTypeChange(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light disabled:bg-gray-100 disabled:text-gray-500"
+            >
+              <option value="" disabled>
+                Select Customer Type
+              </option>
+              <option value="walk_in">Walk-In</option>
+              <option value="online">Online</option>
+            </select>
           </div>
 
           <ProductSelector onAddItem={handleAddProduct} />
@@ -208,21 +174,36 @@ export default function WalkIn() {
 
         <OrderSummaryPanel
           customer={customer}
+          customerType={customerType}
           items={items}
-          subtotal={subtotal}
-          balanceSettled={balanceSettled}
-          creditApplied={creditApplied}
-          totalDue={totalDue}
+          total={total}
           onRemoveItem={handleRemoveItem}
-          onUpdateAmount={handleUpdateAmount}
-          maxBalanceAmount={Math.abs(netBalance)}
-          maxCreditAmount={netBalance}
-          canSubmit={canSubmit}
           onSubmit={handleSubmit}
           submitting={submitting}
           error={error}
         />
       </div>
+
+      <Modal
+        open={!!changeGuard}
+        onClose={handleCancelChangeGuard}
+        title={`Change ${changeGuard === 'customer' ? 'Customer' : 'Customer Type'}?`}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-gray-700">
+            You have {items.length} item{items.length === 1 ? '' : 's'} in your order. Changing this will clear all
+            order items. Do you want to continue?
+          </p>
+          <div className="flex gap-2">
+            <Button type="button" className="flex-1" onClick={handleConfirmChangeGuard}>
+              Yes, Clear and Change
+            </Button>
+            <Button type="button" variant="outline" className="flex-1" onClick={handleCancelChangeGuard}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={!!confirmation} onClose={handleNewTransaction} title="Transaction Created">
         <div className="flex flex-col gap-1">
