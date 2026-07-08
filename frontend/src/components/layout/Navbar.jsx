@@ -3,7 +3,7 @@ import { Button } from '../ui/Button'
 import logo from '../../assets/meatshop-logo.png'
 
 const ROLE_BADGE_STYLES = {
-  walk_in: 'bg-blue-100 text-blue-800',
+  receiver: 'bg-blue-100 text-blue-800',
   payment: 'bg-yellow-100 text-yellow-800',
   releasing: 'bg-orange-100 text-orange-800',
   admin: 'bg-red-100 text-red-800',

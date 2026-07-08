@@ -95,7 +95,7 @@ CREATE TYPE audit_change_type_enum AS ENUM (
 CREATE TABLE role (
     id        SERIAL PRIMARY KEY,
     role_name VARCHAR(50) NOT NULL UNIQUE
-    -- 'walk_in' | 'payment' | 'releasing' | 'admin'
+    -- 'receiver' | 'payment' | 'releasing' | 'admin'
 );
 
 -- =============================================================
@@ -431,7 +431,7 @@ CREATE INDEX idx_tal_change_type ON transaction_audit_log (change_type);
 -- =============================================================
 
 INSERT INTO role (role_name)
-VALUES ('walk_in'), ('payment'), ('releasing'), ('admin');
+VALUES ('receiver'), ('payment'), ('releasing'), ('admin');
 
 INSERT INTO payment_method (payment_method_name)
 VALUES ('cash'), ('gcash'), ('maya'), ('bank_transfer');

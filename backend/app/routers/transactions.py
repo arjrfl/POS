@@ -19,7 +19,7 @@ from app.websocket.manager import manager
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_role("walk_in"))])
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_role("receiver"))])
 async def create_transaction(
     payload: TransactionCreate,
     current_user: dict = Depends(get_current_user),
@@ -60,7 +60,7 @@ async def list_transactions(
         pass  # no forced filter — admin sees everything
     elif role_name in transaction_service.ROLE_QUEUE_STATUS:
         status_filter = transaction_service.ROLE_QUEUE_STATUS[role_name]
-    elif role_name == "walk_in":
+    elif role_name == "receiver":
         walkin_user_id = current_user["user_id"]
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")

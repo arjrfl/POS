@@ -38,7 +38,7 @@ from app.websocket.manager import manager
 _WITH_CHILDREN = selectinload(SalesTransaction.children, recursion_depth=-1)
 
 # transaction_status a role's queue is filtered to — payment and releasing each
-# own exactly one phase; walk_in and admin aren't queue-scoped this way
+# own exactly one phase; receiver and admin aren't queue-scoped this way
 ROLE_QUEUE_STATUS: dict[str, TransactionStatusEnum] = {
     "payment": TransactionStatusEnum.pending_payment,
     "releasing": TransactionStatusEnum.pending_settlement,

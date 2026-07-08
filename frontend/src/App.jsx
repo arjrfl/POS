@@ -13,7 +13,7 @@ function App() {
       <Route
         path="/walkin"
         element={
-          <ProtectedRoute role="walk_in">
+          <ProtectedRoute role="receiver">
             <WalkIn />
           </ProtectedRoute>
         }

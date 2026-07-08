@@ -15,7 +15,7 @@ from app.models.user import Role, User
 PASSWORD = "password123"
 
 USERS = [
-    {"full_name": "Walk-In User", "username": "walk_in_user", "role_name": "walk_in"},
+    {"full_name": "Receiver User", "username": "receiver_user", "role_name": "receiver"},
     {"full_name": "Payment User", "username": "payment_user", "role_name": "payment"},
     {"full_name": "Releasing User", "username": "releasing_user", "role_name": "releasing"},
     {"full_name": "Admin User", "username": "admin_user", "role_name": "admin"},
@@ -144,7 +144,7 @@ async def seed() -> None:
         # for balance_settlement/credit_usage lines) — seed data sets net_balance
         # directly, so back it with a placeholder transaction + ledger entry here.
         walkin_user = (
-            await db.execute(select(User).where(User.username == "walk_in_user"))
+            await db.execute(select(User).where(User.username == "receiver_user"))
         ).scalar_one_or_none()
 
         for entry in CUSTOMERS:

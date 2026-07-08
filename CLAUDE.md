@@ -25,7 +25,7 @@ No internet at runtime. No cloud. No external services.
 
 | Role | What they do |
 |---|---|
-| `walk_in` | Creates transactions, inputs orders, applies balance/credit at Walk-In phase |
+| `receiver` | Creates transactions, inputs orders, applies balance/credit at Walk-In phase |
 | `payment` | Processes payment (cash/online/split), can park transactions |
 | `releasing` | Confirms actual item weight, handles substandard kilo outcomes |
 | `admin` | Full visibility — queues, reports, audit log, customer ledger |

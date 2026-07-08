@@ -49,7 +49,7 @@ async def get_customer(customer_id: int, db: AsyncSession = Depends(get_db)):
     return {"data": detail, "error": None}
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_role("admin", "walk_in"))])
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_role("admin", "receiver"))])
 async def create_customer(payload: CustomerCreate, db: AsyncSession = Depends(get_db)):
     customer = Customer(**payload.model_dump())
     db.add(customer)
@@ -58,7 +58,7 @@ async def create_customer(payload: CustomerCreate, db: AsyncSession = Depends(ge
     return {"data": CustomerResponse.model_validate(customer), "error": None}
 
 
-@router.patch("/{customer_id}", dependencies=[Depends(require_role("admin", "walk_in"))])
+@router.patch("/{customer_id}", dependencies=[Depends(require_role("admin", "receiver"))])
 async def update_customer(customer_id: int, payload: CustomerUpdate, db: AsyncSession = Depends(get_db)):
     customer = await _get_customer_or_404(customer_id, db)
 
@@ -70,7 +70,7 @@ async def update_customer(customer_id: int, payload: CustomerUpdate, db: AsyncSe
     return {"data": CustomerResponse.model_validate(customer), "error": None}
 
 
-@router.delete("/{customer_id}", dependencies=[Depends(require_role("admin", "walk_in"))])
+@router.delete("/{customer_id}", dependencies=[Depends(require_role("admin", "receiver"))])
 async def delete_customer(customer_id: int, db: AsyncSession = Depends(get_db)):
     customer = await _get_customer_or_404(customer_id, db)
 

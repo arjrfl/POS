@@ -8,7 +8,7 @@
 
 | Role | Members | PCs |
 |---|---|---|
-| Walk-In | 6 | 6 |
+| Receiver | 6 | 6 |
 | Payment | 10 | 10 |
 | Releasing | 10 | 10 |
 | Admin | 1 | 1 |
@@ -42,24 +42,24 @@ The `customer_type` field on `sales_transaction` determines which flow applies.
 ### Walk-In Flow
 
 ```
-Walk-In Team → Payment Team → Releasing Team
+Receiver Team → Payment Team → Releasing Team
 ```
 
 | Step | Actor | Action | transaction_status |
 |---|---|---|---|
-| 1 | Walk-In | Creates transaction, inputs order + customer details | `pending_payment` |
+| 1 | Receiver | Creates transaction, inputs order + customer details | `pending_payment` |
 | 2 | Payment | Picks from queue, processes payment | `pending_payment` → `pending_settlement` |
 | 3 | Releasing | Confirms actual weight | `pending_settlement` → `settled` / `completed` |
 
 ### Online Flow
 
 ```
-Walk-In Team → Releasing Team → Payment Team → Releasing Team (ship)
+Receiver Team → Releasing Team → Payment Team → Releasing Team (ship)
 ```
 
 | Step | Actor | Action | transaction_status |
 |---|---|---|---|
-| 1 | Walk-In | Creates transaction, inputs order + customer details | `pending_settlement` |
+| 1 | Receiver | Creates transaction, inputs order + customer details | `pending_settlement` |
 | 2 | Releasing | Confirms items available, prepares for shipment | `pending_settlement` → `pending_payment` |
 | 3 | Payment | Processes payment (records online ref number) | `pending_payment` → `completed` |
 
@@ -193,7 +193,7 @@ adjustments happen at the Payment phase.
 
 ### Balance Settlement Only (no new order)
 
-1. Walk-In creates transaction with only `balance_settlement` line items
+1. Receiver creates transaction with only `balance_settlement` line items
 2. Pushed to Payment queue (`transaction_status`: `pending_payment`)
 3. Payment processes payment — Releasing is skipped entirely
 4. Transaction → `completed` at Payment
@@ -220,7 +220,7 @@ Online payments are always exact — no change involved.
 ```
 Client terminals (27 PCs)              Database server PC (offline, Docker host)
 ┌──────────────────────────┐           ┌──────────────────────────────────────┐
-│  Walk-In team   (6 PCs)  │           │  nginx       (reverse proxy)          │
+│  Receiver team  (6 PCs)  │           │  nginx       (reverse proxy)          │
 │  Payment team  (10 PCs)  │──LAN──────│  backend     (FastAPI + WebSocket)    │
 │  Releasing team(10 PCs)  │  (offline)│  postgresql  (primary datastore)      │
 │  Admin          (1 PC)   │           │  backup      (nightly pg_dump)        │

@@ -2,7 +2,7 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 
 export const ROLE_HOME = {
-  walk_in: '/walkin',
+  receiver: '/walkin',
   payment: '/payment',
   releasing: '/releasing',
   admin: '/admin',
