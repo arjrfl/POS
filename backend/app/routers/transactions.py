@@ -52,6 +52,7 @@ async def create_transaction(
 async def list_transactions(
     status_filter: TransactionStatusEnum | None = Query(default=None, alias="status"),
     queue_status_filter: QueueStatusEnum | None = Query(default=None, alias="queue_status"),
+    processing_by: str | None = Query(default=None),
     customer_type: CustomerTypeEnum | None = Query(default=None),
     customer_id: int | None = Query(default=None),
     date_from_filter: date | None = Query(default=None, alias="date_from"),
@@ -64,6 +65,13 @@ async def list_transactions(
     role_name = current_user.get("role_name")
     walkin_user_id = None
     include_pending_edit = False
+    processing_by_user_id = None
+
+    if processing_by == "me":
+        if role_name not in ("payment", "receiver"):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+        processing_by_user_id = current_user["user_id"]
+        queue_status_filter = QueueStatusEnum.processing
 
     if role_name == "admin":
         pass  # no forced filter — admin sees everything
@@ -98,6 +106,7 @@ async def list_transactions(
         customer_id=customer_id,
         walkin_user_id=walkin_user_id,
         include_pending_edit=include_pending_edit,
+        processing_by_user_id=processing_by_user_id,
         walkin_at_from=walkin_at_from,
         walkin_at_to=walkin_at_to,
     )

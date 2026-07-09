@@ -49,7 +49,7 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
         totalLabel="TOTAL DUE"
         readOnly
         footer={
-          <div className="flex flex-col gap-2 mt-3">
+          <div className="flex flex-col gap-2 mt-4">
             <Button type="button" className="w-full" onClick={onPay}>
               Pay
             </Button>

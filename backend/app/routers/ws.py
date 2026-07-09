@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 
+from app.core.database import AsyncSessionLocal
 from app.core.security import decode_access_token
+from app.services import transaction_service
 from app.websocket.manager import manager
 
 router = APIRouter()
@@ -48,3 +50,10 @@ async def websocket_endpoint(websocket: WebSocket, room: str, token: str | None 
         pass
     finally:
         manager.disconnect(websocket, room)
+
+        # The WS's own request scope is tearing down along with the connection,
+        # so releasing this user's held transactions needs a fresh session.
+        user_id = payload.get("user_id")
+        if user_id is not None:
+            async with AsyncSessionLocal() as session:
+                await transaction_service.release_processing_transactions(session, user_id)

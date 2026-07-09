@@ -25,16 +25,22 @@ export function PaymentConfirmationModal({
   if (!open) return null
 
   const enteredTotal = entries.reduce((sum, e) => sum + e.amount, 0)
-  const changeTotal = entries.reduce(
-    (sum, e) => sum + Math.max((e.tendered_amount ?? e.amount) - e.amount, 0),
-    0,
-  )
+  const changeTotal = Math.max(enteredTotal - finalAmount, 0)
+
+  // Entries store exactly what the cashier typed (so the UI can show a cash
+  // overpayment verbatim), but the backend requires sum(amount) === finalAmount
+  // exactly. Online entries are never allowed to exceed what's remaining, so
+  // only the single cash entry (if any) needs its submitted amount reduced to
+  // the actual credited portion — tendered_amount still carries the full
+  // typed figure so the backend computes the same change shown here.
+  const onlineTotal = entries.filter((e) => e.method_name !== 'cash').reduce((sum, e) => sum + e.amount, 0)
+  const creditedCashAmount = Math.round((finalAmount - onlineTotal) * 100) / 100
 
   const submitPayment = () =>
     post(`/transactions/${transaction.id}/pay`, {
       payments: entries.map((e) => ({
         payment_method_id: e.payment_method_id,
-        amount: e.amount,
+        amount: e.method_name === 'cash' ? creditedCashAmount : e.amount,
         tendered_amount: e.tendered_amount,
         ref_number: e.ref_number,
       })),
@@ -70,12 +76,16 @@ export function PaymentConfirmationModal({
   return (
     <FullScreenModal open={open} onClose={onBack} title="Confirm Payment">
       <div className="max-w-3xl mx-auto h-full flex flex-col min-h-0">
-        <button type="button" onClick={onBack} className="self-start text-sm text-primary hover:underline mb-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex-shrink-0 self-start text-sm text-primary hover:underline mb-3"
+        >
           &larr; Back
         </button>
 
-        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4">
-          <div className="p-3 border border-gray-200 rounded-md">
+        <div className="flex-1 min-h-0 flex flex-col gap-4">
+          <div className="flex-shrink-0 p-3 border border-gray-200 rounded-md">
             <div className="font-semibold text-gray-900">{customer?.full_name}</div>
             {customer?.address && <div className="text-sm text-gray-500">{customer.address}</div>}
             {customer?.contact_number && <div className="text-sm text-gray-500">{customer.contact_number}</div>}
@@ -84,33 +94,35 @@ export function PaymentConfirmationModal({
             </div>
           </div>
 
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-gray-500 border-b border-gray-200">
-                <th className="py-2 pr-2 font-medium">QTY</th>
-                <th className="py-2 pr-2 font-medium">UNIT</th>
-                <th className="py-2 pr-2 font-medium">ARTICLES</th>
-                <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
-                <th className="py-2 pr-2 font-medium">AMOUNT</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayItems.map((item) => (
-                <tr key={item.id} className="border-b border-gray-100 last:border-b-0 align-top">
-                  <td className="py-2 pr-2 text-gray-700">{item.quantity_kg.toFixed(3)}</td>
-                  <td className="py-2 pr-2 text-gray-700">{item.unit_count}</td>
-                  <td className="py-2 pr-2">
-                    <div className="font-medium text-gray-900">{item.product_name}</div>
-                    {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
-                  </td>
-                  <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
-                  <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
+          <div className="flex-1 min-h-0 overflow-y-auto max-h-56 border border-gray-200 rounded-md">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white">
+                <tr className="text-left text-gray-500 border-b border-gray-200">
+                  <th className="py-2 pl-2 pr-2 font-medium">QTY</th>
+                  <th className="py-2 pr-2 font-medium">UNIT</th>
+                  <th className="py-2 pr-2 font-medium">ARTICLES</th>
+                  <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
+                  <th className="py-2 pr-2 font-medium">AMOUNT</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {displayItems.map((item) => (
+                  <tr key={item.id} className="border-b border-gray-100 last:border-b-0 align-top">
+                    <td className="py-2 pl-2 pr-2 text-gray-700">{item.quantity_kg.toFixed(3)}</td>
+                    <td className="py-2 pr-2 text-gray-700">{item.unit_count}</td>
+                    <td className="py-2 pr-2">
+                      <div className="font-medium text-gray-900">{item.product_name}</div>
+                      {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
+                    </td>
+                    <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
+                    <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-          <div className="p-3 border border-gray-200 rounded-md flex flex-col gap-1 text-sm">
+          <div className="flex-shrink-0 p-3 border border-gray-200 rounded-md flex flex-col gap-1 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-700">Original Total</span>
               <span className="text-gray-900">{formatCurrency(totalDue)}</span>
@@ -156,7 +168,7 @@ export function PaymentConfirmationModal({
           </div>
         </div>
 
-        {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+        {error && <p className="flex-shrink-0 text-sm text-red-600 mt-2">{error}</p>}
 
         <div className="flex-shrink-0 flex gap-2 mt-3">
           <Button type="button" className="flex-1" disabled={submitting} onClick={handleConfirmAndPrint}>

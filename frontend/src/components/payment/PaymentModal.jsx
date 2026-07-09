@@ -101,11 +101,16 @@ export function PaymentModal({ open, transaction, onClose, onPaid }) {
   const remainingOwed = finalAmount - enteredSoFar
   const parsedAmount = Number(amount) || 0
   const previewRemaining = remainingOwed - parsedAmount
+  const hasCashEntry = entries.some((e) => e.method_name === 'cash')
+  const duplicateCashBlocked = isCash && hasCashEntry
 
   let previewLabel
   let previewClass
   let overpayBlocked = false
-  if (previewRemaining > EPS) {
+  if (duplicateCashBlocked) {
+    previewLabel = 'Only one cash entry is allowed'
+    previewClass = 'text-red-600'
+  } else if (previewRemaining > EPS) {
     previewLabel = `Remaining: ${formatCurrency(previewRemaining)}`
     previewClass = 'text-red-600'
   } else if (previewRemaining < -EPS) {
@@ -113,7 +118,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid }) {
       previewLabel = `Change: ${formatCurrency(Math.abs(previewRemaining))}`
       previewClass = 'text-green-700'
     } else {
-      previewLabel = 'Online payments must be exact'
+      previewLabel = 'Cannot exceed remaining amount'
       previewClass = 'text-red-600'
       overpayBlocked = true
     }
@@ -126,18 +131,21 @@ export function PaymentModal({ open, transaction, onClose, onPaid }) {
     !selectedMethod ||
     parsedAmount <= 0 ||
     (!isCash && refNumber.trim().length === 0) ||
-    (!isCash && overpayBlocked)
+    (!isCash && overpayBlocked) ||
+    duplicateCashBlocked
 
   const handleAddEntry = () => {
     if (addDisabled) return
-    const creditedAmount = isCash ? Math.min(parsedAmount, Math.max(remainingOwed, 0)) : parsedAmount
+    // Store exactly what the user typed — never cap to what's still owed.
+    // Cash can overpay (produces change); online is already blocked above
+    // from ever exceeding the remaining amount.
     setEntries((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
         payment_method_id: selectedMethod.id,
         method_name: selectedMethod.payment_method_name,
-        amount: Math.round(creditedAmount * 100) / 100,
+        amount: Math.round(parsedAmount * 100) / 100,
         tendered_amount: isCash ? parsedAmount : null,
         ref_number: isCash ? null : refNumber.trim(),
       },
@@ -151,12 +159,15 @@ export function PaymentModal({ open, transaction, onClose, onPaid }) {
   }
 
   const enteredTotal = entries.reduce((sum, e) => sum + e.amount, 0)
-  const tableRemaining = finalAmount - enteredTotal
+  const remainingAfterEntries = finalAmount - enteredTotal
+  const changeAmount = -remainingAfterEntries
+  const cashEntryCount = entries.filter((e) => e.method_name === 'cash').length
 
   const confirmDisabled =
     entries.length === 0 ||
     enteredTotal < finalAmount - EPS ||
     entries.some((e) => e.method_name !== 'cash' && !e.ref_number) ||
+    cashEntryCount > 1 ||
     !balanceValid ||
     !creditValid
 
@@ -360,10 +371,22 @@ export function PaymentModal({ open, transaction, onClose, onPaid }) {
                 <span className="font-semibold text-gray-900">{formatCurrency(enteredTotal)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-700">Remaining</span>
-                <span className={`font-semibold ${tableRemaining > EPS ? 'text-red-600' : 'text-green-700'}`}>
-                  {formatCurrency(Math.max(tableRemaining, 0))}
-                </span>
+                <span className="text-gray-600">Amount to Pay</span>
+                <span className="font-semibold text-gray-800">{formatCurrency(finalAmount)}</span>
+              </div>
+              <div className="flex flex-col gap-1 border-t border-gray-200 pt-1 mt-1">
+                {changeAmount > EPS && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Change</span>
+                    <span className="font-semibold text-green-700">{formatCurrency(changeAmount)}</span>
+                  </div>
+                )}
+                {remainingAfterEntries > EPS && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Remaining</span>
+                    <span className="font-semibold text-red-600">{formatCurrency(remainingAfterEntries)}</span>
+                  </div>
+                )}
               </div>
             </div>
 

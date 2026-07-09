@@ -39,7 +39,7 @@ export function OrderSummaryPanel({
 
   return (
     <Card className="h-full flex flex-col overflow-hidden">
-      <div className="flex-shrink-0 mb-3">
+      <div className="flex-shrink-0 mb-4">
         {headingLabel && <h2 className="text-sm font-medium text-gray-700 mb-1">{headingLabel}</h2>}
         {orderNumber && <div className="text-lg font-bold text-gray-900 mb-1">{orderNumber}</div>}
         {customer ? (
@@ -59,7 +59,7 @@ export function OrderSummaryPanel({
         )}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto border-t border-gray-200">
+      <div className="flex-1 min-h-0 overflow-y-auto border-t border-gray-200 mb-4">
         {items.length === 0 ? (
           <p className="py-4 text-sm text-gray-500">No items added yet.</p>
         ) : (
@@ -105,7 +105,7 @@ export function OrderSummaryPanel({
       </div>
 
       <div className="flex-shrink-0">
-        <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
+        <div className="border-t border-gray-200 pt-4 flex justify-between items-center">
           <span className="font-semibold text-gray-900">{totalLabel}</span>
           <span className="text-2xl font-bold text-primary">{formatCurrency(total)}</span>
         </div>

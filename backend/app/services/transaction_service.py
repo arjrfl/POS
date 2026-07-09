@@ -73,11 +73,27 @@ def _initial_status(customer_type: CustomerTypeEnum) -> TransactionStatusEnum:
 
 
 async def _next_order_number(db: AsyncSession) -> str:
-    prefix = f"TXN-{datetime.now(timezone.utc):%Y%m%d}-"
+    today = datetime.now(timezone.utc)
+    prefix = f"TXN-{today:%Y%m%d}-"
+
+    # Deriving the next sequence number from row count breaks the moment any
+    # row for today is deleted (e.g. test-data cleanup): COUNT(*) drops below
+    # the highest suffix already used, so count+1 collides with an existing
+    # order_number. The suffix must come from the max number actually used,
+    # not how many rows currently exist.
+    #
+    # Computing max+1 and inserting is also a check-then-insert race on its
+    # own: two submits landing close together can both read the same max and
+    # both try to claim max+1. An advisory lock keyed on the day serializes
+    # that read+generate step across concurrent transactions; it auto-releases
+    # at commit/rollback so no explicit unlock is needed.
+    await db.execute(select(func.pg_advisory_xact_lock(int(today.strftime("%Y%m%d")))))
+
     result = await db.execute(
-        select(func.count()).select_from(SalesTransaction).where(SalesTransaction.order_number.like(f"{prefix}%"))
+        select(SalesTransaction.order_number).where(SalesTransaction.order_number.like(f"{prefix}%"))
     )
-    sequence = result.scalar_one() + 1
+    existing_suffixes = [int(order_number.rsplit("-", 1)[-1]) for order_number in result.scalars().all()]
+    sequence = max(existing_suffixes, default=0) + 1
     return f"{prefix}{sequence:04d}"
 
 
@@ -252,6 +268,7 @@ async def list_transactions(
     customer_id: int | None = None,
     walkin_user_id: int | None = None,
     include_pending_edit: bool = False,
+    processing_by_user_id: int | None = None,
     walkin_at_from: datetime | None = None,
     walkin_at_to: datetime | None = None,
 ) -> TransactionListResponse:
@@ -260,6 +277,8 @@ async def list_transactions(
         filters.append(SalesTransaction.transaction_status == transaction_status)
     if queue_status is not None:
         filters.append(SalesTransaction.queue_status == queue_status)
+    if processing_by_user_id is not None:
+        filters.append(SalesTransaction.processing_by_user_id == processing_by_user_id)
     if customer_type is not None:
         filters.append(SalesTransaction.customer_type == customer_type)
     if customer_id is not None:
@@ -334,6 +353,61 @@ async def _get_transaction_for_update(db: AsyncSession, transaction_id: int) -> 
     # request blocks until the first commits, then re-reads the now-updated row.
     result = await db.execute(select(SalesTransaction).where(SalesTransaction.id == transaction_id).with_for_update())
     return result.scalar_one_or_none()
+
+
+async def release_processing_transactions(db: AsyncSession, user_id: int) -> None:
+    """Auto-release a user's held transactions back to 'waiting' on WebSocket disconnect.
+
+    Runs on a session separate from the closing WS connection's request scope,
+    so it must load, mutate, and commit its own rows rather than reuse
+    _get_transaction_for_update (which assumes an already-open caller session).
+    """
+    result = await db.execute(
+        select(SalesTransaction)
+        .where(
+            SalesTransaction.processing_by_user_id == user_id,
+            SalesTransaction.queue_status == QueueStatusEnum.processing,
+        )
+        .with_for_update()
+    )
+    transactions = result.scalars().all()
+    if not transactions:
+        return
+
+    broadcasts = []
+    try:
+        for transaction in transactions:
+            old_queue_status = transaction.queue_status.value
+            transaction.queue_status = QueueStatusEnum.waiting
+            transaction.processing_by_user_id = None
+            transaction.processing_started_at = None
+
+            db.add(
+                TransactionAuditLog(
+                    transaction_id=transaction.id,
+                    changed_by_user_id=user_id,
+                    change_type=AuditChangeTypeEnum.queue_status,
+                    old_value=old_queue_status,
+                    new_value=transaction.queue_status.value,
+                    notes="auto-released on disconnect",
+                )
+            )
+            broadcasts.append(
+                queue_status_changed(
+                    transaction_id=transaction.id,
+                    old_queue_status=old_queue_status,
+                    new_queue_status=transaction.queue_status.value,
+                    transaction_status=transaction.transaction_status.value,
+                )
+            )
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    for rooms, event in broadcasts:
+        await manager.broadcast_multi(rooms, event)
 
 
 async def grab_transaction(
