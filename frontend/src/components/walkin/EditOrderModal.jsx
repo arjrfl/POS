@@ -114,7 +114,7 @@ export function EditOrderModal({ transaction, onClose, onSent }) {
     <>
       <FullScreenModal open onClose={requestClose} title={`Edit Order — ${transaction.order_number}`}>
         <div className="grid grid-cols-2 gap-6 h-full min-h-0">
-          <div className="h-full min-h-0 overflow-y-auto flex flex-col gap-6 pr-2">
+          <div className="h-full min-h-0 overflow-y-auto flex flex-col gap-6 p-2">
             <div>
               <span className="text-sm font-medium text-gray-700">Customer</span>
               <div className="mt-1">
