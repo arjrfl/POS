@@ -360,6 +360,10 @@ CREATE TABLE payment_detail (
     ref_number        VARCHAR(100)  NULL,         -- for online payment reference (GCash, Maya, etc.)
     tendered_amount   DECIMAL(10,2) NULL,         -- only for cash rows; NULL for online
     amount            DECIMAL(10,2) NOT NULL,     -- actual amount credited for this method
+    is_draft          BOOLEAN       NOT NULL DEFAULT FALSE,
+    -- TRUE  = entered during payment process, not yet confirmed
+    --         persists through park/unpark cycles
+    -- FALSE = confirmed final payment record
     created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 

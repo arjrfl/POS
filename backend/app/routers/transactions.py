@@ -13,6 +13,7 @@ from app.models.transaction import (
     TransactionTypeEnum,
 )
 from app.schemas.transaction import (
+    DraftPaymentSaveRequest,
     PaymentProcessRequest,
     SubstandardOutcomeRequest,
     TransactionCreate,
@@ -193,6 +194,24 @@ async def unpark_transaction(
     except transaction_service.QueueConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     return {"data": transaction, "error": None}
+
+
+@router.put("/{transaction_id}/payment-drafts", dependencies=[Depends(require_role("payment"))])
+async def save_draft_payments(
+    transaction_id: int,
+    payload: DraftPaymentSaveRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        drafts = await transaction_service.save_draft_payments(
+            db, transaction_id, payload.entries, current_user["user_id"]
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except transaction_service.QueueConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return {"data": drafts, "error": None}
 
 
 @router.post("/{transaction_id}/pay", dependencies=[Depends(require_role("payment"))])

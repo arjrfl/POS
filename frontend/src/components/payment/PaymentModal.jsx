@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
@@ -9,10 +9,12 @@ import { useCustomer } from '../../hooks/useCustomer'
 import { useProducts } from '../../hooks/useProducts'
 import { formatCurrency } from '../../utils/format'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
+import { post, put } from '../../services/api'
 
 const EPS = 0.005
+const DRAFT_AUTOSAVE_INTERVAL_MS = 30000
 
-export function PaymentModal({ open, transaction, onClose, onPaid }) {
+export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const { data: methods } = usePaymentMethods()
   const { data: customer } = useCustomer(transaction.customer_id)
   const { data: products } = useProducts()
@@ -23,6 +25,8 @@ export function PaymentModal({ open, transaction, onClose, onPaid }) {
   const [entries, setEntries] = useState([])
   const [closeGuard, setCloseGuard] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
+  const [parking, setParking] = useState(false)
+  const [parkError, setParkError] = useState('')
 
   const [collectBalance, setCollectBalance] = useState(false)
   const [balanceAmount, setBalanceAmount] = useState('')
@@ -30,15 +34,17 @@ export function PaymentModal({ open, transaction, onClose, onPaid }) {
   const [creditAmount, setCreditAmount] = useState('')
 
   // Fresh form every time the modal opens — no leftover entries from a
-  // previously cancelled attempt on this same transaction.
+  // previously cancelled attempt on this same transaction. Entries themselves
+  // are seeded separately below, from any saved drafts.
   useEffect(() => {
     if (open) {
       setMethodId('')
       setRefNumber('')
       setAmount('')
-      setEntries([])
       setCloseGuard(false)
       setShowConfirmation(false)
+      setParking(false)
+      setParkError('')
       setCollectBalance(false)
       setBalanceAmount('')
       setApplyCredit(false)
@@ -52,6 +58,57 @@ export function PaymentModal({ open, transaction, onClose, onPaid }) {
       setMethodId(String(cash?.id ?? methods[0].id))
     }
   }, [methods, methodId])
+
+  // Seed the entries table from any saved drafts once per modal open. Draft
+  // rows only carry payment_method_id, not method_name, so this waits for
+  // payment methods to be loaded to resolve it locally. Deliberately depends
+  // only on [open, methods] — not `transaction` — so an incidental transaction
+  // refetch while the modal is already open doesn't clobber unsaved typing.
+  useEffect(() => {
+    if (!open || !methods?.length) return
+    const drafts = transaction.payment_drafts ?? []
+    if (drafts.length === 0) {
+      setEntries([])
+      return
+    }
+    const methodsById = new Map(methods.map((m) => [m.id, m]))
+    setEntries(
+      drafts.map((d) => ({
+        id: crypto.randomUUID(),
+        payment_method_id: d.payment_method_id,
+        method_name: methodsById.get(d.payment_method_id)?.payment_method_name ?? '',
+        amount: Number(d.amount),
+        tendered_amount: d.tendered_amount !== null ? Number(d.tendered_amount) : null,
+        ref_number: d.ref_number,
+      })),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, methods])
+
+  // Background auto-save every 30s while the modal is open — silent, no
+  // toast/loading state. A ref keeps the interval itself stable (created once
+  // per modal-open) so adding/removing entries doesn't reset the 30s cadence.
+  const entriesRef = useRef(entries)
+  useEffect(() => {
+    entriesRef.current = entries
+  }, [entries])
+
+  useEffect(() => {
+    if (!open) return
+    const interval = setInterval(() => {
+      if (entriesRef.current.length > 0) {
+        put(`/transactions/${transaction.id}/payment-drafts`, {
+          entries: entriesRef.current.map((e) => ({
+            payment_method_id: e.payment_method_id,
+            amount: e.amount,
+            tendered_amount: e.tendered_amount,
+            ref_number: e.ref_number,
+          })),
+        }).catch(() => {})
+      }
+    }, DRAFT_AUTOSAVE_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [open, transaction.id])
 
   const productsById = useMemo(() => new Map((products ?? []).map((p) => [p.id, p])), [products])
   const displayItems = useMemo(
@@ -180,6 +237,27 @@ export function PaymentModal({ open, transaction, onClose, onPaid }) {
   const handleConfirmationDone = (paid) => {
     setShowConfirmation(false)
     onPaid(paid)
+  }
+
+  const handleParkFromModal = async () => {
+    setParkError('')
+    setParking(true)
+    try {
+      // Save entries before parking so they're recoverable on unpark.
+      await put(`/transactions/${transaction.id}/payment-drafts`, {
+        entries: entries.map((e) => ({
+          payment_method_id: e.payment_method_id,
+          amount: e.amount,
+          tendered_amount: e.tendered_amount,
+          ref_number: e.ref_number,
+        })),
+      })
+      await post(`/transactions/${transaction.id}/park`)
+      onParked()
+    } catch (err) {
+      setParkError(err.message)
+      setParking(false)
+    }
   }
 
   return (
@@ -390,14 +468,27 @@ export function PaymentModal({ open, transaction, onClose, onPaid }) {
               </div>
             </div>
 
-            <Button
-              type="button"
-              className="w-full mt-3"
-              disabled={confirmDisabled}
-              onClick={() => setShowConfirmation(true)}
-            >
-              Confirm Payment
-            </Button>
+            {parkError && <p className="text-xs text-red-600 mt-2">{parkError}</p>}
+
+            <div className="flex gap-3 mt-3">
+              <Button
+                type="button"
+                variant="warning"
+                className="flex-1"
+                disabled={parking}
+                onClick={handleParkFromModal}
+              >
+                {parking ? 'Parking...' : 'Park Transaction'}
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
+                disabled={confirmDisabled}
+                onClick={() => setShowConfirmation(true)}
+              >
+                Confirm Payment
+              </Button>
+            </div>
           </div>
         </div>
       </FullScreenModal>

@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Computed, DateTime, Enum, ForeignKey, Integer, Numeric, String, func, text
+from sqlalchemy import Boolean, Computed, DateTime, Enum, ForeignKey, Integer, Numeric, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -210,6 +210,9 @@ class PaymentDetail(Base):
     ref_number: Mapped[Optional[str]] = mapped_column(String(100))
     tendered_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    # TRUE  = entered during payment process, not yet confirmed (persists through park/unpark)
+    # FALSE = confirmed final payment record
+    is_draft: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     transaction: Mapped["SalesTransaction"] = relationship(back_populates="payment_details", lazy="selectin")

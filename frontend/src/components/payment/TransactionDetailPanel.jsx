@@ -50,9 +50,16 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
         readOnly
         footer={
           <div className="flex flex-col gap-2 mt-4">
-            <Button type="button" className="w-full" onClick={onPay}>
-              Pay
-            </Button>
+            <div>
+              <Button type="button" className="w-full" onClick={onPay}>
+                Pay
+              </Button>
+              {transaction.payment_drafts?.length > 0 && (
+                <p className="text-xs text-amber-600 text-center mt-1">
+                  Resume Payment ({transaction.payment_drafts.length} entries)
+                </p>
+              )}
+            </div>
             {transaction.customer_type === 'walk_in' && (
               <Button type="button" variant="warning" className="w-full" onClick={() => setConfirmAction('return')}>
                 Return to Receiver

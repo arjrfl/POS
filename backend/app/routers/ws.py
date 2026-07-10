@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconnect
 
 from app.core.database import AsyncSessionLocal
@@ -13,6 +15,14 @@ ROOM_ALLOWED_ROLES: dict[str, set[str]] = {
     "receiver-queue": {"receiver", "admin"},
     "admin": {"admin"},
 }
+
+# A page reload closes the old socket and opens a new one for the same user
+# within well under a second on this LAN (no internet round-trip involved) —
+# releasing immediately on every disconnect would drop a reloading payment
+# member's in-progress hold before their new connection has a chance to land.
+# This grace period lets a reload's reconnect "cancel" the pending release;
+# someone who actually closes the tab for good still gets released shortly after.
+RECONNECT_GRACE_SECONDS = 5
 
 
 @router.websocket("/ws/{room}")
@@ -40,7 +50,11 @@ async def websocket_endpoint(websocket: WebSocket, room: str, token: str | None 
         await websocket.close(code=4003)
         return
 
+    user_id = payload.get("user_id")
+
     manager.connect(websocket, room)
+    if user_id is not None:
+        manager.user_connected(user_id)
     try:
         while True:
             message = await websocket.receive_text()
@@ -51,9 +65,13 @@ async def websocket_endpoint(websocket: WebSocket, room: str, token: str | None 
     finally:
         manager.disconnect(websocket, room)
 
-        # The WS's own request scope is tearing down along with the connection,
-        # so releasing this user's held transactions needs a fresh session.
-        user_id = payload.get("user_id")
         if user_id is not None:
-            async with AsyncSessionLocal() as session:
-                await transaction_service.release_processing_transactions(session, user_id)
+            manager.user_disconnected(user_id)
+
+            # Give a reload's new connection a chance to land before treating
+            # this as a real disconnect. The WS's own request scope is tearing
+            # down along with the connection, so releasing needs a fresh session.
+            await asyncio.sleep(RECONNECT_GRACE_SECONDS)
+            if not manager.user_has_connection(user_id):
+                async with AsyncSessionLocal() as session:
+                    await transaction_service.release_processing_transactions(session, user_id)

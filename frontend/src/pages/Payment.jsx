@@ -45,6 +45,10 @@ export default function Payment() {
       const grabbed = await post(`/transactions/${transaction.id}/${endpoint}`)
       setSelectedTransaction(grabbed)
       refreshQueue()
+      if (grabbed.payment_drafts?.length > 0) {
+        showToast('Previous payment entries restored', 'success')
+        setPayModalOpen(true)
+      }
     } catch (err) {
       showToast(
         err.status === 409 ? 'This transaction is already being processed by another team member' : err.message,
@@ -61,6 +65,13 @@ export default function Payment() {
     } catch (err) {
       showToast(err.message, 'error')
     }
+  }
+
+  const handleParkedFromModal = () => {
+    setPayModalOpen(false)
+    setSelectedTransaction(null)
+    refreshQueue()
+    showToast('Transaction parked with payment entries saved', 'success')
   }
 
   const handleReturnToReceiver = async () => {
@@ -118,6 +129,7 @@ export default function Payment() {
           transaction={selectedTransaction}
           onClose={() => setPayModalOpen(false)}
           onPaid={handlePaid}
+          onParked={handleParkedFromModal}
         />
       )}
 

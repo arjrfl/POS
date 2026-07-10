@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,6 +20,8 @@ from app.models.transaction import (
     TransactionTypeEnum,
 )
 from app.schemas.transaction import (
+    DraftPaymentEntry,
+    PaymentDetailResponse,
     PaymentProcessRequest,
     SubstandardOutcomeRequest,
     TransactionCreate,
@@ -32,10 +34,34 @@ from app.websocket.events import queue_status_changed, transaction_status_change
 from app.websocket.manager import manager
 
 
+# TODO: End-of-day job — void all transactions where:
+#   transaction_status IN ('pending_payment', 'pending_edit',
+#                          'pending_settlement', 'parked')
+#   AND DATE(created_at) < CURRENT_DATE
+#   This should run as a scheduled task at midnight.
+#   Delete is_draft payment_detail rows for voided transactions.
+#   Insert transaction_audit_log entry for each voided transaction.
+#   Will be implemented in Batch 5 (production readiness).
+
 # self-referential relationships aren't loaded by their mapper-level lazy="selectin"
 # default — they need to be requested explicitly at query time, recursion_depth=-1
 # follows the parent/child chain to whatever depth actually exists
 _WITH_CHILDREN = selectinload(SalesTransaction.children, recursion_depth=-1)
+
+
+def _build_transaction_response(transaction: SalesTransaction) -> TransactionResponse:
+    # payment_details (the relationship) loads every payment_detail row regardless
+    # of is_draft — split it here so confirmed and draft entries are always kept
+    # separate in the API response, recursing into adjustment/refund children too.
+    response = TransactionResponse.model_validate(transaction)
+    response.payment_details = [
+        PaymentDetailResponse.model_validate(pd) for pd in transaction.payment_details if not pd.is_draft
+    ]
+    response.payment_drafts = [
+        PaymentDetailResponse.model_validate(pd) for pd in transaction.payment_details if pd.is_draft
+    ]
+    response.children = [_build_transaction_response(child) for child in transaction.children]
+    return response
 
 # transaction_status a role's queue is filtered to — payment and releasing each
 # own exactly one phase; receiver and admin aren't queue-scoped this way
@@ -236,7 +262,7 @@ async def get_transaction(db: AsyncSession, transaction_id: int) -> TransactionR
     transaction = result.scalar_one_or_none()
     if transaction is None:
         raise ValueError(f"Transaction {transaction_id} not found")
-    return TransactionResponse.model_validate(transaction)
+    return _build_transaction_response(transaction)
 
 
 async def get_transaction_chain(db: AsyncSession, transaction_id: int) -> list[TransactionResponse]:
@@ -254,7 +280,7 @@ async def get_transaction_chain(db: AsyncSession, transaction_id: int) -> list[T
         .execution_options(populate_existing=True)
     )
     chain = result.scalars().all()
-    return [TransactionResponse.model_validate(t) for t in chain]
+    return [_build_transaction_response(t) for t in chain]
 
 
 async def list_transactions(
@@ -314,7 +340,7 @@ async def list_transactions(
         .execution_options(populate_existing=True)
     )
     items = result.scalars().all()
-    return TransactionListResponse(total=total, items=[TransactionResponse.model_validate(t) for t in items])
+    return TransactionListResponse(total=total, items=[_build_transaction_response(t) for t in items])
 
 
 async def _finalize_queue_change(
@@ -439,9 +465,10 @@ async def park_transaction(db: AsyncSession, transaction_id: int, user_id: int) 
     if transaction is None:
         raise ValueError(f"Transaction {transaction_id} not found")
 
-    if transaction.processing_by_user_id != user_id:
-        raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
-
+    # No processing_by_user_id ownership check here: the payment modal's local
+    # state can outlive who currently holds the transaction server-side (e.g.
+    # another payment member unparked it), so any payment member with the
+    # modal open must still be able to park it.
     old_queue_status = transaction.queue_status.value
     transaction.queue_status = QueueStatusEnum.parked
     transaction.processing_by_user_id = None
@@ -483,6 +510,49 @@ async def unpark_transaction(db: AsyncSession, transaction_id: int, user_id: int
     transaction.parked_at = None
 
     return await _finalize_queue_change(db, transaction, old_queue_status, user_id)
+
+
+async def save_draft_payments(
+    db: AsyncSession, transaction_id: int, entries: list[DraftPaymentEntry], user_id: int
+) -> list[PaymentDetailResponse]:
+    """Persist in-progress payment entries so they survive park/unpark cycles and reloads."""
+    transaction = await db.get(SalesTransaction, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    if transaction.transaction_status != TransactionStatusEnum.pending_payment:
+        raise QueueConflictError(f"transaction {transaction_id} is not pending payment")
+    if transaction.queue_status not in (QueueStatusEnum.processing, QueueStatusEnum.parked):
+        raise QueueConflictError(f"transaction {transaction_id} is not being processed or parked")
+
+    try:
+        # replace wholesale — the caller always sends the full current entry
+        # table, never a partial diff
+        await db.execute(
+            delete(PaymentDetail).where(
+                PaymentDetail.transaction_id == transaction_id, PaymentDetail.is_draft.is_(True)
+            )
+        )
+
+        drafts = [
+            PaymentDetail(
+                transaction_id=transaction_id,
+                payment_method_id=entry.payment_method_id,
+                ref_number=entry.ref_number,
+                tendered_amount=entry.tendered_amount,
+                amount=entry.amount,
+                is_draft=True,
+            )
+            for entry in entries
+        ]
+        db.add_all(drafts)
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    return [PaymentDetailResponse.model_validate(d) for d in drafts]
 
 
 def _record_status_change_audit(
@@ -585,6 +655,14 @@ async def process_payment(
                     amount=payment.amount,
                 )
             )
+
+        # confirmed entries replace any draft entries saved while this
+        # transaction was being worked on or parked
+        await db.execute(
+            delete(PaymentDetail).where(
+                PaymentDetail.transaction_id == transaction.id, PaymentDetail.is_draft.is_(True)
+            )
+        )
 
         if cash_tendered < cash_portion:
             raise PaymentValidationError("cash tendered is less than the cash portion of the amount due")
@@ -966,6 +1044,13 @@ async def return_to_receiver(db: AsyncSession, transaction_id: int, payment_user
         transaction.queue_status = QueueStatusEnum.waiting
         transaction.processing_by_user_id = None
         transaction.processing_started_at = None
+
+        # drafts are irrelevant if the order goes back to Receiver for editing
+        await db.execute(
+            delete(PaymentDetail).where(
+                PaymentDetail.transaction_id == transaction.id, PaymentDetail.is_draft.is_(True)
+            )
+        )
 
         db.add(
             TransactionAuditLog(

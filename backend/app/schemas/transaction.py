@@ -40,6 +40,17 @@ class TransactionCreate(BaseModel):
     balance_settled: Decimal = Decimal("0")
 
 
+class DraftPaymentEntry(BaseModel):
+    payment_method_id: int
+    amount: Decimal
+    tendered_amount: Decimal | None = None
+    ref_number: str | None = None
+
+
+class DraftPaymentSaveRequest(BaseModel):
+    entries: list[DraftPaymentEntry]
+
+
 # =============================================================
 # RESPONSE SCHEMAS
 # =============================================================
@@ -70,6 +81,7 @@ class PaymentDetailResponse(BaseModel):
     ref_number: str | None
     tendered_amount: Decimal | None
     amount: Decimal
+    is_draft: bool
     created_at: datetime
 
 
@@ -118,6 +130,10 @@ class TransactionResponse(BaseModel):
 
     items: list[TransactionItemResponse]
     payment_details: list[PaymentDetailResponse]
+    # is_draft=TRUE entries — separate from payment_details (confirmed, is_draft=FALSE only).
+    # No matching ORM attribute exists (payment_details covers both under the hood), so this
+    # always needs a default here and is filled in by _build_transaction_response afterward.
+    payment_drafts: list[PaymentDetailResponse] = []
     children: list["TransactionResponse"]
 
 
