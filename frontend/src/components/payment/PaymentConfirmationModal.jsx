@@ -24,6 +24,7 @@ export function PaymentConfirmationModal({
 
   if (!open) return null
 
+  const isBalanceSettlement = transaction.transaction_type === 'balance_settlement'
   const enteredTotal = entries.reduce((sum, e) => sum + e.amount, 0)
   const changeTotal = Math.max(enteredTotal - finalAmount, 0)
 
@@ -123,21 +124,30 @@ export function PaymentConfirmationModal({
           </div>
 
           <div className="flex-shrink-0 p-3 border border-gray-200 rounded-md flex flex-col gap-1 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-700">Original Total</span>
-              <span className="text-gray-900">{formatCurrency(totalDue)}</span>
-            </div>
-            {balanceSettled > 0 && (
-              <div className="flex justify-between text-red-600">
-                <span>Balance Collected</span>
-                <span>+{formatCurrency(balanceSettled)}</span>
+            {isBalanceSettlement ? (
+              <div className="flex justify-between text-red-600 font-medium">
+                <span>Balance Settlement</span>
+                <span>{formatCurrency(totalDue)}</span>
               </div>
-            )}
-            {creditApplied > 0 && (
-              <div className="flex justify-between text-green-700">
-                <span>Credit Applied</span>
-                <span>-{formatCurrency(creditApplied)}</span>
-              </div>
+            ) : (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-gray-700">Original Total</span>
+                  <span className="text-gray-900">{formatCurrency(totalDue)}</span>
+                </div>
+                {balanceSettled > 0 && (
+                  <div className="flex justify-between text-red-600">
+                    <span>Balance Collected</span>
+                    <span>+{formatCurrency(balanceSettled)}</span>
+                  </div>
+                )}
+                {creditApplied > 0 && (
+                  <div className="flex justify-between text-green-700">
+                    <span>Credit Applied</span>
+                    <span>-{formatCurrency(creditApplied)}</span>
+                  </div>
+                )}
+              </>
             )}
             <div className="border-t border-gray-200 pt-2 mt-1 flex justify-between font-semibold text-gray-900">
               <span>Amount to Collect</span>

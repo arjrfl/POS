@@ -132,6 +132,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   if (!open) return null
 
   const totalDue = Number(transaction.total_due)
+  const isBalanceSettlement = transaction.transaction_type === 'balance_settlement'
   const netBalance = customer ? Number(customer.net_balance) : 0
   const absBalance = Math.abs(netBalance)
 
@@ -268,89 +269,106 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
           <div className="flex-shrink-0 grid grid-cols-3 gap-4 pb-4 border-b border-gray-200">
             <div className="flex flex-col gap-2">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Balance / Credit</span>
-              {netBalance < 0 && (
-                <div className="flex flex-col gap-2 p-3 rounded-md bg-red-50 border border-red-200">
-                  <span className="text-sm font-semibold text-red-800">Customer has Balance</span>
-                  <span className="text-2xl font-bold text-red-700">{formatCurrency(absBalance)}</span>
-                  <span className="text-xs text-red-600">Outstanding balance owed to store</span>
-                  <label className="flex items-center gap-2 mt-1 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={collectBalance}
-                      onChange={(e) => handleToggleCollectBalance(e.target.checked)}
-                    />
-                    Collect balance with this payment
-                  </label>
-                  {collectBalance && (
-                    <>
-                      <Input
-                        id="balance-amount"
-                        type="number"
-                        step="0.01"
-                        value={balanceAmount}
-                        onChange={(e) => setBalanceAmount(e.target.value)}
-                      />
-                      {!balanceValid && <p className="text-xs text-red-600">Cannot exceed outstanding balance</p>}
-                    </>
-                  )}
+              {isBalanceSettlement ? (
+                <div className="flex items-start gap-2 p-3 rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800">
+                  <span aria-hidden="true">&#8505;</span>
+                  <div>
+                    <div className="font-semibold">Balance Settlement</div>
+                    <p className="mt-1">
+                      This transaction is for settling the customer&apos;s outstanding balance. The total already
+                      reflects the full balance amount.
+                    </p>
+                  </div>
                 </div>
-              )}
-              {netBalance > 0 && (
-                <div className="flex flex-col gap-2 p-3 rounded-md bg-green-50 border border-green-200">
-                  <span className="text-sm font-semibold text-green-800">Customer has Credit</span>
-                  <span className="text-2xl font-bold text-green-700">{formatCurrency(netBalance)}</span>
-                  <span className="text-xs text-green-600">Credit available to use</span>
-                  <label className="flex items-center gap-2 mt-1 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={applyCredit}
-                      onChange={(e) => handleToggleApplyCredit(e.target.checked)}
-                    />
-                    Apply credit to this payment
-                  </label>
-                  {applyCredit && (
-                    <>
-                      <Input
-                        id="credit-amount"
-                        type="number"
-                        step="0.01"
-                        value={creditAmount}
-                        onChange={(e) => setCreditAmount(e.target.value)}
-                      />
-                      {!creditValid && (
-                        <p className="text-xs text-red-600">Cannot exceed available credit or order total</p>
+              ) : (
+                <>
+                  {netBalance < 0 && (
+                    <div className="flex flex-col gap-2 p-3 rounded-md bg-red-50 border border-red-200">
+                      <span className="text-sm font-semibold text-red-800">Customer has Balance</span>
+                      <span className="text-2xl font-bold text-red-700">{formatCurrency(absBalance)}</span>
+                      <span className="text-xs text-red-600">Outstanding balance owed to store</span>
+                      <label className="flex items-center gap-2 mt-1 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={collectBalance}
+                          onChange={(e) => handleToggleCollectBalance(e.target.checked)}
+                        />
+                        Collect balance with this payment
+                      </label>
+                      {collectBalance && (
+                        <>
+                          <Input
+                            id="balance-amount"
+                            type="number"
+                            step="0.01"
+                            value={balanceAmount}
+                            onChange={(e) => setBalanceAmount(e.target.value)}
+                          />
+                          {!balanceValid && <p className="text-xs text-red-600">Cannot exceed outstanding balance</p>}
+                        </>
                       )}
-                    </>
+                    </div>
                   )}
-                </div>
-              )}
-              {netBalance === 0 && (
-                <div className="flex flex-col gap-1 p-3 rounded-md bg-gray-100 border border-gray-300">
-                  <span className="text-sm text-gray-600">No balance or credit on this account</span>
-                </div>
+                  {netBalance > 0 && (
+                    <div className="flex flex-col gap-2 p-3 rounded-md bg-green-50 border border-green-200">
+                      <span className="text-sm font-semibold text-green-800">Customer has Credit</span>
+                      <span className="text-2xl font-bold text-green-700">{formatCurrency(netBalance)}</span>
+                      <span className="text-xs text-green-600">Credit available to use</span>
+                      <label className="flex items-center gap-2 mt-1 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={applyCredit}
+                          onChange={(e) => handleToggleApplyCredit(e.target.checked)}
+                        />
+                        Apply credit to this payment
+                      </label>
+                      {applyCredit && (
+                        <>
+                          <Input
+                            id="credit-amount"
+                            type="number"
+                            step="0.01"
+                            value={creditAmount}
+                            onChange={(e) => setCreditAmount(e.target.value)}
+                          />
+                          {!creditValid && (
+                            <p className="text-xs text-red-600">Cannot exceed available credit or order total</p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {netBalance === 0 && (
+                    <div className="flex flex-col gap-1 p-3 rounded-md bg-gray-100 border border-gray-300">
+                      <span className="text-sm text-gray-600">No balance or credit on this account</span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
             <div className="flex flex-col gap-2">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Revised Total</span>
               <div className="flex flex-col gap-1 p-3 rounded-md border border-gray-200 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-700">Original Total</span>
-                  <span className="text-gray-900">{formatCurrency(totalDue)}</span>
-                </div>
-                {balanceSettled > 0 && (
+                {!isBalanceSettlement && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Original Total</span>
+                    <span className="text-gray-900">{formatCurrency(totalDue)}</span>
+                  </div>
+                )}
+                {!isBalanceSettlement && balanceSettled > 0 && (
                   <div className="flex justify-between text-red-600">
                     <span>Balance Collected</span>
                     <span>+{formatCurrency(balanceSettled)}</span>
                   </div>
                 )}
-                {creditApplied > 0 && (
+                {!isBalanceSettlement && creditApplied > 0 && (
                   <div className="flex justify-between text-green-700">
                     <span>Credit Applied</span>
                     <span>-{formatCurrency(creditApplied)}</span>
                   </div>
                 )}
-                <div className="border-t border-gray-200 pt-2 mt-1 flex flex-col">
+                <div className={isBalanceSettlement ? 'flex flex-col' : 'border-t border-gray-200 pt-2 mt-1 flex flex-col'}>
                   <span className="font-semibold text-gray-900">Amount to Collect</span>
                   <span className="text-2xl font-bold text-primary">{formatCurrency(finalAmount)}</span>
                 </div>

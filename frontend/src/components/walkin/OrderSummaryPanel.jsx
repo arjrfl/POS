@@ -34,6 +34,7 @@ export function OrderSummaryPanel({
   orderNumber = null,
   totalLabel = 'TOTAL',
   headingLabel = 'Order Summary',
+  balanceSettlementRow = false,
 }) {
   const typeBadge = customerType ? CUSTOMER_TYPE_BADGE[customerType] : null
 
@@ -60,7 +61,28 @@ export function OrderSummaryPanel({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto border-t border-gray-200 mb-4">
-        {items.length === 0 ? (
+        {balanceSettlementRow ? (
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-white">
+              <tr className="text-left text-gray-500 border-b border-gray-200">
+                <th className="py-2 pr-2 font-medium">QTY</th>
+                <th className="py-2 pr-2 font-medium">UNIT</th>
+                <th className="py-2 pr-2 font-medium">ARTICLES</th>
+                <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
+                <th className="py-2 pr-2 font-medium">AMOUNT</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="align-top">
+                <td className="py-2 pr-2 text-gray-400">—</td>
+                <td className="py-2 pr-2 text-gray-400">—</td>
+                <td className="py-2 pr-2 text-gray-500 italic">Balance Settlement</td>
+                <td className="py-2 pr-2 text-gray-400">—</td>
+                <td className="py-2 pr-2 font-medium text-red-600">{formatCurrency(total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        ) : items.length === 0 ? (
           <p className="py-4 text-sm text-gray-500">No items added yet.</p>
         ) : (
           <table className="w-full text-sm">

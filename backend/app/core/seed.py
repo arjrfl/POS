@@ -58,6 +58,18 @@ CUSTOMERS = [
         "contact_number": None,
         "net_balance": "-75.50",
     },
+    {
+        "full_name": "Ramon Villanueva",
+        "address": "34 Del Pilar St, Marikina",
+        "contact_number": "09221234567",
+        "net_balance": "-320.00",
+    },
+    {
+        "full_name": "Carmen Aquino",
+        "address": "56 Luna St, San Juan",
+        "contact_number": "09231234567",
+        "net_balance": "250.00",
+    },
 ]
 
 PRODUCTS = [
@@ -163,7 +175,9 @@ async def seed() -> None:
             ).scalar_one()
 
             has_ledger_entry = (
-                await db.execute(select(CustomerLedger).where(CustomerLedger.customer_id == customer.id))
+                await db.execute(
+                    select(CustomerLedger.id).where(CustomerLedger.customer_id == customer.id).limit(1)
+                )
             ).scalar_one_or_none()
             if has_ledger_entry is not None:
                 continue

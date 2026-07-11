@@ -92,7 +92,11 @@ class TransactionEditFlowError(Exception):
     """The transaction isn't in a state that allows this return-to-receiver/edit/resubmit action."""
 
 
-def _initial_status(customer_type: CustomerTypeEnum) -> TransactionStatusEnum:
+def _initial_status(customer_type: CustomerTypeEnum, transaction_type: TransactionTypeEnum) -> TransactionStatusEnum:
+    # balance-settlement-only orders always go straight to Payment — there's no
+    # order to release, regardless of customer_type (see PROJECT_CONTEXT.md section 5)
+    if transaction_type == TransactionTypeEnum.balance_settlement:
+        return TransactionStatusEnum.pending_payment
     if customer_type == CustomerTypeEnum.walk_in:
         return TransactionStatusEnum.pending_payment
     return TransactionStatusEnum.pending_settlement
@@ -164,11 +168,23 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
     if data.credit_applied > 0 and customer.net_balance < data.credit_applied:
         raise ValueError("Customer does not have enough credit for the amount applied")
 
+    transaction_type = TransactionTypeEnum(data.transaction_type)
+
+    if transaction_type == TransactionTypeEnum.balance_settlement:
+        if data.items:
+            raise ValueError("balance settlement transactions cannot include items")
+        if data.balance_settled <= 0:
+            raise ValueError("balance_settled must be greater than 0 for a balance settlement transaction")
+        if customer.net_balance >= 0:
+            raise ValueError("Customer does not have an outstanding balance to settle")
+        if data.balance_settled > abs(customer.net_balance):
+            raise ValueError("balance_settled exceeds the customer's outstanding balance")
+
     try:
         transaction = SalesTransaction(
             order_number=await _next_order_number(db),
-            transaction_type=TransactionTypeEnum.original,
-            transaction_status=_initial_status(data.customer_type),
+            transaction_type=transaction_type,
+            transaction_status=_initial_status(data.customer_type, transaction_type),
             customer_type=data.customer_type,
             walkin_user_id=walkin_user_id,
             customer_id=data.customer_id,
@@ -215,7 +231,11 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
                 )
             )
 
-        if data.balance_settled > 0:
+        # A balance-settlement-only order hasn't been paid for yet at this point —
+        # crediting the customer's ledger now would clear their utang before Payment
+        # actually collects it. That mutation is deferred to process_payment instead,
+        # using transaction.balance_settled recorded here (see PART 4 in this flow).
+        if data.balance_settled > 0 and transaction_type != TransactionTypeEnum.balance_settlement:
             customer.net_balance += data.balance_settled
             db.add(
                 CustomerLedger(
@@ -603,6 +623,11 @@ async def process_payment(
 
     customer = await db.get(Customer, transaction.customer_id)
 
+    if transaction.transaction_type == TransactionTypeEnum.balance_settlement and data.balance_settled > 0:
+        raise PaymentValidationError(
+            "balance_settled for a balance-settlement-only transaction was already fixed at creation"
+        )
+
     if data.balance_settled > 0:
         if customer.net_balance >= 0:
             raise PaymentValidationError("customer does not have an outstanding balance")
@@ -694,6 +719,20 @@ async def process_payment(
             )
             transaction.credit_applied = data.credit_applied
             transaction.total_due -= data.credit_applied
+
+        if transaction.transaction_type == TransactionTypeEnum.balance_settlement:
+            # amount was fixed at creation (Receiver's "Balance Settlement Only" toggle) —
+            # only now, once payment is actually collected, does it hit the ledger
+            customer.net_balance += transaction.balance_settled
+            db.add(
+                CustomerLedger(
+                    customer_id=customer.id,
+                    transaction_id=transaction.id,
+                    entry_type=LedgerEntryTypeEnum.balance_settled,
+                    amount=transaction.balance_settled,
+                    running_balance=customer.net_balance,
+                )
+            )
 
         old_transaction_status = transaction.transaction_status.value
         old_queue_status = transaction.queue_status.value

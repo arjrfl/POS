@@ -35,6 +35,9 @@ class TransactionItemCreate(BaseModel):
 class TransactionCreate(BaseModel):
     customer_id: int
     customer_type: CustomerTypeEnum
+    # 'balance_settlement' is the only other type creatable from this endpoint —
+    # 'adjustment'/'refund' only ever come from resolve_substandard's child transactions
+    transaction_type: Literal["original", "balance_settlement"] = "original"
     items: list[TransactionItemCreate]
     credit_applied: Decimal = Decimal("0")
     balance_settled: Decimal = Decimal("0")

@@ -11,20 +11,27 @@ import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
 import { generateId } from '../../utils/id'
 
 function initialState() {
-  return { customer: null, customerType: null, items: [] }
+  return { customer: null, customerType: null, items: [], settleOnly: false }
 }
 
 export function CreateTransactionModal({ open, onClose, onCreated }) {
-  const [{ customer, customerType, items }, setState] = useState(initialState)
+  const [{ customer, customerType, items, settleOnly }, setState] = useState(initialState)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [confirmation, setConfirmation] = useState(null)
   const [changeGuard, setChangeGuard] = useState(null) // null | 'customer' | 'customer_type'
   const [discardGuard, setDiscardGuard] = useState(false)
+  const [settleOnlyGuard, setSettleOnlyGuard] = useState(false)
 
-  const total = items.reduce((sum, item) => sum + item.subtotal, 0)
-  const hasData = !!customer || items.length > 0
-  const canSubmit = !!customer && !!customerType && items.length > 0
+  const netBalance = customer ? Number(customer.net_balance) : 0
+  const absBalance = Math.abs(netBalance)
+  const hasBalance = !!customer && netBalance < 0
+
+  const total = settleOnly ? absBalance : items.reduce((sum, item) => sum + item.subtotal, 0)
+  const hasData = !!customer || items.length > 0 || settleOnly
+  const canSubmit = settleOnly
+    ? !!customer && !!customerType
+    : !!customer && !!customerType && items.length > 0
 
   const resetForm = () => {
     setState(initialState())
@@ -32,10 +39,11 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
     setConfirmation(null)
     setChangeGuard(null)
     setDiscardGuard(false)
+    setSettleOnlyGuard(false)
   }
 
   const clearCustomer = () => {
-    setState((prev) => ({ ...prev, customer: null, items: [] }))
+    setState((prev) => ({ ...prev, customer: null, items: [], settleOnly: false }))
     setError('')
   }
 
@@ -45,7 +53,7 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
   }
 
   const handleSelectCustomer = (selected) => {
-    setState((prev) => ({ ...prev, customer: selected, items: [] }))
+    setState((prev) => ({ ...prev, customer: selected, items: [], settleOnly: false }))
     setError('')
   }
 
@@ -82,10 +90,25 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
     setState((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== id) }))
   }
 
+  const requestToggleSettleOnly = (checked) => {
+    if (checked && items.length > 0) {
+      setSettleOnlyGuard(true)
+      return
+    }
+    setState((prev) => ({ ...prev, settleOnly: checked }))
+  }
+
+  const handleConfirmSettleOnlyGuard = () => {
+    setState((prev) => ({ ...prev, items: [], settleOnly: true }))
+    setSettleOnlyGuard(false)
+  }
+
+  const handleCancelSettleOnlyGuard = () => setSettleOnlyGuard(false)
+
   function validate() {
     if (!customer) return 'Please select a customer'
     if (!customerType) return 'Please select a customer type'
-    if (items.length === 0) return 'Please add at least one item'
+    if (!settleOnly && items.length === 0) return 'Please add at least one item'
     return null
   }
 
@@ -100,18 +123,27 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
     setSubmitting(true)
 
     try {
-      const payload = {
-        customer_id: customer.id,
-        customer_type: customerType,
-        items: items.map((item) => ({
-          item_type: 'product',
-          product_id: item.product_id,
-          estimated_weight_kg: item.estimated_weight_kg,
-          unit_price: item.unit_price,
-          unit_count: item.unit_count,
-          quantity_kg: item.quantity_kg,
-        })),
-      }
+      const payload = settleOnly
+        ? {
+            customer_id: customer.id,
+            customer_type: customerType,
+            transaction_type: 'balance_settlement',
+            items: [],
+            balance_settled: absBalance,
+            credit_applied: 0,
+          }
+        : {
+            customer_id: customer.id,
+            customer_type: customerType,
+            items: items.map((item) => ({
+              item_type: 'product',
+              product_id: item.product_id,
+              estimated_weight_kg: item.estimated_weight_kg,
+              unit_price: item.unit_price,
+              unit_count: item.unit_count,
+              quantity_kg: item.quantity_kg,
+            })),
+          }
 
       const transaction = await post('/transactions', payload)
       setConfirmation({
@@ -119,6 +151,7 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
         customer_name: customer.full_name,
         total_due: total,
         customer_type: customerType,
+        is_balance_settlement: settleOnly,
       })
       onCreated()
     } catch (err) {
@@ -156,7 +189,29 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
       <FullScreenModal open={open} onClose={requestClose} title="New Transaction">
         <div className="grid grid-cols-2 gap-6 h-full min-h-0">
           <div className="h-full min-h-0 overflow-y-auto flex flex-col gap-6 pr-2">
-            <CustomerSelector value={customer} onSelect={handleSelectCustomer} onClear={requestClearCustomer} />
+            <div>
+              <CustomerSelector value={customer} onSelect={handleSelectCustomer} onClear={requestClearCustomer} />
+
+              {hasBalance && (
+                <div className="bg-red-50 border border-red-200 rounded-md p-3 mt-2">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settleOnly}
+                      onChange={(e) => requestToggleSettleOnly(e.target.checked)}
+                      className="accent-green-800 mt-0.5"
+                    />
+                    <div>
+                      <div className="text-sm font-medium text-red-800">Balance Settlement Only</div>
+                      <div className="text-xs text-red-600">Customer owes {formatCurrency(absBalance)}</div>
+                      <div className="text-xs text-red-600">
+                        Check this if customer is only here to pay their outstanding balance.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              )}
+            </div>
 
             <div>
               <div className="flex items-center gap-2 mb-1">
@@ -190,7 +245,18 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
               </select>
             </div>
 
-            <ProductSelector onAddItem={handleAddProduct} />
+            <div className="relative">
+              <div className={settleOnly ? 'opacity-50 pointer-events-none' : ''}>
+                <ProductSelector onAddItem={handleAddProduct} />
+              </div>
+              {settleOnly && (
+                <div className="absolute inset-0 flex items-center justify-center px-4">
+                  <span className="text-xs text-gray-400 italic text-center">
+                    Product selection disabled for balance settlement only
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
 
           <OrderSummaryPanel
@@ -199,6 +265,7 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
             items={items}
             total={total}
             onRemoveItem={handleRemoveItem}
+            balanceSettlementRow={settleOnly}
             footer={
               <>
                 {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
@@ -208,7 +275,7 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
                   disabled={submitting || !canSubmit}
                   onClick={handleSubmit}
                 >
-                  {submitting ? 'Submitting...' : 'Submit Transaction'}
+                  {submitting ? 'Submitting...' : settleOnly ? 'Submit Balance Settlement' : 'Submit Transaction'}
                 </Button>
               </>
             }
@@ -237,6 +304,20 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
         </div>
       </Modal>
 
+      <Modal open={settleOnlyGuard} onClose={handleCancelSettleOnlyGuard} title="Clear Order Items?">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-gray-700">Checking this will remove all items from your order. Continue?</p>
+          <div className="flex gap-2">
+            <Button type="button" className="flex-1" onClick={handleConfirmSettleOnlyGuard}>
+              Yes, Clear Items
+            </Button>
+            <Button type="button" variant="outline" className="flex-1" onClick={handleCancelSettleOnlyGuard}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       <Modal open={discardGuard} onClose={() => setDiscardGuard(false)} title="Discard Transaction?">
         <div className="flex flex-col gap-4">
           <p className="text-sm text-gray-700">Discard this transaction? All entered data will be lost.</p>
@@ -251,28 +332,48 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
         </div>
       </Modal>
 
-      <Modal open={!!confirmation} onClose={handleCloseConfirmation} title="Transaction Created">
-        <div className="flex flex-col gap-1">
-          <div className="text-3xl font-bold text-primary">{confirmation?.order_number}</div>
-          <div className="text-gray-900 font-medium">{confirmation?.customer_name}</div>
-          <div className="text-gray-700">{formatCurrency(confirmation?.total_due ?? 0)}</div>
-          <div className="text-sm text-gray-500">
-            {confirmation?.customer_type === 'walk_in' ? 'Walk-In' : 'Online'}
+      <Modal
+        open={!!confirmation}
+        onClose={handleCloseConfirmation}
+        title={confirmation?.is_balance_settlement ? 'Balance Settlement Created' : 'Transaction Created'}
+      >
+        {confirmation?.is_balance_settlement ? (
+          <div className="flex flex-col gap-1">
+            <div className="text-gray-900 font-medium">{confirmation?.customer_name}</div>
+            <div className="text-gray-700">Amount to settle: {formatCurrency(confirmation?.total_due ?? 0)}</div>
+            <div className="text-sm text-gray-500">
+              {confirmation?.customer_type === 'walk_in' ? 'Walk-In' : 'Online'}
+            </div>
+            <p className="text-sm text-gray-600 mt-2 pt-2 border-t border-gray-200">
+              Customer directed to Payment team to complete the balance settlement.
+            </p>
+            <Button className="mt-4" onClick={resetForm}>
+              New Transaction
+            </Button>
           </div>
-          <p className="text-sm text-gray-600 mt-2">
-            {confirmation?.customer_type === 'walk_in'
-              ? 'Customer directed to Payment team'
-              : 'Order sent to Releasing team'}
-          </p>
-        </div>
-        <div className="flex gap-2 mt-4">
-          <Button className="flex-1" onClick={resetForm}>
-            New Transaction
-          </Button>
-          <Button variant="outline" className="flex-1" onClick={handleCloseConfirmation}>
-            Close
-          </Button>
-        </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <div className="text-3xl font-bold text-primary">{confirmation?.order_number}</div>
+            <div className="text-gray-900 font-medium">{confirmation?.customer_name}</div>
+            <div className="text-gray-700">{formatCurrency(confirmation?.total_due ?? 0)}</div>
+            <div className="text-sm text-gray-500">
+              {confirmation?.customer_type === 'walk_in' ? 'Walk-In' : 'Online'}
+            </div>
+            <p className="text-sm text-gray-600 mt-2">
+              {confirmation?.customer_type === 'walk_in'
+                ? 'Customer directed to Payment team'
+                : 'Order sent to Releasing team'}
+            </p>
+            <div className="flex gap-2 mt-4">
+              <Button className="flex-1" onClick={resetForm}>
+                New Transaction
+              </Button>
+              <Button variant="outline" className="flex-1" onClick={handleCloseConfirmation}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   )
