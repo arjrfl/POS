@@ -5,15 +5,23 @@ const BASE_URL = '/api'
 async function request(path, { method = 'GET', body, headers } = {}) {
   const token = useAuthStore.getState().token
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
+  let res
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+  } catch {
+    // fetch() itself only throws on network failure (offline, wrong host,
+    // server unreachable) — give that a message worth showing a user instead
+    // of the browser's raw "Failed to fetch".
+    throw new Error('Network error — check your connection')
+  }
 
   const envelope = await res.json().catch(() => null)
 

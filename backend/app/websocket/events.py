@@ -15,6 +15,19 @@ def _rooms_for_status(status: str) -> list[str]:
     return [team_room, ADMIN_ROOM] if team_room else [ADMIN_ROOM]
 
 
+def _rooms_for_transition(old_status: str | None, new_status: str) -> list[str]:
+    # A transition needs to reach both the team losing the transaction (old_status,
+    # e.g. payment-queue when a payment completes) and the team gaining it
+    # (new_status, e.g. releasing-queue) — rooming on new_status alone leaves the
+    # departing team's queue stuck until they manually refresh.
+    rooms = {ADMIN_ROOM}
+    for status in (old_status, new_status):
+        team_room = STATUS_TEAM_ROOM.get(status)
+        if team_room:
+            rooms.add(team_room)
+    return list(rooms)
+
+
 def transaction_status_changed(
     transaction_id: int, old_status: str | None, new_status: str, customer_type: str
 ) -> tuple[list[str], dict]:
@@ -25,7 +38,7 @@ def transaction_status_changed(
         "new_status": new_status,
         "customer_type": customer_type,
     }
-    return _rooms_for_status(new_status), event
+    return _rooms_for_transition(old_status, new_status), event
 
 
 def queue_status_changed(

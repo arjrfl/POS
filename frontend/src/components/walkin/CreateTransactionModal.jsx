@@ -8,6 +8,7 @@ import { OrderSummaryPanel } from './OrderSummaryPanel'
 import { post } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
+import { generateId } from '../../utils/id'
 
 function initialState() {
   return { customer: null, customerType: null, items: [] }
@@ -73,7 +74,7 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
   const handleAddProduct = (product) => {
     setState((prev) => ({
       ...prev,
-      items: [...prev.items, { id: crypto.randomUUID(), ...product }],
+      items: [...prev.items, { id: generateId(), ...product }],
     }))
   }
 

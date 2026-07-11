@@ -8,12 +8,13 @@ import { useProducts } from '../../hooks/useProducts'
 import { useCustomer } from '../../hooks/useCustomer'
 import { patch, post } from '../../services/api'
 import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
+import { generateId } from '../../utils/id'
 
 function initialItems(transaction) {
   // product_name/brand_name aren't on TransactionItemResponse (only product_id) —
   // resolved once the products list loads, see the hydration effect below.
   return transaction.items.map((item) => ({
-    id: crypto.randomUUID(),
+    id: generateId(),
     item_type: 'product',
     product_id: item.product_id,
     product_name: null,
@@ -56,7 +57,7 @@ export function EditOrderModal({ transaction, onClose, onSent }) {
   const total = items.reduce((sum, item) => sum + item.subtotal, 0)
 
   const handleAddProduct = (product) => {
-    setItems((prev) => [...prev, { id: crypto.randomUUID(), ...product }])
+    setItems((prev) => [...prev, { id: generateId(), ...product }])
   }
 
   const handleRemoveItem = (id) => {

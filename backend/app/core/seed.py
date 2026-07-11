@@ -19,6 +19,12 @@ USERS = [
     {"full_name": "Payment User", "username": "payment_user", "role_name": "payment"},
     {"full_name": "Releasing User", "username": "releasing_user", "role_name": "releasing"},
     {"full_name": "Admin User", "username": "admin_user", "role_name": "admin"},
+    {"full_name": "Receiver User 2", "username": "receiver_user2", "role_name": "receiver"},
+    {"full_name": "Receiver User 3", "username": "receiver_user3", "role_name": "receiver"},
+    {"full_name": "Payment User 2", "username": "payment_user2", "role_name": "payment"},
+    {"full_name": "Payment User 3", "username": "payment_user3", "role_name": "payment"},
+    {"full_name": "Releasing User 2", "username": "releasing_user2", "role_name": "releasing"},
+    {"full_name": "Releasing User 3", "username": "releasing_user3", "role_name": "releasing"},
 ]
 
 CUSTOMERS = [

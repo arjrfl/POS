@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import Login from './pages/Login'
 import WalkIn from './pages/WalkIn'
 import Payment from './pages/Payment'
@@ -14,7 +15,9 @@ function App() {
         path="/walkin"
         element={
           <ProtectedRoute role="receiver">
-            <WalkIn />
+            <ErrorBoundary>
+              <WalkIn />
+            </ErrorBoundary>
           </ProtectedRoute>
         }
       />
@@ -22,7 +25,9 @@ function App() {
         path="/payment"
         element={
           <ProtectedRoute role="payment">
-            <Payment />
+            <ErrorBoundary>
+              <Payment />
+            </ErrorBoundary>
           </ProtectedRoute>
         }
       />
@@ -30,7 +35,9 @@ function App() {
         path="/releasing"
         element={
           <ProtectedRoute role="releasing">
-            <Releasing />
+            <ErrorBoundary>
+              <Releasing />
+            </ErrorBoundary>
           </ProtectedRoute>
         }
       />
@@ -38,7 +45,9 @@ function App() {
         path="/admin"
         element={
           <ProtectedRoute role="admin">
-            <Admin />
+            <ErrorBoundary>
+              <Admin />
+            </ErrorBoundary>
           </ProtectedRoute>
         }
       />

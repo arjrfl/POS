@@ -7,10 +7,14 @@ import { TransactionDetailPanel } from '../components/payment/TransactionDetailP
 import { PaymentModal } from '../components/payment/PaymentModal'
 import { Toast } from '../components/ui/Toast'
 import { get, post } from '../services/api'
+import { useNotificationStore } from '../store/notificationStore'
+
+const TERMINAL_STATUSES = ['completed', 'settled', 'voided']
 
 export default function Payment() {
   const { data, isLoading } = usePaymentQueue()
   const queryClient = useQueryClient()
+  const lastEvent = useNotificationStore((state) => state.lastEvent)
 
   const [selectedTransaction, setSelectedTransaction] = useState(null)
   const [payModalOpen, setPayModalOpen] = useState(false)
@@ -36,6 +40,21 @@ export default function Payment() {
     setToast({ message, variant })
     toastTimerRef.current = window.setTimeout(() => setToast(null), 3500)
   }
+
+  // Edge case: another team member finishes this same transaction (shouldn't
+  // normally happen since /grab locks it, but e.g. an admin void) while it's
+  // still open here — drop it instead of leaving a stale, now-invalid order
+  // in Order Details with the queue stuck dimmed behind it.
+  useEffect(() => {
+    if (!selectedTransaction || !lastEvent) return
+    if (lastEvent.type !== 'transaction_status_changed') return
+    if (lastEvent.transaction_id !== selectedTransaction.id) return
+    if (!TERMINAL_STATUSES.includes(lastEvent.new_status)) return
+
+    setSelectedTransaction(null)
+    setPayModalOpen(false)
+    showToast('This transaction has been completed by another team member', 'info')
+  }, [lastEvent, selectedTransaction])
 
   const handleProcess = async (transaction) => {
     try {

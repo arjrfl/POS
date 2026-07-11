@@ -9,6 +9,7 @@ import { useCustomer } from '../../hooks/useCustomer'
 import { useProducts } from '../../hooks/useProducts'
 import { formatCurrency } from '../../utils/format'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
+import { generateId } from '../../utils/id'
 import { post, put } from '../../services/api'
 
 const EPS = 0.005
@@ -74,7 +75,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     const methodsById = new Map(methods.map((m) => [m.id, m]))
     setEntries(
       drafts.map((d) => ({
-        id: crypto.randomUUID(),
+        id: generateId(),
         payment_method_id: d.payment_method_id,
         method_name: methodsById.get(d.payment_method_id)?.payment_method_name ?? '',
         amount: Number(d.amount),
@@ -104,7 +105,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
             tendered_amount: e.tendered_amount,
             ref_number: e.ref_number,
           })),
-        }).catch(() => {})
+        }).catch((err) => console.error('Payment draft autosave failed:', err))
       }
     }, DRAFT_AUTOSAVE_INTERVAL_MS)
     return () => clearInterval(interval)
@@ -199,7 +200,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     setEntries((prev) => [
       ...prev,
       {
-        id: crypto.randomUUID(),
+        id: generateId(),
         payment_method_id: selectedMethod.id,
         method_name: selectedMethod.payment_method_name,
         amount: Math.round(parsedAmount * 100) / 100,
