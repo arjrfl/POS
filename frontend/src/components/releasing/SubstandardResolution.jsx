@@ -42,7 +42,7 @@ export function SubstandardResolution({ transaction, customer, onResolve, submit
             Customer Pays Now
           </Button>
           <Button variant="secondary" className="flex-1" disabled={submitting} onClick={() => onResolve('utang')}>
-            Save as Balance (Utang)
+            Save as Balance
           </Button>
         </div>
       </div>

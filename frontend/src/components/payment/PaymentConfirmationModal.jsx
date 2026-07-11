@@ -16,6 +16,7 @@ export function PaymentConfirmationModal({
   balanceSettled,
   creditApplied,
   finalAmount,
+  isPartial,
   onBack,
   onDone,
 }) {
@@ -27,13 +28,16 @@ export function PaymentConfirmationModal({
   const isBalanceSettlement = transaction.transaction_type === 'balance_settlement'
   const enteredTotal = entries.reduce((sum, e) => sum + e.amount, 0)
   const changeTotal = Math.max(enteredTotal - finalAmount, 0)
+  const remaining = Math.max(finalAmount - enteredTotal, 0)
 
   // Entries store exactly what the cashier typed (so the UI can show a cash
-  // overpayment verbatim), but the backend requires sum(amount) === finalAmount
-  // exactly. Online entries are never allowed to exceed what's remaining, so
-  // only the single cash entry (if any) needs its submitted amount reduced to
-  // the actual credited portion — tendered_amount still carries the full
-  // typed figure so the backend computes the same change shown here.
+  // overpayment verbatim), but for a full payment the backend requires
+  // sum(amount) === finalAmount exactly. Online entries are never allowed to
+  // exceed what's remaining, so only the single cash entry (if any) needs its
+  // submitted amount reduced to the actual credited portion — tendered_amount
+  // still carries the full typed figure so the backend computes the same
+  // change shown here. A partial payment is an underpayment by definition, so
+  // no capping is needed there — entries are submitted exactly as entered.
   const onlineTotal = entries.filter((e) => e.method_name !== 'cash').reduce((sum, e) => sum + e.amount, 0)
   const creditedCashAmount = Math.round((finalAmount - onlineTotal) * 100) / 100
 
@@ -41,15 +45,20 @@ export function PaymentConfirmationModal({
     post(`/transactions/${transaction.id}/pay`, {
       payments: entries.map((e) => ({
         payment_method_id: e.payment_method_id,
-        amount: e.method_name === 'cash' ? creditedCashAmount : e.amount,
+        amount: !isPartial && e.method_name === 'cash' ? creditedCashAmount : e.amount,
         tendered_amount: e.tendered_amount,
         ref_number: e.ref_number,
       })),
       credit_applied: creditApplied,
       balance_settled: balanceSettled,
+      is_partial: isPartial,
+      amount_paid: enteredTotal,
     })
 
   const handleConfirmAndPrint = async () => {
+    // belt-and-suspenders alongside disabled={submitting} on the buttons —
+    // disabled only takes effect on the next render, this closes that gap
+    if (submitting) return
     setError('')
     setSubmitting(true)
     try {
@@ -63,6 +72,7 @@ export function PaymentConfirmationModal({
   }
 
   const handleConfirmAndDone = async () => {
+    if (submitting) return
     setError('')
     setSubmitting(true)
     try {
@@ -85,7 +95,7 @@ export function PaymentConfirmationModal({
           &larr; Back
         </button>
 
-        <div className="flex-1 min-h-0 flex flex-col gap-4">
+        <div className="print-receipt flex-1 min-h-0 flex flex-col gap-4">
           <div className="flex-shrink-0 p-3 border border-gray-200 rounded-md">
             <div className="font-semibold text-gray-900">{customer?.full_name}</div>
             {customer?.address && <div className="text-sm text-gray-500">{customer.address}</div>}
@@ -124,75 +134,148 @@ export function PaymentConfirmationModal({
           </div>
 
           <div className="flex-shrink-0 p-3 border border-gray-200 rounded-md flex flex-col gap-1 text-sm">
-            {isBalanceSettlement ? (
-              <div className="flex justify-between text-red-600 font-medium">
-                <span>Balance Settlement</span>
-                <span>{formatCurrency(totalDue)}</span>
-              </div>
-            ) : (
+            {isPartial ? (
               <>
                 <div className="flex justify-between">
                   <span className="text-gray-700">Original Total</span>
                   <span className="text-gray-900">{formatCurrency(totalDue)}</span>
                 </div>
-                {balanceSettled > 0 && (
-                  <div className="flex justify-between text-red-600">
-                    <span>Balance Collected</span>
-                    <span>+{formatCurrency(balanceSettled)}</span>
+                <div className="flex justify-between text-green-700">
+                  <span>Amount Paid</span>
+                  <span className="font-semibold">{formatCurrency(enteredTotal)}</span>
+                </div>
+                <div className="border-t border-gray-200 pt-2 mt-1 flex justify-between items-center text-red-600 font-bold bg-red-50 rounded px-2 py-1">
+                  <span>Remaining Balance</span>
+                  <span>{formatCurrency(remaining)}</span>
+                </div>
+                <p className="text-xs text-yellow-800 bg-yellow-50 border border-yellow-300 rounded-md p-2 mt-1">
+                  &#9888; {formatCurrency(remaining)} will be recorded as outstanding balance on this account.
+                </p>
+
+                <div className="mt-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Payment Breakdown</div>
+                {entries.map((e) => (
+                  <div key={e.id} className="flex justify-between text-gray-700">
+                    <span>
+                      {PAYMENT_METHOD_LABEL[e.method_name] ?? e.method_name}
+                      {e.ref_number ? ` — Ref: ${e.ref_number}` : ''}
+                    </span>
+                    <span>{formatCurrency(e.amount)}</span>
+                  </div>
+                ))}
+
+                {changeTotal > 0 && (
+                  <div className="border-t border-gray-200 pt-2 mt-1 flex justify-between">
+                    <span className="text-gray-700">Change</span>
+                    <span className="font-semibold text-gray-900">{formatCurrency(changeTotal)}</span>
                   </div>
                 )}
-                {creditApplied > 0 && (
-                  <div className="flex justify-between text-green-700">
-                    <span>Credit Applied</span>
-                    <span>-{formatCurrency(creditApplied)}</span>
+              </>
+            ) : (
+              <>
+                {isBalanceSettlement ? (
+                  <div className="flex justify-between text-red-600 font-medium">
+                    <span>Balance Settlement</span>
+                    <span>{formatCurrency(totalDue)}</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-700">Original Total</span>
+                      <span className="text-gray-900">{formatCurrency(totalDue)}</span>
+                    </div>
+                    {balanceSettled > 0 && (
+                      <div className="flex justify-between text-red-600">
+                        <span>Balance Collected</span>
+                        <span>+{formatCurrency(balanceSettled)}</span>
+                      </div>
+                    )}
+                    {creditApplied > 0 && (
+                      <div className="flex justify-between text-green-700">
+                        <span>Credit Applied</span>
+                        <span>-{formatCurrency(creditApplied)}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className="border-t border-gray-200 pt-2 mt-1 flex justify-between font-semibold text-gray-900">
+                  <span>Amount to Collect</span>
+                  <span>{formatCurrency(finalAmount)}</span>
+                </div>
+
+                <div className="mt-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Payment Breakdown</div>
+                {entries.map((e) => (
+                  <div key={e.id} className="flex justify-between text-gray-700">
+                    <span>
+                      {PAYMENT_METHOD_LABEL[e.method_name] ?? e.method_name}
+                      {e.ref_number ? ` — Ref: ${e.ref_number}` : ''}
+                    </span>
+                    <span>{formatCurrency(e.amount)}</span>
+                  </div>
+                ))}
+
+                <div className="border-t border-gray-200 pt-2 mt-1 flex justify-between">
+                  <span className="text-gray-700">Total Paid</span>
+                  <span className="font-semibold text-gray-900">{formatCurrency(enteredTotal)}</span>
+                </div>
+                {changeTotal > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700">Change</span>
+                    <span className="font-semibold text-gray-900">{formatCurrency(changeTotal)}</span>
                   </div>
                 )}
               </>
             )}
-            <div className="border-t border-gray-200 pt-2 mt-1 flex justify-between font-semibold text-gray-900">
-              <span>Amount to Collect</span>
-              <span>{formatCurrency(finalAmount)}</span>
-            </div>
-
-            <div className="mt-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Payment Breakdown</div>
-            {entries.map((e) => (
-              <div key={e.id} className="flex justify-between text-gray-700">
-                <span>
-                  {PAYMENT_METHOD_LABEL[e.method_name] ?? e.method_name}
-                  {e.ref_number ? ` — Ref: ${e.ref_number}` : ''}
-                </span>
-                <span>{formatCurrency(e.amount)}</span>
-              </div>
-            ))}
-
-            <div className="border-t border-gray-200 pt-2 mt-1 flex justify-between">
-              <span className="text-gray-700">Total Paid</span>
-              <span className="font-semibold text-gray-900">{formatCurrency(enteredTotal)}</span>
-            </div>
-            {changeTotal > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-700">Change</span>
-                <span className="font-semibold text-gray-900">{formatCurrency(changeTotal)}</span>
-              </div>
-            )}
           </div>
+
+          {isPartial && (
+            <p className="flex-shrink-0 text-xs text-gray-600 text-center">
+              Outstanding balance of {formatCurrency(remaining)} has been added to this customer&apos;s account.
+            </p>
+          )}
         </div>
 
         {error && <p className="flex-shrink-0 text-sm text-red-600 mt-2">{error}</p>}
 
         <div className="flex-shrink-0 flex gap-2 mt-3">
-          <Button type="button" className="flex-1" disabled={submitting} onClick={handleConfirmAndPrint}>
-            {submitting ? 'Processing...' : 'Confirm & Print Receipt'}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            className="flex-1"
-            disabled={submitting}
-            onClick={handleConfirmAndDone}
-          >
-            Confirm & Done
-          </Button>
+          {isPartial ? (
+            <>
+              <Button type="button" variant="amber" className="flex-1" disabled={submitting} onClick={handleConfirmAndPrint}>
+                {submitting ? 'Processing...' : 'Confirm Partial & Print'}
+              </Button>
+              <Button
+                type="button"
+                variant="warning"
+                className="flex-1"
+                disabled={submitting}
+                onClick={handleConfirmAndDone}
+              >
+                Confirm Partial & Done
+              </Button>
+              <button
+                type="button"
+                onClick={onBack}
+                disabled={submitting}
+                className="flex-1 text-sm text-primary hover:underline disabled:opacity-50"
+              >
+                Back
+              </button>
+            </>
+          ) : (
+            <>
+              <Button type="button" className="flex-1" disabled={submitting} onClick={handleConfirmAndPrint}>
+                {submitting ? 'Processing...' : 'Confirm & Print Receipt'}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="flex-1"
+                disabled={submitting}
+                onClick={handleConfirmAndDone}
+              >
+                Confirm & Done
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </FullScreenModal>

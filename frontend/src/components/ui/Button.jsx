@@ -3,6 +3,7 @@ const VARIANTS = {
   secondary: 'bg-white text-primary border border-primary hover:bg-primary/5',
   outline: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50',
   warning: 'bg-white text-amber-700 border border-amber-400 hover:bg-amber-50',
+  amber: 'bg-amber-500 text-white hover:bg-amber-600',
   danger: 'bg-red-600 text-white hover:bg-red-700',
 }
 

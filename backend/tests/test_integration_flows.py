@@ -117,7 +117,7 @@ with TestClient(app) as client:
 
         r = client.post(
             f"/api/transactions/{tx['id']}/pay",
-            json={"payments": [{"payment_method_id": CASH_ID, "amount": tx["total_due"], "tendered_amount": tx["total_due"]}]},
+            json={"payments": [{"payment_method_id": CASH_ID, "amount": tx["total_due"], "tendered_amount": tx["total_due"]}], "amount_paid": tx["total_due"]},
             headers=auth("payment"),
         )
         paid = r.json()["data"]
@@ -194,7 +194,7 @@ with TestClient(app) as client:
     client.post(f"/api/transactions/{tx['id']}/grab", headers=auth("payment"))
     r = client.post(
         f"/api/transactions/{tx['id']}/pay",
-        json={"payments": [{"payment_method_id": CASH_ID, "amount": tx["total_due"], "tendered_amount": tx["total_due"]}]},
+        json={"payments": [{"payment_method_id": CASH_ID, "amount": tx["total_due"], "tendered_amount": tx["total_due"]}], "amount_paid": tx["total_due"]},
         headers=auth("payment"),
     )
     paid = r.json()["data"]
@@ -237,7 +237,7 @@ with TestClient(app) as client:
     client.post(f"/api/transactions/{child['id']}/grab", headers=auth("payment"))
     r = client.post(
         f"/api/transactions/{child['id']}/pay",
-        json={"payments": [{"payment_method_id": CASH_ID, "amount": "110.00", "tendered_amount": "110.00"}]},
+        json={"payments": [{"payment_method_id": CASH_ID, "amount": "110.00", "tendered_amount": "110.00"}], "amount_paid": "110.00"},
         headers=auth("payment"),
     )
     child_paid = r.json()["data"]
@@ -283,7 +283,7 @@ with TestClient(app) as client:
     client.post(f"/api/transactions/{tx['id']}/grab", headers=auth("payment"))
     r = client.post(
         f"/api/transactions/{tx['id']}/pay",
-        json={"payments": [{"payment_method_id": CASH_ID, "amount": tx["total_due"], "tendered_amount": tx["total_due"]}]},
+        json={"payments": [{"payment_method_id": CASH_ID, "amount": tx["total_due"], "tendered_amount": tx["total_due"]}], "amount_paid": tx["total_due"]},
         headers=auth("payment"),
     )
     paid = r.json()["data"]
@@ -344,7 +344,7 @@ with TestClient(app) as client:
     client.post(f"/api/transactions/{tx['id']}/grab", headers=auth("payment"))
     r = client.post(
         f"/api/transactions/{tx['id']}/pay",
-        json={"payments": [{"payment_method_id": CASH_ID, "amount": tx["total_due"], "tendered_amount": tx["total_due"]}]},
+        json={"payments": [{"payment_method_id": CASH_ID, "amount": tx["total_due"], "tendered_amount": tx["total_due"]}], "amount_paid": tx["total_due"]},
         headers=auth("payment"),
     )
     paid = r.json()["data"]
@@ -419,7 +419,7 @@ with TestClient(app) as client:
     client.post(f"/api/transactions/{tx['id']}/grab", headers=auth("payment"))
     r = client.post(
         f"/api/transactions/{tx['id']}/pay",
-        json={"payments": [{"payment_method_id": CASH_ID, "amount": "370.00", "tendered_amount": "370.00"}]},
+        json={"payments": [{"payment_method_id": CASH_ID, "amount": "370.00", "tendered_amount": "370.00"}], "amount_paid": "370.00"},
         headers=auth("payment"),
     )
     paid = r.json()["data"]
@@ -483,7 +483,7 @@ with TestClient(app) as client:
         with client.websocket_connect(f"/ws/admin?token={tokens['admin']}") as admin_ws:
             r = client.post(
                 f"/api/transactions/{tx['id']}/pay",
-                json={"payments": [{"payment_method_id": CASH_ID, "amount": "75.50", "tendered_amount": "75.50"}]},
+                json={"payments": [{"payment_method_id": CASH_ID, "amount": "75.50", "tendered_amount": "75.50"}], "amount_paid": "75.50"},
                 headers=auth("payment"),
             )
             paid = r.json()["data"]
@@ -587,7 +587,7 @@ with TestClient(app) as client:
     with client.websocket_connect(f"/ws/admin?token={tokens['admin']}") as admin_ws:
         r = client.post(
             f"/api/transactions/{tx['id']}/pay",
-            json={"payments": [{"payment_method_id": GCASH_ID, "amount": "220.00", "ref_number": "GC-ONLINE-0007"}]},
+            json={"payments": [{"payment_method_id": GCASH_ID, "amount": "220.00", "ref_number": "GC-ONLINE-0007"}], "amount_paid": "220.00"},
             headers=auth("payment"),
         )
         paid = r.json()["data"]

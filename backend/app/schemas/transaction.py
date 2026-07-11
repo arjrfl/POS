@@ -190,3 +190,8 @@ class PaymentProcessRequest(BaseModel):
     payments: list[PaymentProcessItem]
     credit_applied: Decimal = Decimal("0")
     balance_settled: Decimal = Decimal("0")
+    is_partial: bool = False
+    # total actually collected from customer (sum of payment entries) — the
+    # backend cross-checks this against the payment entries themselves rather
+    # than trusting it blindly, since it drives whether utang gets recorded
+    amount_paid: Decimal

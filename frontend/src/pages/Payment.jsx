@@ -108,6 +108,7 @@ export default function Payment() {
     setPayModalOpen(false)
     setSelectedTransaction(null)
     refreshQueue()
+    showToast('Payment processed successfully', 'success')
   }
 
   return (

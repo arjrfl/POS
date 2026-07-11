@@ -610,6 +610,16 @@ async def process_payment(
     *,
     skip_releasing: bool = False,
 ) -> TransactionResponse:
+    # TEMPORARY DIAGNOSTIC — remove once the 400 on transaction 110 is confirmed
+    # fixed. print(flush=True) instead of logging: this app has no logging
+    # config anywhere, so logger.info() defaults to WARNING+ only and would
+    # silently produce nothing in `docker compose logs backend`.
+    print(
+        f"[process_payment] transaction_id={transaction_id} is_partial={data.is_partial} "
+        f"amount_paid={data.amount_paid} payments={data.payments}",
+        flush=True,
+    )
+
     transaction = await db.get(SalesTransaction, transaction_id)
     if transaction is None:
         raise ValueError(f"Transaction {transaction_id} not found")
@@ -644,11 +654,23 @@ async def process_payment(
     # entries must sum to this, not the original total_due
     final_amount = transaction.total_due + data.balance_settled - data.credit_applied
 
-    total_paid = sum((payment.amount for payment in data.payments), Decimal("0"))
-    if total_paid != final_amount:
+    amount_paid = sum((payment.amount for payment in data.payments), Decimal("0"))
+    if amount_paid != data.amount_paid:
         raise PaymentValidationError(
-            f"payment total {total_paid} does not match amount due {final_amount}"
+            f"amount_paid {data.amount_paid} does not match payment entries total {amount_paid}"
         )
+
+    if data.is_partial:
+        if transaction.transaction_type not in (TransactionTypeEnum.original, TransactionTypeEnum.adjustment):
+            raise PaymentValidationError("Partial payment not allowed for balance settlement transactions")
+        if amount_paid <= 0:
+            raise PaymentValidationError("Payment amount must be greater than zero")
+        if amount_paid >= final_amount:
+            raise PaymentValidationError("Amount paid covers the full total — use full payment instead of partial")
+    elif amount_paid < final_amount:
+        raise PaymentValidationError("Payment amount is less than total due")
+
+    remaining = final_amount - amount_paid
 
     method_ids = {payment.payment_method_id for payment in data.payments}
     methods_by_id = {}
@@ -731,6 +753,32 @@ async def process_payment(
                     entry_type=LedgerEntryTypeEnum.balance_settled,
                     amount=transaction.balance_settled,
                     running_balance=customer.net_balance,
+                )
+            )
+
+        if data.is_partial and remaining > 0:
+            customer.net_balance -= remaining
+            db.add(
+                CustomerLedger(
+                    customer_id=customer.id,
+                    transaction_id=transaction.id,
+                    entry_type=LedgerEntryTypeEnum.balance_added,
+                    amount=remaining,
+                    running_balance=customer.net_balance,
+                )
+            )
+            # this remaining is NEW utang from underpayment, not the customer
+            # settling an old balance — any balance_settled recorded above for
+            # this same payment doesn't apply here
+            transaction.balance_settled = Decimal("0.00")
+            db.add(
+                TransactionAuditLog(
+                    transaction_id=transaction.id,
+                    changed_by_user_id=payment_user_id,
+                    change_type=AuditChangeTypeEnum.transaction_status,
+                    old_value=transaction.transaction_status.value,
+                    new_value=transaction.transaction_status.value,
+                    notes=f"Partial payment: ₱{amount_paid} collected, ₱{remaining} added to customer balance",
                 )
             )
 

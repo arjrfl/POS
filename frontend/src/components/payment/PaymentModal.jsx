@@ -13,7 +13,7 @@ import { generateId } from '../../utils/id'
 import { post, put } from '../../services/api'
 
 const EPS = 0.005
-const DRAFT_AUTOSAVE_INTERVAL_MS = 30000
+const DRAFT_AUTOSAVE_INTERVAL_MS = 120000
 
 export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const { data: methods } = usePaymentMethods()
@@ -26,6 +26,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const [entries, setEntries] = useState([])
   const [closeGuard, setCloseGuard] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
+  const [confirmMode, setConfirmMode] = useState('full')
   const [parking, setParking] = useState(false)
   const [parkError, setParkError] = useState('')
 
@@ -44,6 +45,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
       setAmount('')
       setCloseGuard(false)
       setShowConfirmation(false)
+      setConfirmMode('full')
       setParking(false)
       setParkError('')
       setCollectBalance(false)
@@ -86,18 +88,26 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, methods])
 
-  // Background auto-save every 30s while the modal is open — silent, no
-  // toast/loading state. A ref keeps the interval itself stable (created once
-  // per modal-open) so adding/removing entries doesn't reset the 30s cadence.
+  // Background auto-save every 2min while the modal is open — silent, no
+  // toast/loading state. Refs keep the interval itself stable (created once
+  // per modal-open) so adding/removing entries doesn't reset the cadence;
+  // skipped while there's nothing to save or while the confirmation modal is
+  // up (about to submit for real — an autosave landing mid-confirm would just
+  // race the actual /pay call for no benefit).
   const entriesRef = useRef(entries)
   useEffect(() => {
     entriesRef.current = entries
   }, [entries])
 
+  const showConfirmationRef = useRef(showConfirmation)
+  useEffect(() => {
+    showConfirmationRef.current = showConfirmation
+  }, [showConfirmation])
+
   useEffect(() => {
     if (!open) return
     const interval = setInterval(() => {
-      if (entriesRef.current.length > 0) {
+      if (entriesRef.current.length > 0 && !showConfirmationRef.current) {
         put(`/transactions/${transaction.id}/payment-drafts`, {
           entries: entriesRef.current.map((e) => ({
             payment_method_id: e.payment_method_id,
@@ -222,13 +232,25 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const changeAmount = -remainingAfterEntries
   const cashEntryCount = entries.filter((e) => e.method_name === 'cash').length
 
-  const confirmDisabled =
-    entries.length === 0 ||
-    enteredTotal < finalAmount - EPS ||
-    entries.some((e) => e.method_name !== 'cash' && !e.ref_number) ||
-    cashEntryCount > 1 ||
-    !balanceValid ||
-    !creditValid
+  const isFullyCovered = remainingAfterEntries <= EPS
+  // matches the backend's process_payment rule: only original orders and
+  // substandard-kilo adjustment children can be paid off partially
+  const partialEligible = transaction.transaction_type === 'original' || transaction.transaction_type === 'adjustment'
+
+  const structuralValid =
+    entries.length > 0 &&
+    !entries.some((e) => e.method_name !== 'cash' && !e.ref_number) &&
+    cashEntryCount <= 1 &&
+    balanceValid &&
+    creditValid
+
+  const confirmDisabled = !structuralValid || !isFullyCovered
+  const partialConfirmDisabled = !structuralValid || enteredTotal < 1
+
+  const openConfirmation = (mode) => {
+    setConfirmMode(mode)
+    setShowConfirmation(true)
+  }
 
   const requestClose = () => setCloseGuard(true)
   const confirmClose = () => {
@@ -472,13 +494,13 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                 <span className="font-semibold text-gray-800">{formatCurrency(finalAmount)}</span>
               </div>
               <div className="flex flex-col gap-1 border-t border-gray-200 pt-1 mt-1">
-                {changeAmount > EPS && (
+                {isFullyCovered && changeAmount > EPS && (
                   <div className="flex justify-between">
                     <span className="text-gray-700">Change</span>
                     <span className="font-semibold text-green-700">{formatCurrency(changeAmount)}</span>
                   </div>
                 )}
-                {remainingAfterEntries > EPS && (
+                {!isFullyCovered && (
                   <div className="flex justify-between">
                     <span className="text-gray-700">Remaining</span>
                     <span className="font-semibold text-red-600">{formatCurrency(remainingAfterEntries)}</span>
@@ -486,6 +508,26 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                 )}
               </div>
             </div>
+
+            {!isFullyCovered && partialEligible && (
+              <div className="mt-3 bg-yellow-50 border border-yellow-300 rounded-md p-2 text-xs text-yellow-800">
+                <span className="font-semibold">&#9888; Partial Payment</span>
+                <p className="mt-1">
+                  {formatCurrency(remainingAfterEntries)} will be added to the customer&apos;s outstanding balance.
+                </p>
+              </div>
+            )}
+
+            {!isFullyCovered && !partialEligible && (
+              <div className="mt-3 bg-red-50 border border-red-300 rounded-md p-2 text-xs text-red-800">
+                <span className="font-semibold">&#10005; Full payment required</span>
+                <p className="mt-1">
+                  {isBalanceSettlement
+                    ? 'Balance settlement transactions must be paid in full.'
+                    : 'This transaction must be paid in full.'}
+                </p>
+              </div>
+            )}
 
             {parkError && <p className="text-xs text-red-600 mt-2">{parkError}</p>}
 
@@ -499,14 +541,31 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
               >
                 {parking ? 'Parking...' : 'Park Transaction'}
               </Button>
-              <Button
-                type="button"
-                className="flex-1"
-                disabled={confirmDisabled}
-                onClick={() => setShowConfirmation(true)}
-              >
-                Confirm Payment
-              </Button>
+
+              {isFullyCovered ? (
+                <Button type="button" className="flex-1" disabled={confirmDisabled} onClick={() => openConfirmation('full')}>
+                  Confirm Payment
+                </Button>
+              ) : partialEligible ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="amber"
+                    className="flex-1"
+                    disabled={partialConfirmDisabled}
+                    onClick={() => openConfirmation('partial')}
+                  >
+                    Confirm Partial Payment
+                  </Button>
+                  <Button type="button" className="flex-1" disabled>
+                    Confirm Full Payment
+                  </Button>
+                </>
+              ) : (
+                <Button type="button" className="flex-1" disabled>
+                  Confirm Payment
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -522,6 +581,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
         balanceSettled={balanceSettled}
         creditApplied={creditApplied}
         finalAmount={finalAmount}
+        isPartial={confirmMode === 'partial'}
         onBack={() => setShowConfirmation(false)}
         onDone={handleConfirmationDone}
       />
