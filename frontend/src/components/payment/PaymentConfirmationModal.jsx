@@ -41,19 +41,27 @@ export function PaymentConfirmationModal({
   const onlineTotal = entries.filter((e) => e.method_name !== 'cash').reduce((sum, e) => sum + e.amount, 0)
   const creditedCashAmount = Math.round((finalAmount - onlineTotal) * 100) / 100
 
-  const submitPayment = () =>
-    post(`/transactions/${transaction.id}/pay`, {
-      payments: entries.map((e) => ({
-        payment_method_id: e.payment_method_id,
-        amount: !isPartial && e.method_name === 'cash' ? creditedCashAmount : e.amount,
-        tendered_amount: e.tendered_amount,
-        ref_number: e.ref_number,
-      })),
+  const submitPayment = () => {
+    const payments = entries.map((e) => ({
+      payment_method_id: e.payment_method_id,
+      amount: !isPartial && e.method_name === 'cash' ? creditedCashAmount : e.amount,
+      tendered_amount: e.tendered_amount,
+      ref_number: e.ref_number,
+    }))
+    // Derived from the same `payments` array being submitted (post cash-cap),
+    // not from the raw entered total — a cash overpayment legitimately makes
+    // those two differ (entered 1200, credited 1160, 40 change), and the
+    // backend requires amount_paid to equal sum(payments) exactly.
+    const amountPaid = payments.reduce((sum, p) => sum + p.amount, 0)
+
+    return post(`/transactions/${transaction.id}/pay`, {
+      payments,
       credit_applied: creditApplied,
       balance_settled: balanceSettled,
       is_partial: isPartial,
-      amount_paid: enteredTotal,
+      amount_paid: amountPaid,
     })
+  }
 
   const handleConfirmAndPrint = async () => {
     // belt-and-suspenders alongside disabled={submitting} on the buttons —

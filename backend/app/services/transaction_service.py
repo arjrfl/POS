@@ -655,7 +655,12 @@ async def process_payment(
     final_amount = transaction.total_due + data.balance_settled - data.credit_applied
 
     amount_paid = sum((payment.amount for payment in data.payments), Decimal("0"))
-    if amount_paid != data.amount_paid:
+    # A 1-cent tolerance, not an exact match: the frontend sums these as JS
+    # floats before this Decimal ever sees them, so a multi-entry split can
+    # legitimately land a fraction of a cent off. This is unrelated to cash
+    # overpayment/change — the frontend already nets that out before sending
+    # amount_paid, so the two are expected to be equal (within cent noise).
+    if abs(amount_paid - data.amount_paid) > Decimal("0.01"):
         raise PaymentValidationError(
             f"amount_paid {data.amount_paid} does not match payment entries total {amount_paid}"
         )
