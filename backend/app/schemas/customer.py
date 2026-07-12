@@ -50,3 +50,13 @@ class CustomerLedgerEntryResponse(BaseModel):
 
 class CustomerDetailResponse(CustomerResponse):
     ledger_entries: list[CustomerLedgerEntryResponse]
+
+
+class CustomerBalanceEntryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    ledger_entry_id: int
+    transaction_id: int
+    order_number: str
+    amount: Decimal
+    created_at: datetime

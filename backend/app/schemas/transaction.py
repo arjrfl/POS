@@ -50,11 +50,19 @@ class DraftPaymentEntry(BaseModel):
     ref_number: str | None = None
 
 
+class BalanceSettlementItem(BaseModel):
+    source_transaction_id: int
+    amount: Decimal
+    # reference to the specific customer_ledger entry so we know exactly
+    # which balance entry this settles
+    ledger_entry_id: int
+
+
 class DraftPaymentSaveRequest(BaseModel):
     entries: list[DraftPaymentEntry]
     # balance/credit checkbox state — sent once per save (not per entry row),
     # stored on the first draft row; see save_draft_payments
-    balance_settled: Decimal = Decimal("0.00")
+    draft_balances_to_settle: list[BalanceSettlementItem] = []
     credit_applied: Decimal = Decimal("0.00")
 
 
@@ -89,7 +97,9 @@ class PaymentDetailResponse(BaseModel):
     tendered_amount: Decimal | None
     amount: Decimal
     is_draft: bool
-    draft_balance_settled: Decimal
+    # raw JSON string of the balances_to_settle list at time of parking —
+    # NULL on confirmed rows and non-first draft rows; parsed by the frontend
+    draft_balances_json: str | None
     draft_credit_applied: Decimal
     created_at: datetime
 
@@ -145,8 +155,8 @@ class TransactionResponse(BaseModel):
     payment_drafts: list[PaymentDetailResponse] = []
     # Balance/credit checkbox state carried by the draft rows above (read off the first
     # one) — surfaced at the transaction level so the frontend doesn't need to know which
-    # draft row it lives on. 0 when there are no drafts, or none was checked when parked.
-    draft_balance_settled: Decimal = Decimal("0")
+    # draft row it lives on. None/0 when there are no drafts, or none was checked when parked.
+    draft_balances_json: str | None = None
     draft_credit_applied: Decimal = Decimal("0")
     children: list["TransactionResponse"]
 
@@ -200,7 +210,7 @@ class PaymentProcessItem(BaseModel):
 class PaymentProcessRequest(BaseModel):
     payments: list[PaymentProcessItem]
     credit_applied: Decimal = Decimal("0")
-    balance_settled: Decimal = Decimal("0")
+    balances_to_settle: list[BalanceSettlementItem] = []
     is_partial: bool = False
     # total actually collected from customer (sum of payment entries) — the
     # backend cross-checks this against the payment entries themselves rather

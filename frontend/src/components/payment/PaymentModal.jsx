@@ -10,7 +10,7 @@ import { useProducts } from '../../hooks/useProducts'
 import { formatCurrency } from '../../utils/format'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
 import { generateId } from '../../utils/id'
-import { post, put } from '../../services/api'
+import { get, post, put } from '../../services/api'
 
 const EPS = 0.005
 const DRAFT_AUTOSAVE_INTERVAL_MS = 120000
@@ -55,8 +55,8 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const [parking, setParking] = useState(false)
   const [parkError, setParkError] = useState('')
 
-  const [collectBalance, setCollectBalance] = useState(false)
-  const [balanceAmount, setBalanceAmount] = useState('')
+  const [balanceEntries, setBalanceEntries] = useState([])
+  const [checkedBalances, setCheckedBalances] = useState({})
   const [applyCredit, setApplyCredit] = useState(false)
   const [creditAmount, setCreditAmount] = useState('')
 
@@ -79,10 +79,9 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
       setParking(false)
       setParkError('')
 
-      const draftBalance = Number(transaction.draft_balance_settled) || 0
+      const draftBalances = transaction.draft_balances_json ? JSON.parse(transaction.draft_balances_json) : []
       const draftCredit = Number(transaction.draft_credit_applied) || 0
-      setCollectBalance(draftBalance > 0)
-      setBalanceAmount(draftBalance > 0 ? String(draftBalance) : '')
+      setCheckedBalances(Object.fromEntries(draftBalances.map((b) => [b.ledger_entry_id, true])))
       setApplyCredit(draftCredit > 0)
       setCreditAmount(draftCredit > 0 ? String(draftCredit) : '')
     }
@@ -122,6 +121,21 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, methods])
 
+  // Fetch the customer's unsettled balance entries once per modal open, so each
+  // can be shown as its own checkbox instead of one lump-sum amount. Only fetched
+  // when there's actually an outstanding balance to settle.
+  useEffect(() => {
+    if (!open || !customer) return
+    if (Number(customer.net_balance) >= 0) {
+      setBalanceEntries([])
+      return
+    }
+    get(`/customers/${transaction.customer_id}/balance-entries`)
+      .then((result) => setBalanceEntries(result ?? []))
+      .catch(() => setBalanceEntries([]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, customer])
+
   // Background auto-save every 2min while the modal is open — silent, no
   // toast/loading state. Refs keep the interval itself stable (created once
   // per modal-open) so adding/removing entries doesn't reset the cadence;
@@ -138,25 +152,26 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     showConfirmationRef.current = showConfirmation
   }, [showConfirmation])
 
-  // balanceSettled/creditApplied themselves are derived values computed in
+  // totalBalanceSettled/creditApplied themselves are derived values computed in
   // the render body below (after the early `if (!open) return null`, so they
   // can't be tracked with a hook there) — these refs mirror the raw checkbox
   // state instead, and the interval callback re-derives the same way.
-  const collectBalanceRef = useRef(collectBalance)
-  const balanceAmountRef = useRef(balanceAmount)
+  const checkedBalancesRef = useRef(checkedBalances)
+  const balanceEntriesRef = useRef(balanceEntries)
   const applyCreditRef = useRef(applyCredit)
   const creditAmountRef = useRef(creditAmount)
   useEffect(() => {
-    collectBalanceRef.current = collectBalance
-    balanceAmountRef.current = balanceAmount
+    checkedBalancesRef.current = checkedBalances
+    balanceEntriesRef.current = balanceEntries
     applyCreditRef.current = applyCredit
     creditAmountRef.current = creditAmount
-  }, [collectBalance, balanceAmount, applyCredit, creditAmount])
+  }, [checkedBalances, balanceEntries, applyCredit, creditAmount])
 
   useEffect(() => {
     if (!open) return
     const interval = setInterval(() => {
       if (entriesRef.current.length > 0 && !showConfirmationRef.current) {
+        const selectedBalances = balanceEntriesRef.current.filter((e) => checkedBalancesRef.current[e.ledger_entry_id])
         put(`/transactions/${transaction.id}/payment-drafts`, {
           entries: entriesRef.current.map((e) => ({
             payment_method_id: e.payment_method_id,
@@ -164,7 +179,11 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
             tendered_amount: e.tendered_amount,
             ref_number: e.ref_number,
           })),
-          balance_settled: collectBalanceRef.current ? Number(balanceAmountRef.current) || 0 : 0,
+          draft_balances_to_settle: selectedBalances.map((e) => ({
+            source_transaction_id: e.transaction_id,
+            ledger_entry_id: e.ledger_entry_id,
+            amount: Number(e.amount),
+          })),
           credit_applied: applyCreditRef.current ? Number(creditAmountRef.current) || 0 : 0,
         }).catch((err) => console.error('Payment draft autosave failed:', err))
       }
@@ -197,16 +216,24 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const netBalance = customer ? Number(customer.net_balance) : 0
   const absBalance = Math.abs(netBalance)
 
-  const balanceSettled = collectBalance ? Number(balanceAmount) || 0 : 0
+  const balancesToSettle = balanceEntries
+    .filter((e) => checkedBalances[e.ledger_entry_id])
+    .map((e) => ({
+      source_transaction_id: e.transaction_id,
+      ledger_entry_id: e.ledger_entry_id,
+      amount: Number(e.amount),
+      order_number: e.order_number,
+    }))
+  const totalBalanceSettled = balancesToSettle.reduce((sum, b) => sum + b.amount, 0)
+  const anyBalanceChecked = balancesToSettle.length > 0
+
   const creditApplied = applyCredit ? Number(creditAmount) || 0 : 0
-  const balanceValid = !collectBalance || (balanceSettled > 0 && balanceSettled <= absBalance)
   const creditValid = !applyCredit || (creditApplied > 0 && creditApplied <= netBalance && creditApplied <= totalDue)
 
-  const finalAmount = totalDue + balanceSettled - creditApplied
+  const finalAmount = totalDue + totalBalanceSettled - creditApplied
 
-  const handleToggleCollectBalance = (checked) => {
-    setCollectBalance(checked)
-    setBalanceAmount(checked ? String(absBalance) : '')
+  const handleToggleBalanceEntry = (ledgerEntryId) => {
+    setCheckedBalances((prev) => ({ ...prev, [ledgerEntryId]: !prev[ledgerEntryId] }))
   }
 
   const handleToggleApplyCredit = (checked) => {
@@ -290,16 +317,14 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   // utang from underpayment" with "old utang being paid off" in the same
   // transaction doesn't make sense. Credit applied does NOT block partial —
   // it just lowers the finalAmount target the entries need to cover.
-  const balanceBeingCollectedThisPayment = balanceSettled > 0
   const partialEligible =
     (transaction.transaction_type === 'original' || transaction.transaction_type === 'adjustment') &&
-    !balanceBeingCollectedThisPayment
+    !anyBalanceChecked
 
   const structuralValid =
     entries.length > 0 &&
     !entries.some((e) => e.method_name !== 'cash' && !e.ref_number) &&
     cashEntryCount <= 1 &&
-    balanceValid &&
     creditValid
 
   const confirmDisabled = !structuralValid || !isFullyCovered
@@ -333,7 +358,11 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
           tendered_amount: e.tendered_amount,
           ref_number: e.ref_number,
         })),
-        balance_settled: balanceSettled,
+        draft_balances_to_settle: balancesToSettle.map((b) => ({
+          source_transaction_id: b.source_transaction_id,
+          ledger_entry_id: b.ledger_entry_id,
+          amount: b.amount,
+        })),
         credit_applied: creditApplied,
       })
       await post(`/transactions/${transaction.id}/park`)
@@ -344,9 +373,6 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     }
   }
 
-  const balanceSources = collectBalance
-    ? findLedgerSources(customer?.ledger_entries, 'balance_added', absBalance)
-    : null
   const creditSources = applyCredit
     ? findLedgerSources(customer?.ledger_entries, 'credit_added', netBalance)
     : null
@@ -372,50 +398,40 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
               ) : (
                 <>
                   {netBalance < 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded-md p-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-red-700">Outstanding Balance</span>
-                        <span className="font-bold text-red-600">{formatCurrency(absBalance)}</span>
+                    <div className="bg-red-50 border border-red-200 rounded-md p-2">
+                      <div className="flex justify-between text-xs font-semibold text-red-700">
+                        <span>Outstanding Balance</span>
+                        <span>Total: {formatCurrency(absBalance)}</span>
                       </div>
-                      <label className="flex items-center gap-1.5 mt-1 text-red-700">
-                        <input
-                          type="checkbox"
-                          className="accent-green-800"
-                          checked={collectBalance}
-                          onChange={(e) => handleToggleCollectBalance(e.target.checked)}
-                        />
-                        Collect with this payment
-                      </label>
-                      {collectBalance && (
-                        <>
-                          <Input
-                            id="balance-amount"
-                            type="number"
-                            step="0.01"
-                            value={balanceAmount}
-                            onChange={(e) => setBalanceAmount(e.target.value)}
-                            className="mt-1 text-xs"
-                          />
-                          {!balanceValid && <p className="text-red-600 mt-1">Cannot exceed outstanding balance</p>}
-                          <div className="mt-2 pt-2 border-t border-red-200">
-                            <span className="text-gray-500">From:</span>
-                            {balanceSources ? (
-                              <>
-                                {balanceSources.slice(0, 3).map((s) => (
-                                  <div key={s.id} className="flex justify-between text-gray-600">
-                                    <span>&bull; {s.order_number}</span>
-                                    <span>{formatCurrency(Number(s.amount))}</span>
-                                  </div>
-                                ))}
-                                {balanceSources.length > 3 && (
-                                  <div className="text-gray-500">+ {balanceSources.length - 3} more</div>
-                                )}
-                              </>
-                            ) : (
-                              <div className="text-gray-500">Balance of {formatCurrency(absBalance)} on account</div>
-                            )}
-                          </div>
-                        </>
+                      {balanceEntries.length === 0 ? (
+                        <p className="text-xs text-gray-500 py-1">No outstanding balance entries found</p>
+                      ) : (
+                        balanceEntries.map((entry) => (
+                          <label key={entry.ledger_entry_id} className="flex items-center gap-2 py-1">
+                            <input
+                              type="checkbox"
+                              className="accent-green-800"
+                              checked={!!checkedBalances[entry.ledger_entry_id]}
+                              onChange={() => handleToggleBalanceEntry(entry.ledger_entry_id)}
+                            />
+                            <span className="text-xs font-mono text-gray-700">{entry.order_number}</span>
+                            <span className="text-xs font-bold text-red-600 ml-auto">
+                              {formatCurrency(Number(entry.amount))}
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              {new Date(entry.created_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </span>
+                          </label>
+                        ))
+                      )}
+                      {anyBalanceChecked && (
+                        <div className="text-xs text-red-700 font-semibold mt-1">
+                          Settling: {formatCurrency(totalBalanceSettled)}
+                        </div>
                       )}
                     </div>
                   )}
@@ -487,10 +503,10 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                     <span className="text-gray-900">{formatCurrency(totalDue)}</span>
                   </div>
                 )}
-                {!isBalanceSettlement && balanceSettled > 0 && (
+                {!isBalanceSettlement && totalBalanceSettled > 0 && (
                   <div className="flex justify-between text-red-600">
                     <span>Balance Collected</span>
-                    <span>+{formatCurrency(balanceSettled)}</span>
+                    <span>+{formatCurrency(totalBalanceSettled)}</span>
                   </div>
                 )}
                 {!isBalanceSettlement && creditApplied > 0 && (
@@ -633,7 +649,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                 <p className="mt-1">
                   {isBalanceSettlement
                     ? 'Balance settlement transactions must be paid in full.'
-                    : balanceBeingCollectedThisPayment
+                    : anyBalanceChecked
                       ? `Partial payment is not allowed when collecting a customer balance. Please collect the full amount of ${formatCurrency(finalAmount)}.`
                       : 'This transaction must be paid in full.'}
                 </p>
@@ -689,7 +705,8 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
         displayItems={displayItems}
         entries={entries}
         totalDue={totalDue}
-        balanceSettled={balanceSettled}
+        balancesToSettle={balancesToSettle}
+        totalBalanceSettled={totalBalanceSettled}
         creditApplied={creditApplied}
         finalAmount={finalAmount}
         isPartial={confirmMode === 'partial'}

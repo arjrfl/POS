@@ -13,7 +13,8 @@ export function PaymentConfirmationModal({
   displayItems,
   entries,
   totalDue,
-  balanceSettled,
+  balancesToSettle,
+  totalBalanceSettled,
   creditApplied,
   finalAmount,
   isPartial,
@@ -22,6 +23,7 @@ export function PaymentConfirmationModal({
 }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [showAllBalances, setShowAllBalances] = useState(false)
 
   if (!open) return null
 
@@ -57,7 +59,11 @@ export function PaymentConfirmationModal({
     return post(`/transactions/${transaction.id}/pay`, {
       payments,
       credit_applied: creditApplied,
-      balance_settled: balanceSettled,
+      balances_to_settle: balancesToSettle.map((b) => ({
+        source_transaction_id: b.source_transaction_id,
+        ledger_entry_id: b.ledger_entry_id,
+        amount: b.amount,
+      })),
       is_partial: isPartial,
       amount_paid: amountPaid,
     })
@@ -137,23 +143,23 @@ export function PaymentConfirmationModal({
                     <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
                   </tr>
                 ))}
-                {(balanceSettled > 0 || creditApplied > 0) && (
+                {(balancesToSettle.length > 0 || creditApplied > 0) && (
                   <tr>
                     <td colSpan={5} className="border-t-2 border-gray-300 py-1"></td>
                   </tr>
                 )}
-                {balanceSettled > 0 && (
-                  <tr className="border-b border-gray-100 last:border-b-0 align-top">
+                {balancesToSettle.map((b) => (
+                  <tr key={b.ledger_entry_id} className="border-b border-gray-100 last:border-b-0 align-top">
                     <td className="py-2 pl-2 pr-2 text-gray-400">&mdash;</td>
                     <td className="py-2 pr-2 text-gray-400">&mdash;</td>
                     <td className="py-2 pr-2">
                       <div className="font-medium text-gray-900">Balance Settlement</div>
-                      <div className="text-xs text-gray-500">Outstanding Balance</div>
+                      <div className="text-xs text-gray-400">from {b.order_number}</div>
                     </td>
                     <td className="py-2 pr-2 text-gray-400">&mdash;</td>
-                    <td className="py-2 pr-2 font-medium text-red-600">{formatCurrency(balanceSettled)}</td>
+                    <td className="py-2 pr-2 font-medium text-red-600">{formatCurrency(b.amount)}</td>
                   </tr>
-                )}
+                ))}
                 {creditApplied > 0 && (
                   <tr className="border-b border-gray-100 last:border-b-0 align-top">
                     <td className="py-2 pl-2 pr-2 text-gray-400">&mdash;</td>
@@ -220,10 +226,36 @@ export function PaymentConfirmationModal({
                       <span className="text-gray-700">Original Total</span>
                       <span className="text-gray-900">{formatCurrency(totalDue)}</span>
                     </div>
-                    {balanceSettled > 0 && (
-                      <div className="flex justify-between text-red-600">
-                        <span>Balance Collected</span>
-                        <span>+{formatCurrency(balanceSettled)}</span>
+                    {balancesToSettle.length > 0 && (
+                      <div className="flex flex-col gap-0.5">
+                        {balancesToSettle.length <= 2 ? (
+                          balancesToSettle.map((b) => (
+                            <div key={b.ledger_entry_id} className="flex justify-between text-red-600">
+                              <span>{b.order_number}</span>
+                              <span>+{formatCurrency(b.amount)}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <>
+                            <div className="flex justify-between text-red-600">
+                              <button
+                                type="button"
+                                onClick={() => setShowAllBalances((v) => !v)}
+                                className="text-left hover:underline"
+                              >
+                                Balance Settlements ({balancesToSettle.length}) {showAllBalances ? '▲' : '▼'}
+                              </button>
+                              <span>+{formatCurrency(totalBalanceSettled)}</span>
+                            </div>
+                            {showAllBalances &&
+                              balancesToSettle.map((b) => (
+                                <div key={b.ledger_entry_id} className="flex justify-between text-red-600 pl-2 text-xs">
+                                  <span>{b.order_number}</span>
+                                  <span>+{formatCurrency(b.amount)}</span>
+                                </div>
+                              ))}
+                          </>
+                        )}
                       </div>
                     )}
                     {creditApplied > 0 && (

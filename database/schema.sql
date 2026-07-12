@@ -365,10 +365,11 @@ CREATE TABLE payment_detail (
     --         persists through park/unpark cycles
     -- FALSE = confirmed final payment record
 
-    draft_balance_settled DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-    -- Only used on is_draft=TRUE rows
-    -- Stores the balance_settled amount at time of parking
-    -- 0.00 on confirmed (is_draft=FALSE) rows
+    draft_balances_json   TEXT          NULL,
+    -- Only used on is_draft=TRUE rows (first row of a save only)
+    -- JSON-serialized list of {source_transaction_id, ledger_entry_id, amount}
+    -- balance settlements checked at time of parking
+    -- NULL on confirmed rows and non-first draft rows
 
     draft_credit_applied  DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     -- Only used on is_draft=TRUE rows

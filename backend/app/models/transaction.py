@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import Boolean, Computed, DateTime, Enum, ForeignKey, Integer, Numeric, String, func, text
+from sqlalchemy import Boolean, Computed, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -214,9 +214,9 @@ class PaymentDetail(Base):
     # FALSE = confirmed final payment record
     is_draft: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     # Balance/credit checkbox state at time of parking — only meaningful on is_draft=TRUE
-    # rows, and only set on the first draft row of a save (see save_draft_payments); 0.00
+    # rows, and only set on the first draft row of a save (see save_draft_payments); NULL/0.00
     # everywhere else, including all confirmed (is_draft=FALSE) rows.
-    draft_balance_settled: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
+    draft_balances_json: Mapped[Optional[str]] = mapped_column(Text)
     draft_credit_applied: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

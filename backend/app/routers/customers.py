@@ -5,7 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_role
 from app.models.customer import Customer, CustomerStatusEnum
+from app.models.ledger import CustomerLedger, LedgerEntryTypeEnum
+from app.models.transaction import SalesTransaction
 from app.schemas.customer import (
+    CustomerBalanceEntryResponse,
     CustomerCreate,
     CustomerDetailResponse,
     CustomerResponse,
@@ -49,6 +52,35 @@ async def get_customer(customer_id: int, db: AsyncSession = Depends(get_db)):
         entry.order_number = ledger_row.transaction.order_number
     detail.ledger_entries.sort(key=lambda entry: entry.created_at)
     return {"data": detail, "error": None}
+
+
+@router.get("/{customer_id}/balance-entries", dependencies=[Depends(require_role("payment"))])
+async def get_balance_entries(customer_id: int, db: AsyncSession = Depends(get_db)):
+    await _get_customer_or_404(customer_id, db)
+
+    # Simplified view — shows all balance_added entries oldest first, without
+    # subtracting subsequent balance_settled entries per source transaction.
+    stmt = (
+        select(CustomerLedger, SalesTransaction.order_number)
+        .join(SalesTransaction, CustomerLedger.transaction_id == SalesTransaction.id)
+        .where(
+            CustomerLedger.customer_id == customer_id,
+            CustomerLedger.entry_type == LedgerEntryTypeEnum.balance_added,
+        )
+        .order_by(CustomerLedger.created_at.asc())
+    )
+    result = await db.execute(stmt)
+    entries = [
+        CustomerBalanceEntryResponse(
+            ledger_entry_id=entry.id,
+            transaction_id=entry.transaction_id,
+            order_number=order_number,
+            amount=entry.amount,
+            created_at=entry.created_at,
+        )
+        for entry, order_number in result.all()
+    ]
+    return {"data": entries, "error": None}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_role("admin", "receiver"))])

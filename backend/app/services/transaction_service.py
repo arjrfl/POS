@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -20,6 +21,7 @@ from app.models.transaction import (
     TransactionTypeEnum,
 )
 from app.schemas.transaction import (
+    BalanceSettlementItem,
     DraftPaymentEntry,
     PaymentDetailResponse,
     PaymentProcessRequest,
@@ -61,7 +63,7 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
         PaymentDetailResponse.model_validate(pd) for pd in transaction.payment_details if pd.is_draft
     ]
     if response.payment_drafts:
-        response.draft_balance_settled = response.payment_drafts[0].draft_balance_settled
+        response.draft_balances_json = response.payment_drafts[0].draft_balances_json
         response.draft_credit_applied = response.payment_drafts[0].draft_credit_applied
     response.children = [_build_transaction_response(child) for child in transaction.children]
     return response
@@ -541,10 +543,12 @@ async def save_draft_payments(
     entries: list[DraftPaymentEntry],
     user_id: int,
     *,
-    balance_settled: Decimal = Decimal("0.00"),
+    balances_to_settle: list[BalanceSettlementItem] | None = None,
     credit_applied: Decimal = Decimal("0.00"),
 ) -> list[PaymentDetailResponse]:
     """Persist in-progress payment entries so they survive park/unpark cycles and reloads."""
+    balances_to_settle = balances_to_settle or []
+
     transaction = await db.get(SalesTransaction, transaction_id)
     if transaction is None:
         raise ValueError(f"Transaction {transaction_id} not found")
@@ -564,11 +568,25 @@ async def save_draft_payments(
         )
 
         # balance/credit checkbox state is transaction-level, but drafts are
-        # per-row — carried on the first row only (0 on the rest) rather than
-        # adding a separate table for two numbers. If there are no entries yet
+        # per-row — carried on the first row only (NULL/0 on the rest) rather than
+        # adding a separate table for it. If there are no entries yet
         # (balance checked but nothing added), there's no row to carry it on
         # and this state isn't persisted — same limitation as the entries
         # themselves, which also can't survive a park with nothing typed in.
+        balances_json = (
+            json.dumps(
+                [
+                    {
+                        "source_transaction_id": item.source_transaction_id,
+                        "ledger_entry_id": item.ledger_entry_id,
+                        "amount": str(item.amount),
+                    }
+                    for item in balances_to_settle
+                ]
+            )
+            if balances_to_settle
+            else None
+        )
         drafts = [
             PaymentDetail(
                 transaction_id=transaction_id,
@@ -577,7 +595,7 @@ async def save_draft_payments(
                 tendered_amount=entry.tendered_amount,
                 amount=entry.amount,
                 is_draft=True,
-                draft_balance_settled=balance_settled if index == 0 else Decimal("0.00"),
+                draft_balances_json=balances_json if index == 0 else None,
                 draft_credit_applied=credit_applied if index == 0 else Decimal("0.00"),
             )
             for index, entry in enumerate(entries)
@@ -650,16 +668,18 @@ async def process_payment(
 
     customer = await db.get(Customer, transaction.customer_id)
 
-    if transaction.transaction_type == TransactionTypeEnum.balance_settlement and data.balance_settled > 0:
+    if transaction.transaction_type == TransactionTypeEnum.balance_settlement and data.balances_to_settle:
         raise PaymentValidationError(
             "balance_settled for a balance-settlement-only transaction was already fixed at creation"
         )
 
-    if data.balance_settled > 0:
+    total_balance_settled = sum((item.amount for item in data.balances_to_settle), Decimal("0"))
+
+    if total_balance_settled > 0:
         if customer.net_balance >= 0:
             raise PaymentValidationError("customer does not have an outstanding balance")
-        if data.balance_settled > abs(customer.net_balance):
-            raise PaymentValidationError("balance_settled exceeds the customer's outstanding balance")
+        if total_balance_settled > abs(customer.net_balance):
+            raise PaymentValidationError("balances_to_settle exceeds the customer's outstanding balance")
 
     if data.credit_applied > 0:
         if customer.net_balance <= 0:
@@ -669,7 +689,7 @@ async def process_payment(
 
     # balance/credit applied at Payment time shift the amount actually owed —
     # entries must sum to this, not the original total_due
-    final_amount = transaction.total_due + data.balance_settled - data.credit_applied
+    final_amount = transaction.total_due + total_balance_settled - data.credit_applied
 
     amount_paid = sum((payment.amount for payment in data.payments), Decimal("0"))
     # A 1-cent tolerance, not an exact match: the frontend sums these as JS
@@ -685,7 +705,7 @@ async def process_payment(
     if data.is_partial:
         if transaction.transaction_type not in (TransactionTypeEnum.original, TransactionTypeEnum.adjustment):
             raise PaymentValidationError("Partial payment not allowed for balance settlement transactions")
-        if data.balance_settled > 0 or data.credit_applied > 0:
+        if data.balances_to_settle or data.credit_applied > 0:
             raise PaymentValidationError(
                 "Partial payment is not allowed when collecting a customer balance or applying credit"
             )
@@ -740,19 +760,28 @@ async def process_payment(
         if cash_tendered < cash_portion:
             raise PaymentValidationError("cash tendered is less than the cash portion of the amount due")
 
-        if data.balance_settled > 0:
-            customer.net_balance += data.balance_settled
-            db.add(
-                CustomerLedger(
-                    customer_id=customer.id,
-                    transaction_id=transaction.id,
-                    entry_type=LedgerEntryTypeEnum.balance_settled,
-                    amount=data.balance_settled,
-                    running_balance=customer.net_balance,
-                )
+        if data.balances_to_settle:
+            source_ids = {item.source_transaction_id for item in data.balances_to_settle}
+            order_numbers_result = await db.execute(
+                select(SalesTransaction.id, SalesTransaction.order_number).where(SalesTransaction.id.in_(source_ids))
             )
-            transaction.balance_settled = data.balance_settled
-            transaction.total_due += data.balance_settled
+            order_numbers = dict(order_numbers_result.all())
+
+            for item in data.balances_to_settle:
+                customer.net_balance += item.amount
+                source_order_number = order_numbers.get(item.source_transaction_id, item.source_transaction_id)
+                db.add(
+                    CustomerLedger(
+                        customer_id=customer.id,
+                        transaction_id=transaction.id,
+                        entry_type=LedgerEntryTypeEnum.balance_settled,
+                        amount=item.amount,
+                        running_balance=customer.net_balance,
+                        notes=f"Settled from transaction {source_order_number}",
+                    )
+                )
+            transaction.balance_settled = total_balance_settled
+            transaction.total_due += total_balance_settled
 
         if data.credit_applied > 0:
             customer.net_balance -= data.credit_applied

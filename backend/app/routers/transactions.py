@@ -209,7 +209,7 @@ async def save_draft_payments(
             transaction_id,
             payload.entries,
             current_user["user_id"],
-            balance_settled=payload.balance_settled,
+            balances_to_settle=payload.draft_balances_to_settle,
             credit_applied=payload.credit_applied,
         )
     except ValueError as exc:
