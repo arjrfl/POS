@@ -45,6 +45,8 @@ async def get_customer(customer_id: int, db: AsyncSession = Depends(get_db)):
     customer = await _get_customer_or_404(customer_id, db)
 
     detail = CustomerDetailResponse.model_validate(customer)
+    for entry, ledger_row in zip(detail.ledger_entries, customer.ledger_entries):
+        entry.order_number = ledger_row.transaction.order_number
     detail.ledger_entries.sort(key=lambda entry: entry.created_at)
     return {"data": detail, "error": None}
 

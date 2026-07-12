@@ -37,6 +37,10 @@ class CustomerLedgerEntryResponse(BaseModel):
 
     id: int
     transaction_id: int
+    # not on the CustomerLedger row itself — no matching ORM attribute for
+    # from_attributes to pick up, so this always needs the default here and
+    # is filled in by the router from the (already eager-loaded) transaction
+    order_number: str = ""
     entry_type: LedgerEntryTypeEnum
     amount: Decimal
     running_balance: Decimal

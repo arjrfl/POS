@@ -213,6 +213,11 @@ class PaymentDetail(Base):
     # TRUE  = entered during payment process, not yet confirmed (persists through park/unpark)
     # FALSE = confirmed final payment record
     is_draft: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # Balance/credit checkbox state at time of parking — only meaningful on is_draft=TRUE
+    # rows, and only set on the first draft row of a save (see save_draft_payments); 0.00
+    # everywhere else, including all confirmed (is_draft=FALSE) rows.
+    draft_balance_settled: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
+    draft_credit_applied: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     transaction: Mapped["SalesTransaction"] = relationship(back_populates="payment_details", lazy="selectin")

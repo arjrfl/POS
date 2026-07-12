@@ -137,6 +137,35 @@ export function PaymentConfirmationModal({
                     <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
                   </tr>
                 ))}
+                {(balanceSettled > 0 || creditApplied > 0) && (
+                  <tr>
+                    <td colSpan={5} className="border-t-2 border-gray-300 py-1"></td>
+                  </tr>
+                )}
+                {balanceSettled > 0 && (
+                  <tr className="border-b border-gray-100 last:border-b-0 align-top">
+                    <td className="py-2 pl-2 pr-2 text-gray-400">&mdash;</td>
+                    <td className="py-2 pr-2 text-gray-400">&mdash;</td>
+                    <td className="py-2 pr-2">
+                      <div className="font-medium text-gray-900">Balance Settlement</div>
+                      <div className="text-xs text-gray-500">Outstanding Balance</div>
+                    </td>
+                    <td className="py-2 pr-2 text-gray-400">&mdash;</td>
+                    <td className="py-2 pr-2 font-medium text-red-600">{formatCurrency(balanceSettled)}</td>
+                  </tr>
+                )}
+                {creditApplied > 0 && (
+                  <tr className="border-b border-gray-100 last:border-b-0 align-top">
+                    <td className="py-2 pl-2 pr-2 text-gray-400">&mdash;</td>
+                    <td className="py-2 pr-2 text-gray-400">&mdash;</td>
+                    <td className="py-2 pr-2">
+                      <div className="font-medium text-gray-900">Credit Applied</div>
+                      <div className="text-xs text-gray-500">Account Credit</div>
+                    </td>
+                    <td className="py-2 pr-2 text-gray-400">&mdash;</td>
+                    <td className="py-2 pr-2 font-medium text-green-700">-{formatCurrency(creditApplied)}</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

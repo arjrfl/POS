@@ -52,6 +52,10 @@ class DraftPaymentEntry(BaseModel):
 
 class DraftPaymentSaveRequest(BaseModel):
     entries: list[DraftPaymentEntry]
+    # balance/credit checkbox state — sent once per save (not per entry row),
+    # stored on the first draft row; see save_draft_payments
+    balance_settled: Decimal = Decimal("0.00")
+    credit_applied: Decimal = Decimal("0.00")
 
 
 # =============================================================
@@ -85,6 +89,8 @@ class PaymentDetailResponse(BaseModel):
     tendered_amount: Decimal | None
     amount: Decimal
     is_draft: bool
+    draft_balance_settled: Decimal
+    draft_credit_applied: Decimal
     created_at: datetime
 
 
@@ -137,6 +143,11 @@ class TransactionResponse(BaseModel):
     # No matching ORM attribute exists (payment_details covers both under the hood), so this
     # always needs a default here and is filled in by _build_transaction_response afterward.
     payment_drafts: list[PaymentDetailResponse] = []
+    # Balance/credit checkbox state carried by the draft rows above (read off the first
+    # one) — surfaced at the transaction level so the frontend doesn't need to know which
+    # draft row it lives on. 0 when there are no drafts, or none was checked when parked.
+    draft_balance_settled: Decimal = Decimal("0")
+    draft_credit_applied: Decimal = Decimal("0")
     children: list["TransactionResponse"]
 
 

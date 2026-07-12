@@ -60,6 +60,9 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
     response.payment_drafts = [
         PaymentDetailResponse.model_validate(pd) for pd in transaction.payment_details if pd.is_draft
     ]
+    if response.payment_drafts:
+        response.draft_balance_settled = response.payment_drafts[0].draft_balance_settled
+        response.draft_credit_applied = response.payment_drafts[0].draft_credit_applied
     response.children = [_build_transaction_response(child) for child in transaction.children]
     return response
 
@@ -533,7 +536,13 @@ async def unpark_transaction(db: AsyncSession, transaction_id: int, user_id: int
 
 
 async def save_draft_payments(
-    db: AsyncSession, transaction_id: int, entries: list[DraftPaymentEntry], user_id: int
+    db: AsyncSession,
+    transaction_id: int,
+    entries: list[DraftPaymentEntry],
+    user_id: int,
+    *,
+    balance_settled: Decimal = Decimal("0.00"),
+    credit_applied: Decimal = Decimal("0.00"),
 ) -> list[PaymentDetailResponse]:
     """Persist in-progress payment entries so they survive park/unpark cycles and reloads."""
     transaction = await db.get(SalesTransaction, transaction_id)
@@ -554,6 +563,12 @@ async def save_draft_payments(
             )
         )
 
+        # balance/credit checkbox state is transaction-level, but drafts are
+        # per-row — carried on the first row only (0 on the rest) rather than
+        # adding a separate table for two numbers. If there are no entries yet
+        # (balance checked but nothing added), there's no row to carry it on
+        # and this state isn't persisted — same limitation as the entries
+        # themselves, which also can't survive a park with nothing typed in.
         drafts = [
             PaymentDetail(
                 transaction_id=transaction_id,
@@ -562,8 +577,10 @@ async def save_draft_payments(
                 tendered_amount=entry.tendered_amount,
                 amount=entry.amount,
                 is_draft=True,
+                draft_balance_settled=balance_settled if index == 0 else Decimal("0.00"),
+                draft_credit_applied=credit_applied if index == 0 else Decimal("0.00"),
             )
-            for entry in entries
+            for index, entry in enumerate(entries)
         ]
         db.add_all(drafts)
 
@@ -668,6 +685,10 @@ async def process_payment(
     if data.is_partial:
         if transaction.transaction_type not in (TransactionTypeEnum.original, TransactionTypeEnum.adjustment):
             raise PaymentValidationError("Partial payment not allowed for balance settlement transactions")
+        if data.balance_settled > 0 or data.credit_applied > 0:
+            raise PaymentValidationError(
+                "Partial payment is not allowed when collecting a customer balance or applying credit"
+            )
         if amount_paid <= 0:
             raise PaymentValidationError("Payment amount must be greater than zero")
         if amount_paid >= final_amount:

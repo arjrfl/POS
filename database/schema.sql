@@ -364,6 +364,17 @@ CREATE TABLE payment_detail (
     -- TRUE  = entered during payment process, not yet confirmed
     --         persists through park/unpark cycles
     -- FALSE = confirmed final payment record
+
+    draft_balance_settled DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    -- Only used on is_draft=TRUE rows
+    -- Stores the balance_settled amount at time of parking
+    -- 0.00 on confirmed (is_draft=FALSE) rows
+
+    draft_credit_applied  DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    -- Only used on is_draft=TRUE rows
+    -- Stores the credit_applied amount at time of parking
+    -- 0.00 on confirmed (is_draft=FALSE) rows
+
     created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 

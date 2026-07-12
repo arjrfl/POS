@@ -205,7 +205,12 @@ async def save_draft_payments(
 ):
     try:
         drafts = await transaction_service.save_draft_payments(
-            db, transaction_id, payload.entries, current_user["user_id"]
+            db,
+            transaction_id,
+            payload.entries,
+            current_user["user_id"],
+            balance_settled=payload.balance_settled,
+            credit_applied=payload.credit_applied,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
