@@ -50,12 +50,15 @@ export function WeightConfirmForm({ transaction, onConfirm, submitting }) {
           return (
             <div key={item.id} className="border border-gray-200 rounded-md p-3 flex flex-col gap-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-gray-900">{product?.product_name ?? `Product #${item.product_id}`}</span>
+                <div>
+                  <span className="font-medium text-gray-900">{product?.product_name ?? `Product #${item.product_id}`}</span>
+                  {product?.brand_name && <div className="text-xs text-gray-500">{product.brand_name}</div>}
+                </div>
                 <span className="text-gray-500">{formatCurrency(item.unit_price)}/kg</span>
               </div>
               <div className="flex items-end gap-3">
                 <div className="text-sm text-gray-500">
-                  Estimated
+                  Estimated weight
                   <div className="font-medium text-gray-700">{item.estimated_weight_kg}kg</div>
                 </div>
                 <Input
@@ -64,6 +67,7 @@ export function WeightConfirmForm({ transaction, onConfirm, submitting }) {
                   type="number"
                   step="0.001"
                   min="0"
+                  placeholder="0.000"
                   value={weights[item.id] ?? ''}
                   onChange={(e) => handleWeightChange(item.id, e.target.value)}
                   className="w-28"

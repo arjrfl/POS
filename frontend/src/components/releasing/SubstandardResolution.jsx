@@ -21,12 +21,20 @@ export function SubstandardResolution({ transaction, customer, onResolve, submit
   }, [isAutoCase])
 
   if (balanceDue === 0) {
-    return <p className="text-sm font-medium text-green-700">Exact weight — Transaction complete</p>
+    return (
+      <div className="bg-green-50 border border-green-300 rounded-md p-3 text-sm text-green-800">
+        <p className="font-semibold">Exact weight ✓</p>
+      </div>
+    )
   }
 
   if (balanceDue > 0) {
     if (hasEnoughCredit) {
-      return <p className="text-sm font-medium text-green-700">Credit auto-applied from customer balance</p>
+      return (
+        <div className="bg-green-50 border border-green-300 rounded-md p-3 text-sm text-green-800">
+          <p className="font-semibold">Credit auto-applied ✓</p>
+        </div>
+      )
     }
     if (!customer) {
       return <p className="text-sm text-gray-500">Checking customer balance...</p>
@@ -34,14 +42,15 @@ export function SubstandardResolution({ transaction, customer, onResolve, submit
 
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-sm font-medium text-gray-900">
-          Actual weight is heavier. Customer owes {formatCurrency(balanceDue)}
-        </p>
+        <div className="bg-yellow-50 border border-yellow-300 rounded-md p-3 text-sm text-yellow-800">
+          <p className="font-semibold">Item is heavier than estimated</p>
+          <p className="mt-1">Customer owes {formatCurrency(balanceDue)} extra</p>
+        </div>
         <div className="flex gap-2">
           <Button className="flex-1" disabled={submitting} onClick={() => onResolve('pay_now')}>
             Customer Pays Now
           </Button>
-          <Button variant="secondary" className="flex-1" disabled={submitting} onClick={() => onResolve('utang')}>
+          <Button variant="warning" className="flex-1" disabled={submitting} onClick={() => onResolve('utang')}>
             Save as Balance
           </Button>
         </div>
@@ -51,14 +60,15 @@ export function SubstandardResolution({ transaction, customer, onResolve, submit
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm font-medium text-gray-900">
-        Actual weight is lighter. Store owes {formatCurrency(Math.abs(balanceDue))}
-      </p>
+      <div className="bg-blue-50 border border-blue-300 rounded-md p-3 text-sm text-blue-800">
+        <p className="font-semibold">Item is lighter than estimated</p>
+        <p className="mt-1">Store owes customer {formatCurrency(Math.abs(balanceDue))}</p>
+      </div>
       <div className="flex gap-2">
         <Button className="flex-1" disabled={submitting} onClick={() => onResolve('refund_now')}>
           Refund Customer Now
         </Button>
-        <Button variant="secondary" className="flex-1" disabled={submitting} onClick={() => onResolve('save_credit')}>
+        <Button variant="warning" className="flex-1" disabled={submitting} onClick={() => onResolve('save_credit')}>
           Save as Credit
         </Button>
       </div>

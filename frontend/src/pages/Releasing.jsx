@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { PageLayout } from '../components/layout/PageLayout'
 import { useReleasingQueue } from '../hooks/useQueue'
 import { QueuePanel } from '../components/releasing/QueuePanel'
 import { ReleaseProcessor } from '../components/releasing/ReleaseProcessor'
-import { Card } from '../components/ui/Card'
+import { Toast } from '../components/ui/Toast'
 import { post } from '../services/api'
 
 export default function Releasing() {
@@ -13,12 +13,18 @@ export default function Releasing() {
 
   const [selectedTransaction, setSelectedTransaction] = useState(null)
   const [submitting, setSubmitting] = useState(false)
-  const [statusMessage, setStatusMessage] = useState(null)
+  const [toast, setToast] = useState(null)
+  const toastTimerRef = useRef(null)
 
   const refreshQueue = () => queryClient.invalidateQueries({ queryKey: ['transactions'] })
 
+  const showToast = (message, variant = 'info') => {
+    window.clearTimeout(toastTimerRef.current)
+    setToast({ message, variant })
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 3500)
+  }
+
   const handleProcess = async (transaction) => {
-    setStatusMessage(null)
     try {
       // A parked transaction isn't 'waiting', so /grab would reject it — /unpark
       // is the equivalent reclaim action for anything already parked.
@@ -27,7 +33,10 @@ export default function Releasing() {
       setSelectedTransaction(grabbed)
       refreshQueue()
     } catch (err) {
-      window.alert(err.message)
+      showToast(
+        err.status === 409 ? 'This transaction is already being processed by another team member' : err.message,
+        'error',
+      )
     }
   }
 
@@ -36,10 +45,10 @@ export default function Releasing() {
     try {
       await post(`/transactions/${selectedTransaction.id}/confirm-ready`)
       setSelectedTransaction(null)
-      setStatusMessage('Transaction sent to Payment team')
+      showToast('Order sent to Payment team', 'success')
       refreshQueue()
     } catch (err) {
-      window.alert(err.message)
+      showToast(err.message, 'error')
     } finally {
       setSubmitting(false)
     }
@@ -53,7 +62,7 @@ export default function Releasing() {
       // reacts to that and swaps the weight form for the substandard-resolution step.
       setSelectedTransaction(confirmed)
     } catch (err) {
-      window.alert(err.message)
+      showToast(err.message, 'error')
     } finally {
       setSubmitting(false)
     }
@@ -66,10 +75,10 @@ export default function Releasing() {
       setSelectedTransaction(null)
       // A pay_now/refund_now outcome spins off a child pushed to Payment; every
       // other outcome (including both auto-resolve paths) finishes right here.
-      setStatusMessage(resolved.children?.length > 0 ? 'Sent to Payment queue' : 'Transaction complete')
+      showToast(resolved.children?.length > 0 ? 'Sent to Payment queue' : 'Transaction complete', 'success')
       refreshQueue()
     } catch (err) {
-      window.alert(err.message)
+      showToast(err.message, 'error')
     } finally {
       setSubmitting(false)
     }
@@ -77,34 +86,38 @@ export default function Releasing() {
 
   return (
     <PageLayout title="Releasing Queue">
-      {statusMessage && (
-        <div className="mb-4 px-4 py-2 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm flex items-center justify-between">
-          <span>{statusMessage}</span>
-          <button
-            onClick={() => setStatusMessage(null)}
-            className="text-green-600 hover:text-green-800"
-            aria-label="Dismiss"
+      <div className="h-full flex gap-6 min-h-0">
+        <div className="flex-[60] h-full min-h-0 flex flex-col">
+          <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Queue</span>
+          <div
+            className={`flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 ${
+              selectedTransaction ? 'opacity-50 pointer-events-none' : ''
+            }`}
           >
-            &#10005;
-          </button>
+            {selectedTransaction && (
+              <div className="mb-3 px-3 py-2 rounded-md bg-yellow-100 text-sm text-amber-800">
+                Finish the current transaction before processing another.
+              </div>
+            )}
+            <QueuePanel transactions={data?.items ?? []} isLoading={isLoading} onProcess={handleProcess} />
+          </div>
         </div>
-      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <QueuePanel transactions={data?.items ?? []} isLoading={isLoading} onProcess={handleProcess} />
-        </Card>
-
-        {selectedTransaction && (
-          <ReleaseProcessor
-            transaction={selectedTransaction}
-            onConfirmReady={handleConfirmReady}
-            onConfirmWeights={handleConfirmWeights}
-            onResolve={handleResolve}
-            submitting={submitting}
-          />
-        )}
+        <div className="flex-[40] h-full min-h-0 flex flex-col">
+          <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Order Details</span>
+          <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-3">
+            <ReleaseProcessor
+              transaction={selectedTransaction}
+              onConfirmReady={handleConfirmReady}
+              onConfirmWeights={handleConfirmWeights}
+              onResolve={handleResolve}
+              submitting={submitting}
+            />
+          </div>
+        </div>
       </div>
+
+      <Toast toast={toast} />
     </PageLayout>
   )
 }
