@@ -111,6 +111,10 @@ class TransactionResponse(BaseModel):
     order_number: str
 
     parent_transaction_id: int | None
+    # order_number of the parent, when this is an adjustment/refund child — no
+    # matching ORM attribute (would require a join), so this always needs the
+    # default here and is filled in by _build_transaction_response afterward.
+    parent_order_number: str | None = None
     transaction_type: TransactionTypeEnum
     transaction_status: TransactionStatusEnum
     customer_type: CustomerTypeEnum
@@ -196,8 +200,9 @@ class TransactionItemsEditRequest(BaseModel):
 
 
 class SubstandardOutcomeRequest(BaseModel):
-    # only relevant when balance_due != 0
-    outcome: Literal["pay_now", "utang", "refund_now", "save_credit"]
+    # Releasing makes no financial decision anymore — the only action is to
+    # hand the variance to Payment, which then decides how to collect/refund it.
+    outcome: Literal["send_to_payment"] = "send_to_payment"
 
 
 class PaymentProcessItem(BaseModel):

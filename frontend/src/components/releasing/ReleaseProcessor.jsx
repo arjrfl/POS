@@ -1,22 +1,48 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useProducts } from '../../hooks/useProducts'
-import { WeightConfirmForm } from './WeightConfirmForm'
+import { ItemEditModal } from './ItemEditModal'
 import { SubstandardResolution } from './SubstandardResolution'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 
+const ROW_STATUS_STYLE = {
+  exact: 'bg-green-50 border-l-4 border-l-green-400',
+  heavier: 'bg-yellow-50 border-l-4 border-l-yellow-400',
+  lighter: 'bg-blue-50 border-l-4 border-l-blue-400',
+}
+
+const DOT_COLOR = {
+  exact: 'bg-green-500',
+  heavier: 'bg-yellow-500',
+  lighter: 'bg-blue-500',
+}
+
+function PencilIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      <path d="m15 5 4 4" />
+    </svg>
+  )
+}
+
 export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights, onResolve, submitting }) {
   const { data: customer } = useCustomer(transaction?.customer_id)
   const { data: products } = useProducts()
 
+  // itemStatuses/itemActualWeights are keyed by transaction_item_id and reset
+  // whenever a different transaction is selected — Releasing.jsx remounts this
+  // component (key={transaction.id}) precisely so this local state can't leak
+  // between transactions.
+  const [itemStatuses, setItemStatuses] = useState({})
+  const [itemActualWeights, setItemActualWeights] = useState({})
+  const [editingItemId, setEditingItemId] = useState(null)
+  const [reEditConfirmId, setReEditConfirmId] = useState(null)
+
   const productsById = useMemo(() => new Map((products ?? []).map((p) => [p.id, p])), [products])
-  // Same dual-display as before restyling: product items get their own read-only
-  // row here AND their own weight-input card further down — balance_settlement/
-  // credit_usage items (if any, on a mixed original order) are excluded, matching
-  // Payment's order-details table which is product-only too.
   const displayItems = useMemo(() => {
     if (!transaction) return []
     return transaction.items
@@ -29,11 +55,48 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
           brand_name: product?.brand_name ?? null,
           unit_count: item.unit_count,
           quantity_kg: Number(item.quantity_kg),
+          estimated_weight_kg: item.estimated_weight_kg,
           unit_price: Number(item.unit_price),
           subtotal: Number(item.subtotal),
         }
       })
   }, [transaction, productsById])
+
+  const isOnline = transaction?.customer_type === 'online'
+  const weightConfirmed = transaction?.actual_amount != null
+  const balanceDue = weightConfirmed ? Number(transaction.balance_due) : null
+  const allItemsConfirmed = displayItems.length > 0 && displayItems.every((item) => itemStatuses[item.id])
+
+  // Fires once every row has been confirmed locally, and again any time a
+  // confirmed item is re-edited afterward — no permanent lock, so the batch
+  // sent to /confirm-weight always reflects the latest weights. The signature
+  // guard (not just allItemsConfirmed) is what makes re-edits actually resend:
+  // allItemsConfirmed stays true across a re-edit, but the payload changes.
+  const lastSentRef = useRef(null)
+  useEffect(() => {
+    if (!allItemsConfirmed || submitting) return
+    const payload = displayItems.map((item) => ({
+      transaction_item_id: item.id,
+      actual_weight_kg: String(itemActualWeights[item.id]),
+    }))
+    const signature = JSON.stringify(payload)
+    if (lastSentRef.current === signature) return
+    lastSentRef.current = signature
+    onConfirmWeights(payload)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allItemsConfirmed, itemActualWeights, submitting])
+
+  // Exact weight has nothing for either team to decide — auto-resolve the
+  // instant confirm-weight responds with balance_due === 0. Guarded by a ref
+  // (not just a submitting check) because StrictMode double-invokes effects
+  // in dev, which would otherwise fire this mutating call twice.
+  const autoResolvedRef = useRef(false)
+  useEffect(() => {
+    if (balanceDue !== 0 || autoResolvedRef.current) return
+    autoResolvedRef.current = true
+    onResolve('Transaction complete ✓')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [balanceDue])
 
   if (!transaction) {
     return (
@@ -43,9 +106,22 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
     )
   }
 
-  const isOnline = transaction.customer_type === 'online'
-  const weightConfirmed = transaction.actual_amount != null
   const typeBadge = CUSTOMER_TYPE_BADGE[transaction.customer_type]
+  const editingItem = displayItems.find((item) => item.id === editingItemId) ?? null
+
+  const handleConfirmItem = (itemId, actualWeight, status) => {
+    setItemActualWeights((prev) => ({ ...prev, [itemId]: actualWeight }))
+    setItemStatuses((prev) => ({ ...prev, [itemId]: status }))
+    setEditingItemId(null)
+  }
+
+  const handleEditClick = (item) => {
+    if (itemStatuses[item.id]) {
+      setReEditConfirmId(item.id)
+    } else {
+      setEditingItemId(item.id)
+    }
+  }
 
   return (
     <Card className="flex flex-col gap-4">
@@ -74,21 +150,75 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
                 <th className="py-2 pr-2 font-medium">ARTICLES</th>
                 <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
                 <th className="py-2 pr-2 font-medium">AMOUNT</th>
+                {!isOnline && <th className="py-2 pl-1"></th>}
               </tr>
             </thead>
             <tbody>
-              {displayItems.map((item) => (
-                <tr key={item.id} className="border-b border-gray-100 last:border-b-0 align-top">
-                  <td className="py-2 pr-2 text-gray-700">{item.quantity_kg.toFixed(3)}</td>
-                  <td className="py-2 pr-2 text-gray-700">{item.unit_count}</td>
-                  <td className="py-2 pr-2">
-                    <div className="font-medium text-gray-900">{item.product_name}</div>
-                    {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
-                  </td>
-                  <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
-                  <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
-                </tr>
-              ))}
+              {displayItems.map((item) => {
+                const status = itemStatuses[item.id]
+                return (
+                  <tr
+                    key={item.id}
+                    className={`border-b border-gray-100 last:border-b-0 align-top ${ROW_STATUS_STYLE[status] ?? 'bg-white'}`}
+                  >
+                    <td className="py-2 pr-2 text-gray-700">{item.quantity_kg.toFixed(3)}</td>
+                    <td className="py-2 pr-2 text-gray-700">{item.unit_count}</td>
+                    <td className="py-2 pr-2">
+                      <div className="font-medium text-gray-900">{item.product_name}</div>
+                      {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
+                    </td>
+                    <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
+                    <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
+                    {!isOnline && (
+                      <td className="py-2 pl-1 relative">
+                        <div className="flex items-center gap-1.5 justify-end">
+                          {status && (
+                            <span className={`w-2 h-2 rounded-full ${DOT_COLOR[status]}`} aria-hidden="true" />
+                          )}
+                          <button
+                            type="button"
+                            disabled={submitting}
+                            onClick={() => handleEditClick(item)}
+                            className="text-gray-500 hover:text-primary disabled:opacity-40"
+                            aria-label={`Edit ${item.product_name}`}
+                          >
+                            <PencilIcon />
+                          </button>
+                        </div>
+
+                        {reEditConfirmId === item.id && (
+                          <div className="absolute right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-md shadow-lg p-2 text-xs whitespace-nowrap">
+                            <p className="text-gray-700 mb-1.5">
+                              This item is already confirmed.
+                              <br />
+                              Edit it again?
+                            </p>
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setReEditConfirmId(null)
+                                  setEditingItemId(item.id)
+                                }}
+                                className="px-2 py-1 rounded bg-primary text-white hover:bg-primary-dark"
+                              >
+                                Yes, Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setReEditConfirmId(null)}
+                                className="px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
@@ -105,16 +235,30 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
             {submitting ? 'Confirming...' : '✓ Confirm Items Ready'}
           </Button>
         ) : weightConfirmed ? (
-          <SubstandardResolution
-            transaction={transaction}
-            customer={customer}
-            onResolve={onResolve}
-            submitting={submitting}
-          />
+          balanceDue === 0 ? (
+            <div className="bg-green-50 border border-green-300 rounded-md p-3 text-sm text-green-800">
+              <p className="font-semibold">Exact weight ✓</p>
+            </div>
+          ) : (
+            <SubstandardResolution
+              transaction={transaction}
+              onSendToPayment={() => onResolve('Sent to Payment team')}
+              submitting={submitting}
+            />
+          )
         ) : (
-          <WeightConfirmForm transaction={transaction} onConfirm={onConfirmWeights} submitting={submitting} />
+          allItemsConfirmed && <p className="text-sm text-gray-500 text-center">Confirming weights...</p>
         )}
       </div>
+
+      {editingItem && (
+        <ItemEditModal
+          item={editingItem}
+          initialWeight={itemActualWeights[editingItem.id]}
+          onConfirm={handleConfirmItem}
+          onCancel={() => setEditingItemId(null)}
+        />
+      )}
     </Card>
   )
 }

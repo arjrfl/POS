@@ -81,8 +81,11 @@ async def list_transactions(
         # visible to every receiver, not just whoever created it
         walkin_user_id = current_user["user_id"]
         include_pending_edit = True
-    elif role_name in transaction_service.ROLE_QUEUE_STATUS:
-        status_filter = transaction_service.ROLE_QUEUE_STATUS[role_name]
+    elif role_name in transaction_service.ROLE_QUEUE_LIST_STATUSES:
+        # a list even for single-status roles — list_transactions accepts either
+        # and this keeps one code path for the "releasing also sees
+        # pending_adjustment" case instead of special-casing just that role
+        status_filter = transaction_service.ROLE_QUEUE_LIST_STATUSES[role_name]
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
 

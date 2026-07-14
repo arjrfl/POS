@@ -49,6 +49,12 @@ from app.websocket.manager import manager
 # default — they need to be requested explicitly at query time, recursion_depth=-1
 # follows the parent/child chain to whatever depth actually exists
 _WITH_CHILDREN = selectinload(SalesTransaction.children, recursion_depth=-1)
+# _build_transaction_response reads transaction.parent synchronously (no parent_transaction_id
+# means it short-circuits without a query, but adjustment/refund children do have one) —
+# without eager-loading it here too, that access fails with MissingGreenlet outside the
+# async context whenever a root query result (not reached via someone else's already-loaded
+# .children) actually has a parent.
+_WITH_PARENT = selectinload(SalesTransaction.parent)
 
 
 def _build_transaction_response(transaction: SalesTransaction) -> TransactionResponse:
@@ -65,15 +71,28 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
     if response.payment_drafts:
         response.draft_balances_json = response.payment_drafts[0].draft_balances_json
         response.draft_credit_applied = response.payment_drafts[0].draft_credit_applied
+    response.parent_order_number = transaction.parent.order_number if transaction.parent else None
     response.children = [_build_transaction_response(child) for child in transaction.children]
     return response
 
 # transaction_status a role's queue is filtered to — payment and releasing each
-# own exactly one phase; receiver and admin aren't queue-scoped this way
+# own exactly one phase; receiver and admin aren't queue-scoped this way.
+# Used for /grab's required-status check, which only ever matches a single,
+# genuinely grabbable status (pending_adjustment cards are read-only, so
+# releasing's grabbable status here stays singular).
 ROLE_QUEUE_STATUS: dict[str, TransactionStatusEnum] = {
     "payment": TransactionStatusEnum.pending_payment,
     "releasing": TransactionStatusEnum.pending_settlement,
     "receiver": TransactionStatusEnum.pending_edit,
+}
+
+# statuses a role's queue LIST view includes — separate from ROLE_QUEUE_STATUS
+# because releasing's list also surfaces pending_adjustment cards (awaiting
+# Payment's resolution) even though those aren't grabbable
+ROLE_QUEUE_LIST_STATUSES: dict[str, list[TransactionStatusEnum]] = {
+    "payment": [TransactionStatusEnum.pending_payment],
+    "releasing": [TransactionStatusEnum.pending_settlement, TransactionStatusEnum.pending_adjustment],
+    "receiver": [TransactionStatusEnum.pending_edit],
 }
 
 
@@ -281,7 +300,7 @@ async def get_transaction(db: AsyncSession, transaction_id: int) -> TransactionR
     result = await db.execute(
         select(SalesTransaction)
         .where(SalesTransaction.id == transaction_id)
-        .options(_WITH_CHILDREN)
+        .options(_WITH_CHILDREN, _WITH_PARENT)
         .execution_options(populate_existing=True)
     )
     transaction = result.scalar_one_or_none()
@@ -301,7 +320,7 @@ async def get_transaction_chain(db: AsyncSession, transaction_id: int) -> list[T
         select(SalesTransaction)
         .where(or_(SalesTransaction.id == root_id, SalesTransaction.parent_transaction_id == root_id))
         .order_by(SalesTransaction.id)
-        .options(_WITH_CHILDREN)
+        .options(_WITH_CHILDREN, _WITH_PARENT)
         .execution_options(populate_existing=True)
     )
     chain = result.scalars().all()
@@ -313,7 +332,7 @@ async def list_transactions(
     *,
     page: int = 1,
     page_size: int = 20,
-    transaction_status: TransactionStatusEnum | None = None,
+    transaction_status: TransactionStatusEnum | list[TransactionStatusEnum] | None = None,
     queue_status: QueueStatusEnum | None = None,
     customer_type: CustomerTypeEnum | None = None,
     customer_id: int | None = None,
@@ -325,7 +344,10 @@ async def list_transactions(
 ) -> TransactionListResponse:
     filters = []
     if transaction_status is not None:
-        filters.append(SalesTransaction.transaction_status == transaction_status)
+        if isinstance(transaction_status, list):
+            filters.append(SalesTransaction.transaction_status.in_(transaction_status))
+        else:
+            filters.append(SalesTransaction.transaction_status == transaction_status)
     if queue_status is not None:
         filters.append(SalesTransaction.queue_status == queue_status)
     if processing_by_user_id is not None:
@@ -361,7 +383,7 @@ async def list_transactions(
         .order_by(SalesTransaction.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
-        .options(_WITH_CHILDREN)
+        .options(_WITH_CHILDREN, _WITH_PARENT)
         .execution_options(populate_existing=True)
     )
     items = result.scalars().all()
@@ -858,6 +880,20 @@ async def process_payment(
 
         _record_status_change_audit(db, transaction, payment_user_id, old_transaction_status, old_queue_status)
 
+        # An adjustment/refund child reaching a terminal state here means Payment
+        # has finished handling the weight variance — release the parent's own
+        # read-only hold on Releasing's queue (pending_adjustment) too.
+        parent: SalesTransaction | None = None
+        if transaction.parent_transaction_id is not None:
+            candidate = await db.get(SalesTransaction, transaction.parent_transaction_id)
+            if candidate is not None and candidate.transaction_status == TransactionStatusEnum.pending_adjustment:
+                parent = candidate
+                parent_old_status = parent.transaction_status.value
+                parent_old_queue = parent.queue_status.value
+                parent.transaction_status = TransactionStatusEnum.completed
+                parent.queue_status = QueueStatusEnum.done
+                _record_status_change_audit(db, parent, payment_user_id, parent_old_status, parent_old_queue)
+
         await db.commit()
     except Exception:
         await db.rollback()
@@ -870,6 +906,15 @@ async def process_payment(
         customer_type=transaction.customer_type.value,
     )
     await manager.broadcast_multi(rooms, event)
+
+    if parent is not None:
+        parent_rooms, parent_event = transaction_status_changed(
+            transaction_id=parent.id,
+            old_status=TransactionStatusEnum.pending_adjustment.value,
+            new_status=parent.transaction_status.value,
+            customer_type=parent.customer_type.value,
+        )
+        await manager.broadcast_multi(parent_rooms, parent_event)
 
     return await get_transaction(db, transaction.id)
 
@@ -1024,143 +1069,56 @@ async def resolve_substandard(
         raise QueueConflictError(f"transaction {transaction_id} has no confirmed weight yet")
 
     balance_due = transaction.balance_due
-    customer = await db.get(Customer, transaction.customer_id)
-
+    old_status = transaction.transaction_status.value
+    old_queue = transaction.queue_status.value
     child: SalesTransaction | None = None
 
     try:
         if balance_due == 0:
-            old_status, old_queue = transaction.transaction_status.value, transaction.queue_status.value
+            # Exact weight — nothing for either team to decide.
             transaction.transaction_status = TransactionStatusEnum.completed
             transaction.queue_status = QueueStatusEnum.done
-            transaction.processing_by_user_id = None
-            transaction.processing_started_at = None
-            _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
-
         elif balance_due > 0:
-            if customer.net_balance >= balance_due:
-                old_status, old_queue = transaction.transaction_status.value, transaction.queue_status.value
-                customer.net_balance -= balance_due
-                db.add(
-                    CustomerLedger(
-                        customer_id=customer.id,
-                        transaction_id=transaction.id,
-                        entry_type=LedgerEntryTypeEnum.credit_auto_used,
-                        amount=balance_due,
-                        running_balance=customer.net_balance,
-                    )
-                )
-                transaction.transaction_status = TransactionStatusEnum.completed
-                transaction.queue_status = QueueStatusEnum.done
-                transaction.processing_by_user_id = None
-                transaction.processing_started_at = None
-                _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
-
-            elif data.outcome == "pay_now":
-                child = await _create_adjustment_child(
-                    db, transaction, TransactionTypeEnum.adjustment, balance_due, releasing_user_id
-                )
-                old_status, old_queue = transaction.transaction_status.value, transaction.queue_status.value
-                transaction.transaction_status = TransactionStatusEnum.settled
-                transaction.queue_status = QueueStatusEnum.done
-                transaction.processing_by_user_id = None
-                transaction.processing_started_at = None
-                _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
-
-            elif data.outcome == "utang":
-                old_status, old_queue = transaction.transaction_status.value, transaction.queue_status.value
-                customer.net_balance -= balance_due
-                db.add(
-                    CustomerLedger(
-                        customer_id=customer.id,
-                        transaction_id=transaction.id,
-                        entry_type=LedgerEntryTypeEnum.balance_added,
-                        amount=balance_due,
-                        running_balance=customer.net_balance,
-                    )
-                )
-                transaction.transaction_status = TransactionStatusEnum.settled
-                transaction.queue_status = QueueStatusEnum.done
-                transaction.processing_by_user_id = None
-                transaction.processing_started_at = None
-                _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
-
-            else:
-                raise SubstandardValidationError(f"outcome '{data.outcome}' does not apply when balance_due is positive")
-
+            child = await _create_adjustment_child(
+                db, transaction, TransactionTypeEnum.adjustment, balance_due, releasing_user_id
+            )
+            transaction.transaction_status = TransactionStatusEnum.pending_adjustment
+            transaction.queue_status = QueueStatusEnum.done
         else:  # balance_due < 0 — store owes the customer
-            refund_amount = -balance_due
+            child = await _create_adjustment_child(
+                db, transaction, TransactionTypeEnum.refund, -balance_due, releasing_user_id
+            )
+            transaction.transaction_status = TransactionStatusEnum.pending_adjustment
+            transaction.queue_status = QueueStatusEnum.done
 
-            if customer.net_balance < 0:
-                old_status, old_queue = transaction.transaction_status.value, transaction.queue_status.value
-                customer.net_balance += refund_amount
-                db.add(
-                    CustomerLedger(
-                        customer_id=customer.id,
-                        transaction_id=transaction.id,
-                        entry_type=LedgerEntryTypeEnum.credit_added,
-                        amount=refund_amount,
-                        running_balance=customer.net_balance,
-                    )
-                )
-                transaction.transaction_status = TransactionStatusEnum.completed
-                transaction.queue_status = QueueStatusEnum.done
-                transaction.processing_by_user_id = None
-                transaction.processing_started_at = None
-                _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
-
-            elif data.outcome == "refund_now":
-                child = await _create_adjustment_child(
-                    db, transaction, TransactionTypeEnum.refund, refund_amount, releasing_user_id
-                )
-                old_status, old_queue = transaction.transaction_status.value, transaction.queue_status.value
-                transaction.transaction_status = TransactionStatusEnum.settled
-                transaction.queue_status = QueueStatusEnum.done
-                transaction.processing_by_user_id = None
-                transaction.processing_started_at = None
-                _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
-
-            elif data.outcome == "save_credit":
-                old_status, old_queue = transaction.transaction_status.value, transaction.queue_status.value
-                customer.net_balance += refund_amount
-                db.add(
-                    CustomerLedger(
-                        customer_id=customer.id,
-                        transaction_id=transaction.id,
-                        entry_type=LedgerEntryTypeEnum.credit_added,
-                        amount=refund_amount,
-                        running_balance=customer.net_balance,
-                    )
-                )
-                transaction.transaction_status = TransactionStatusEnum.settled
-                transaction.queue_status = QueueStatusEnum.done
-                transaction.processing_by_user_id = None
-                transaction.processing_started_at = None
-                _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
-
-            else:
-                raise SubstandardValidationError(f"outcome '{data.outcome}' does not apply when balance_due is negative")
+        transaction.processing_by_user_id = None
+        transaction.processing_started_at = None
+        _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
 
         await db.commit()
     except Exception:
         await db.rollback()
         raise
 
+    # The parent's own status change (releasing-queue loses it, or keeps a
+    # read-only pending_adjustment card) and the new child's arrival (payment-queue)
+    # land in different rooms — both need their own broadcast.
+    rooms, event = transaction_status_changed(
+        transaction_id=transaction.id,
+        old_status=old_status,
+        new_status=transaction.transaction_status.value,
+        customer_type=transaction.customer_type.value,
+    )
+    await manager.broadcast_multi(rooms, event)
+
     if child is not None:
-        rooms, event = transaction_status_changed(
+        child_rooms, child_event = transaction_status_changed(
             transaction_id=child.id,
             old_status=None,
             new_status=child.transaction_status.value,
             customer_type=child.customer_type.value,
         )
-    else:
-        rooms, event = transaction_status_changed(
-            transaction_id=transaction.id,
-            old_status=old_status,
-            new_status=transaction.transaction_status.value,
-            customer_type=transaction.customer_type.value,
-        )
-    await manager.broadcast_multi(rooms, event)
+        await manager.broadcast_multi(child_rooms, child_event)
 
     return await get_transaction(db, transaction.id)
 

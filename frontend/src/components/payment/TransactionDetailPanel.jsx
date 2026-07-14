@@ -5,6 +5,7 @@ import { Modal } from '../ui/Modal'
 import { OrderSummaryPanel } from '../walkin/OrderSummaryPanel'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useProducts } from '../../hooks/useProducts'
+import { formatCurrency } from '../../utils/format'
 
 export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToReceiver }) {
   const { data: customer } = useCustomer(transaction?.customer_id)
@@ -37,11 +38,26 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
     )
   }
 
+  const isAdjustment = transaction.transaction_type === 'adjustment'
+  const isRefund = transaction.transaction_type === 'refund'
+
   return (
     <>
       <OrderSummaryPanel
         orderNumber={transaction.order_number}
         headingLabel={null}
+        headerBadge={
+          isAdjustment ? (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
+              ADJUSTMENT
+            </span>
+          ) : isRefund ? (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
+              REFUND
+            </span>
+          ) : null
+        }
+        headerSubtext={transaction.parent_order_number ? `Linked to: ${transaction.parent_order_number}` : null}
         customer={customer}
         customerType={transaction.customer_type}
         items={displayItems}
@@ -50,9 +66,27 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
         readOnly
         footer={
           <div className="flex flex-col gap-2 mt-4">
+            {(isAdjustment || isRefund) && (
+              <div
+                className={`rounded-md p-3 text-sm ${
+                  isAdjustment ? 'bg-red-50 border border-red-200 text-red-800' : 'bg-blue-50 border border-blue-200 text-blue-800'
+                }`}
+              >
+                <p>
+                  {isAdjustment
+                    ? `Customer owes ${formatCurrency(transaction.total_due)} extra for weight variance`
+                    : `Store owes customer ${formatCurrency(transaction.total_due)} for weight variance`}
+                </p>
+                <p className="text-xs mt-1">
+                  {isAdjustment
+                    ? 'Collect the extra amount using the normal payment flow.'
+                    : 'Return the money to the customer, then mark it as refunded below.'}
+                </p>
+              </div>
+            )}
             <div>
               <Button type="button" className="w-full" onClick={onPay}>
-                Pay
+                {isRefund ? 'Mark as Refunded' : 'Pay'}
               </Button>
               {transaction.payment_drafts?.length > 0 && (
                 <p className="text-xs text-amber-600 text-center mt-1">

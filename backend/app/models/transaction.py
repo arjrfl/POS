@@ -23,6 +23,7 @@ class CustomerTypeEnum(str, enum.Enum):
 class TransactionStatusEnum(str, enum.Enum):
     pending_payment = "pending_payment"
     pending_settlement = "pending_settlement"
+    pending_adjustment = "pending_adjustment"
     settled = "settled"
     completed = "completed"
     voided = "voided"

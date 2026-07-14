@@ -29,11 +29,14 @@ export function QueuePanel({ transactions, isLoading, onProcess }) {
     return <EmptyState />
   }
 
-  // Parked transactions sink to the bottom of the list, visually distinct
-  // (yellow accent) but otherwise part of the same flat list.
-  const active = transactions.filter((t) => t.queue_status !== 'parked')
+  // Parked and awaiting-payment transactions sink to the bottom of the list —
+  // visually distinct but otherwise part of the same flat list. Awaiting-payment
+  // (pending_adjustment) cards are read-only, so they sink lowest of all,
+  // keeping actionable cards (waiting/processing/parked) on top.
+  const active = transactions.filter((t) => t.queue_status !== 'parked' && t.transaction_status !== 'pending_adjustment')
   const parked = transactions.filter((t) => t.queue_status === 'parked')
-  const ordered = [...active, ...parked]
+  const awaitingPayment = transactions.filter((t) => t.transaction_status === 'pending_adjustment')
+  const ordered = [...active, ...parked, ...awaitingPayment]
 
   return (
     <div>

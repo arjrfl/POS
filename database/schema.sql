@@ -47,6 +47,9 @@ CREATE TYPE transaction_status_enum AS ENUM (
     'pending_settlement',
     -- walk_in:  Payment done, waiting for Team Releasing to confirm weight
     -- online:   Walk-In done, goes DIRECTLY to Releasing (skips Payment first)
+    'pending_adjustment',
+    -- Releasing confirmed variance, child adjustment/refund sent to Payment
+    -- queue, waiting for Payment to resolve
     'settled',
     -- Releasing confirmed weight, adjustment/refund generated if needed
     'completed',

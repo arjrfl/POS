@@ -6,6 +6,10 @@ ADMIN_ROOM = "admin"
 STATUS_TEAM_ROOM: dict[str, str] = {
     "pending_payment": "payment-queue",
     "pending_settlement": "releasing-queue",
+    # Releasing already handed this off (child sent to payment-queue) but still
+    # holds a read-only card for it until Payment resolves the child — so it
+    # stays routed to releasing-queue rather than dropping out of team rooms.
+    "pending_adjustment": "releasing-queue",
     "pending_edit": "receiver-queue",
 }
 

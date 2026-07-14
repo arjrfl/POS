@@ -35,6 +35,12 @@ export function OrderSummaryPanel({
   totalLabel = 'TOTAL',
   headingLabel = 'Order Summary',
   balanceSettlementRow = false,
+  // Optional extras rendered next to/under the order number — e.g. Payment's
+  // ADJUSTMENT/REFUND badge and "Linked to: {parent_order_number}" note.
+  // Kept generic here so this shared panel doesn't need to know about that
+  // domain concept itself.
+  headerBadge = null,
+  headerSubtext = null,
 }) {
   const typeBadge = customerType ? CUSTOMER_TYPE_BADGE[customerType] : null
 
@@ -42,7 +48,13 @@ export function OrderSummaryPanel({
     <Card className="h-full flex flex-col overflow-hidden">
       <div className="flex-shrink-0 mb-4">
         {headingLabel && <h2 className="text-sm font-medium text-gray-700 mb-1">{headingLabel}</h2>}
-        {orderNumber && <div className="text-lg font-bold text-gray-900 mb-1">{orderNumber}</div>}
+        {orderNumber && (
+          <div className="flex items-center gap-2 mb-1">
+            <div className="text-lg font-bold text-gray-900">{orderNumber}</div>
+            {headerBadge}
+          </div>
+        )}
+        {headerSubtext && <div className="text-xs text-gray-500 mb-1">{headerSubtext}</div>}
         {customer ? (
           <>
             <div className="text-xl font-bold text-primary">{customer.full_name}</div>

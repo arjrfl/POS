@@ -68,14 +68,15 @@ export default function Releasing() {
     }
   }
 
-  const handleResolve = async (outcome) => {
+  // 'send_to_payment' is the only outcome the backend accepts now — Releasing
+  // makes no financial decision, so the caller only needs to say what toast
+  // fits what actually happened (exact-weight auto-complete vs. handed to Payment).
+  const handleResolve = async (successMessage) => {
     setSubmitting(true)
     try {
-      const resolved = await post(`/transactions/${selectedTransaction.id}/resolve`, { outcome })
+      await post(`/transactions/${selectedTransaction.id}/resolve`, { outcome: 'send_to_payment' })
       setSelectedTransaction(null)
-      // A pay_now/refund_now outcome spins off a child pushed to Payment; every
-      // other outcome (including both auto-resolve paths) finishes right here.
-      showToast(resolved.children?.length > 0 ? 'Sent to Payment queue' : 'Transaction complete', 'success')
+      showToast(successMessage, 'success')
       refreshQueue()
     } catch (err) {
       showToast(err.message, 'error')
@@ -107,6 +108,7 @@ export default function Releasing() {
           <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Order Details</span>
           <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-3">
             <ReleaseProcessor
+              key={selectedTransaction?.id ?? 'empty'}
               transaction={selectedTransaction}
               onConfirmReady={handleConfirmReady}
               onConfirmWeights={handleConfirmWeights}
