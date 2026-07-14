@@ -8,6 +8,8 @@ import { PaymentModal } from '../components/payment/PaymentModal'
 import { Toast } from '../components/ui/Toast'
 import { get, post } from '../services/api'
 import { useNotificationStore } from '../store/notificationStore'
+import { useCustomer } from '../hooks/useCustomer'
+import { formatCurrency } from '../utils/format'
 
 const TERMINAL_STATUSES = ['completed', 'settled', 'voided']
 
@@ -17,6 +19,7 @@ export default function Payment() {
   const lastEvent = useNotificationStore((state) => state.lastEvent)
 
   const [selectedTransaction, setSelectedTransaction] = useState(null)
+  const { data: selectedCustomer } = useCustomer(selectedTransaction?.customer_id)
   const [payModalOpen, setPayModalOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
@@ -111,6 +114,20 @@ export default function Payment() {
     showToast('Payment processed successfully', 'success')
   }
 
+  const handleSaveAsCredit = async () => {
+    try {
+      await post(`/transactions/${selectedTransaction.id}/resolve-as-credit`)
+      showToast(
+        `${formatCurrency(selectedTransaction.total_due)} saved as credit for ${selectedCustomer?.full_name}`,
+        'success',
+      )
+      setSelectedTransaction(null)
+      refreshQueue()
+    } catch (err) {
+      showToast(err.message, 'error')
+    }
+  }
+
   return (
     <PageLayout title="Payment Queue">
       <div className="h-full flex gap-6 min-h-0">
@@ -138,6 +155,7 @@ export default function Payment() {
               onPay={() => setPayModalOpen(true)}
               onPark={handlePark}
               onReturnToReceiver={handleReturnToReceiver}
+              onSaveAsCredit={handleSaveAsCredit}
             />
           </div>
         </div>

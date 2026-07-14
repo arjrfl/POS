@@ -5,6 +5,7 @@ const VARIANTS = {
   warning: 'bg-white text-amber-700 border border-amber-400 hover:bg-amber-50',
   amber: 'bg-amber-500 text-white hover:bg-amber-600',
   danger: 'bg-red-600 text-white hover:bg-red-700',
+  success: 'bg-green-600 text-white hover:bg-green-700',
 }
 
 export function Button({ variant = 'primary', className = '', children, ...props }) {

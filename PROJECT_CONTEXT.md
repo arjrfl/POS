@@ -192,6 +192,19 @@ Payment handles ALL financial decisions:
 - Remaining → saved as `balance_added` in `customer_ledger`
 - Transaction still goes to Releasing after partial payment
 
+### Substandard Resolution — Refund Children (store owes customer)
+- Order Details shows a REFUND badge, "Linked to: {parent_order_number}", and
+  "Store owes customer ₱X for weight variance" — no payment method fields at all
+- Single button: **[ Save as Credit ]** → `POST /api/transactions/{id}/resolve-as-credit`
+  - Adds `total_due` to `customer.net_balance`, logs a `credit_added` ledger entry
+  - Child → `completed`; parent (if still `pending_adjustment`) → `completed` too
+  - No `payment_detail` row is created for this path
+- Adjustment children (customer owes more) are unaffected — still go through the
+  normal cash/online/split payment flow
+- The old behavior of letting a `refund` transaction flow through the normal
+  `/pay` endpoint (a cash/online payout) still exists in the backend code, but
+  is intentionally not exposed in the current Payment UI — may be re-enabled later
+
 ### Payment Draft Entries
 - Entries saved as drafts in `payment_detail` (`is_draft = TRUE`)
 - Balance checkbox state saved in `draft_balances_json`

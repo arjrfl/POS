@@ -132,6 +132,16 @@ dependency not listed above without explicit instruction.
   → Child → Payment queue
 - Releasing does NOT offer: save as balance, save as credit, auto-deduct credit
 - Those decisions belong to Payment team
+
+### Substandard Kilo — Payment Resolution
+- `adjustment` children (customer owes more): normal payment flow (cash/online/split), same as any transaction
+- `refund` children (store owes customer): resolved via a single **[ Save as Credit ]**
+  button only — no cash/online payment fields shown, no `payment_detail` row created
+  - `POST /api/transactions/{id}/resolve-as-credit` adds the amount to
+    `customer.net_balance` and logs a `credit_added` `customer_ledger` entry
+  - The old code path that lets a `refund` transaction flow through the normal
+    `/pay` endpoint is still in the codebase (see comment above that route) but
+    is intentionally not surfaced in the UI — may be re-enabled later
 - After Payment resolves child → parent auto-completes → disappears from releasing queue
 
 ### Payment Draft Entries
@@ -191,6 +201,8 @@ dependency not listed above without explicit instruction.
   - `POST /api/transactions/{id}/confirm-weight` — confirm actual weights (releasing)
   - `POST /api/transactions/{id}/confirm-ready` — online orders ready (releasing)
   - `POST /api/transactions/{id}/resolve` — resolve substandard, outcome: "send_to_payment" only
+  - `POST /api/transactions/{id}/resolve-as-credit` — resolve a `refund`-type child as
+    customer credit (payment only, `pending_payment` only, no payment method involved)
   - `PUT /api/transactions/{id}/payment-drafts` — save draft payment entries
   - `GET /api/customers/{id}/balance-entries` — get per-transaction balance entries
 

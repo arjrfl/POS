@@ -1123,6 +1123,86 @@ async def resolve_substandard(
     return await get_transaction(db, transaction.id)
 
 
+async def resolve_refund_as_credit(
+    db: AsyncSession, transaction_id: int, resolved_by_user_id: int
+) -> TransactionResponse:
+    transaction = await db.get(SalesTransaction, transaction_id)
+    if transaction is None or transaction.transaction_type != TransactionTypeEnum.refund:
+        raise ValueError(f"Transaction {transaction_id} is not a refund")
+    if transaction.transaction_status != TransactionStatusEnum.pending_payment:
+        raise QueueConflictError(f"transaction {transaction_id} is not pending payment")
+    if transaction.queue_status != QueueStatusEnum.processing:
+        raise QueueConflictError(f"transaction {transaction_id} has not been grabbed for payment")
+    if transaction.processing_by_user_id != resolved_by_user_id:
+        raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
+
+    customer = await db.get(Customer, transaction.customer_id)
+    amount = transaction.total_due  # already positive — the store-owes amount
+
+    parent: SalesTransaction | None = None
+    if transaction.parent_transaction_id is not None:
+        parent = await db.get(SalesTransaction, transaction.parent_transaction_id)
+
+    old_status = transaction.transaction_status.value
+    old_queue = transaction.queue_status.value
+    parent_completed = False
+
+    try:
+        customer.net_balance += amount
+        db.add(
+            CustomerLedger(
+                customer_id=customer.id,
+                transaction_id=transaction.id,
+                entry_type=LedgerEntryTypeEnum.credit_added,
+                amount=amount,
+                running_balance=customer.net_balance,
+                notes=f"Credit from weight variance — {parent.order_number if parent else transaction.order_number}",
+            )
+        )
+
+        transaction.transaction_status = TransactionStatusEnum.completed
+        transaction.queue_status = QueueStatusEnum.done
+        transaction.processing_by_user_id = None
+        transaction.processing_started_at = None
+
+        _record_status_change_audit(db, transaction, resolved_by_user_id, old_status, old_queue)
+
+        # Releasing still holds a read-only pending_adjustment card for the parent
+        # until Payment resolves this child — same handoff process_payment already
+        # does for the adjustment side.
+        if parent is not None and parent.transaction_status == TransactionStatusEnum.pending_adjustment:
+            parent_old_status = parent.transaction_status.value
+            parent_old_queue = parent.queue_status.value
+            parent.transaction_status = TransactionStatusEnum.completed
+            parent.queue_status = QueueStatusEnum.done
+            _record_status_change_audit(db, parent, resolved_by_user_id, parent_old_status, parent_old_queue)
+            parent_completed = True
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    rooms, event = transaction_status_changed(
+        transaction_id=transaction.id,
+        old_status=old_status,
+        new_status=transaction.transaction_status.value,
+        customer_type=transaction.customer_type.value,
+    )
+    await manager.broadcast_multi(rooms, event)
+
+    if parent_completed:
+        parent_rooms, parent_event = transaction_status_changed(
+            transaction_id=parent.id,
+            old_status=TransactionStatusEnum.pending_adjustment.value,
+            new_status=parent.transaction_status.value,
+            customer_type=parent.customer_type.value,
+        )
+        await manager.broadcast_multi(parent_rooms, parent_event)
+
+    return await get_transaction(db, transaction.id)
+
+
 async def return_to_receiver(db: AsyncSession, transaction_id: int, payment_user_id: int) -> TransactionResponse:
     transaction = await db.get(SalesTransaction, transaction_id)
     if transaction is None:

@@ -222,6 +222,11 @@ async def save_draft_payments(
     return {"data": drafts, "error": None}
 
 
+# This endpoint still fully supports transaction_type == 'refund' transactions
+# (cash/online payout through the normal payment flow) — intentionally left in
+# place, but Payment's UI no longer opens PaymentModal for refund children
+# (see POST /{transaction_id}/resolve-as-credit below). May be re-enabled in
+# the UI later if a cash-refund option is needed again.
 @router.post("/{transaction_id}/pay", dependencies=[Depends(require_role("payment"))])
 async def process_payment(
     transaction_id: int,
@@ -311,6 +316,23 @@ async def resolve_substandard(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except transaction_service.SubstandardValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return {"data": transaction, "error": None}
+
+
+@router.post("/{transaction_id}/resolve-as-credit", dependencies=[Depends(require_role("payment"))])
+async def resolve_refund_as_credit(
+    transaction_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        transaction = await transaction_service.resolve_refund_as_credit(db, transaction_id, current_user["user_id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except transaction_service.QueuePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except transaction_service.QueueConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     return {"data": transaction, "error": None}
 
 

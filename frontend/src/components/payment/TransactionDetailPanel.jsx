@@ -7,10 +7,20 @@ import { useCustomer } from '../../hooks/useCustomer'
 import { useProducts } from '../../hooks/useProducts'
 import { formatCurrency } from '../../utils/format'
 
-export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToReceiver }) {
+export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToReceiver, onSaveAsCredit }) {
   const { data: customer } = useCustomer(transaction?.customer_id)
   const { data: products } = useProducts()
   const [confirmAction, setConfirmAction] = useState(null) // null | 'return' | 'park'
+  const [savingCredit, setSavingCredit] = useState(false)
+
+  const handleSaveAsCredit = async () => {
+    setSavingCredit(true)
+    try {
+      await onSaveAsCredit()
+    } finally {
+      setSavingCredit(false)
+    }
+  }
 
   const productsById = useMemo(() => new Map((products ?? []).map((p) => [p.id, p])), [products])
 
@@ -77,31 +87,48 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
                     ? `Customer owes ${formatCurrency(transaction.total_due)} extra for weight variance`
                     : `Store owes customer ${formatCurrency(transaction.total_due)} for weight variance`}
                 </p>
-                <p className="text-xs mt-1">
-                  {isAdjustment
-                    ? 'Collect the extra amount using the normal payment flow.'
-                    : 'Return the money to the customer, then mark it as refunded below.'}
-                </p>
+                {isAdjustment && (
+                  <p className="text-xs mt-1">Collect the extra amount using the normal payment flow.</p>
+                )}
               </div>
             )}
-            <div>
-              <Button type="button" className="w-full" onClick={onPay}>
-                {isRefund ? 'Mark as Refunded' : 'Pay'}
+            {isRefund ? (
+              <Button
+                type="button"
+                variant="success"
+                className="w-full"
+                disabled={savingCredit}
+                onClick={handleSaveAsCredit}
+              >
+                {savingCredit ? 'Saving...' : 'Save as Credit'}
               </Button>
-              {transaction.payment_drafts?.length > 0 && (
-                <p className="text-xs text-amber-600 text-center mt-1">
-                  Resume Payment ({transaction.payment_drafts.length} entries)
-                </p>
-              )}
-            </div>
-            {transaction.customer_type === 'walk_in' && (
-              <Button type="button" variant="warning" className="w-full" onClick={() => setConfirmAction('return')}>
-                Return to Receiver
-              </Button>
+            ) : (
+              <>
+                <div>
+                  <Button type="button" className="w-full" onClick={onPay}>
+                    Pay
+                  </Button>
+                  {transaction.payment_drafts?.length > 0 && (
+                    <p className="text-xs text-amber-600 text-center mt-1">
+                      Resume Payment ({transaction.payment_drafts.length} entries)
+                    </p>
+                  )}
+                </div>
+                {transaction.customer_type === 'walk_in' && (
+                  <Button
+                    type="button"
+                    variant="warning"
+                    className="w-full"
+                    onClick={() => setConfirmAction('return')}
+                  >
+                    Return to Receiver
+                  </Button>
+                )}
+                <Button type="button" variant="outline" className="w-full" onClick={() => setConfirmAction('park')}>
+                  Park
+                </Button>
+              </>
             )}
-            <Button type="button" variant="outline" className="w-full" onClick={() => setConfirmAction('park')}>
-              Park
-            </Button>
           </div>
         }
       />
