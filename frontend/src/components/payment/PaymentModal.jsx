@@ -561,7 +561,8 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                     id="payment-method"
                     value={methodId}
                     onChange={(e) => setMethodId(e.target.value)}
-                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light"
+                    disabled={isFullyCovered}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                   >
                     {selectableMethods.map((m) => (
                       <option key={m.id} value={m.id}>
@@ -576,8 +577,8 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                   label="Reference Number"
                   value={refNumber}
                   onChange={(e) => setRefNumber(e.target.value)}
-                  disabled={isCash}
-                  className="disabled:bg-gray-100 disabled:text-gray-500"
+                  disabled={isCash || isFullyCovered}
+                  className="disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                 />
 
                 <Input
@@ -588,8 +589,14 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
+                  disabled={isFullyCovered}
+                  className="disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                 />
-                <div className={`text-sm font-semibold ${previewClass}`}>{previewLabel}</div>
+                {isFullyCovered ? (
+                  <div className="text-xs text-gray-400">Amount fully covered</div>
+                ) : (
+                  <div className={`text-sm font-semibold ${previewClass}`}>{previewLabel}</div>
+                )}
 
                 <Button type="button" variant="outline" disabled={addDisabled} onClick={handleAddEntry}>
                   + Add Payment Entry
