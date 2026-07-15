@@ -247,6 +247,13 @@ CREATE TABLE sales_transaction (
     -- change returned to customer
     -- = cash_tendered - cash portion of total_due
 
+    change_claimed        BOOLEAN                  NOT NULL DEFAULT TRUE,
+    -- TRUE  = customer took the change as cash (normal case)
+    -- FALSE = customer declined, change was added to customer.net_balance
+    --         as credit instead
+    -- Only meaningful when change_given > 0; defaults TRUE for all
+    -- transactions with no change or where change is simply handed back
+
     invoice_pdf           VARCHAR(255)             NULL,
 
     -- timestamps per phase

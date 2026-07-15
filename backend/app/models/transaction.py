@@ -153,6 +153,10 @@ class SalesTransaction(Base):
 
     cash_tendered: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
     change_given: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
+    # TRUE  = customer took the change as cash (normal case)
+    # FALSE = customer declined, change was added to customer.net_balance as credit instead
+    # Only meaningful when change_given > 0
+    change_claimed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
     invoice_pdf: Mapped[Optional[str]] = mapped_column(String(255))
 

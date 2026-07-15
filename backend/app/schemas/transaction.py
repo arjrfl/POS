@@ -179,6 +179,7 @@ class TransactionResponse(BaseModel):
 
     cash_tendered: Decimal
     change_given: Decimal
+    change_claimed: bool
 
     invoice_pdf: str | None
 
@@ -272,3 +273,7 @@ class PaymentProcessRequest(BaseModel):
     # backend cross-checks this against the payment entries themselves rather
     # than trusting it blindly, since it drives whether utang gets recorded
     amount_paid: Decimal
+    # only relevant when the computed change_given > 0 — whether the customer
+    # took the change as cash (True, default) or declined it in favor of
+    # store credit (False). Ignored otherwise.
+    change_claimed: bool = True

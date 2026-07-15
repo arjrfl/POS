@@ -992,6 +992,22 @@ async def process_payment(
         transaction.payment_user_id = payment_user_id
         transaction.payment_at = datetime.now(timezone.utc)
 
+        if transaction.change_given > 0 and not data.change_claimed:
+            transaction.change_claimed = False
+            customer.net_balance += transaction.change_given
+            db.add(
+                CustomerLedger(
+                    customer_id=customer.id,
+                    transaction_id=transaction.id,
+                    entry_type=LedgerEntryTypeEnum.credit_added,
+                    amount=transaction.change_given,
+                    running_balance=customer.net_balance,
+                    notes="Unclaimed change added as credit",
+                )
+            )
+        else:
+            transaction.change_claimed = True
+
         if transaction.customer_type == CustomerTypeEnum.walk_in and not skip_releasing:
             transaction.transaction_status = TransactionStatusEnum.pending_settlement
             transaction.queue_status = QueueStatusEnum.waiting

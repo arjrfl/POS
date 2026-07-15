@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { FullScreenModal } from '../ui/FullScreenModal'
+import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { ArticleRows } from './ArticleRows'
 import { OriginalTransactionLink } from './OriginalTransactionLink'
@@ -7,6 +8,8 @@ import { post } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
+
+const EPS = 0.005
 
 export function PaymentConfirmationModal({
   open,
@@ -27,6 +30,10 @@ export function PaymentConfirmationModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [showAllBalances, setShowAllBalances] = useState(false)
+  // 'ask' = Popup 1 (does the customer want to claim the change?)
+  // 'confirm' = Popup 2 (confirm change becomes credit)
+  const [changeStep, setChangeStep] = useState(null)
+  const [pendingAction, setPendingAction] = useState(null) // 'print' | 'done'
 
   if (!open) return null
 
@@ -49,7 +56,7 @@ export function PaymentConfirmationModal({
   const onlineTotal = entries.filter((e) => e.method_name !== 'cash').reduce((sum, e) => sum + e.amount, 0)
   const creditedCashAmount = Math.round((finalAmount - onlineTotal) * 100) / 100
 
-  const submitPayment = () => {
+  const submitPayment = (changeClaimed) => {
     const payments = entries.map((e) => ({
       payment_method_id: e.payment_method_id,
       amount: !isPartial && e.method_name === 'cash' ? creditedCashAmount : e.amount,
@@ -72,18 +79,21 @@ export function PaymentConfirmationModal({
       })),
       is_partial: isPartial,
       amount_paid: amountPaid,
+      change_claimed: changeClaimed,
     })
   }
 
-  const handleConfirmAndPrint = async () => {
+  // Actually submits the payment (after the change-claim popups, if any, have
+  // been resolved) and performs the print/done follow-up action.
+  const finalizePayment = async (action, changeClaimed) => {
     // belt-and-suspenders alongside disabled={submitting} on the buttons —
     // disabled only takes effect on the next render, this closes that gap
     if (submitting) return
     setError('')
     setSubmitting(true)
     try {
-      const paid = await submitPayment()
-      window.print()
+      const paid = await submitPayment(changeClaimed)
+      if (action === 'print') window.print()
       onDone(paid)
     } catch (err) {
       setError(err.message)
@@ -91,20 +101,36 @@ export function PaymentConfirmationModal({
     }
   }
 
-  const handleConfirmAndDone = async () => {
+  // changeTotal is only ever >0 for a full (non-partial) payment — a partial
+  // payment is an underpayment by definition, so this popup gate never
+  // triggers there, but the check applies unconditionally rather than
+  // special-casing isPartial.
+  const startConfirm = (action) => {
     if (submitting) return
-    setError('')
-    setSubmitting(true)
-    try {
-      const paid = await submitPayment()
-      onDone(paid)
-    } catch (err) {
-      setError(err.message)
-      setSubmitting(false)
+    if (changeTotal > EPS) {
+      setPendingAction(action)
+      setChangeStep('ask')
+      return
     }
+    void finalizePayment(action, true)
   }
+
+  const handleConfirmAndPrint = () => startConfirm('print')
+  const handleConfirmAndDone = () => startConfirm('done')
+
+  const handleClaimYes = () => {
+    setChangeStep(null)
+    void finalizePayment(pendingAction, true)
+  }
+  const handleClaimNo = () => setChangeStep('confirm')
+  const handleCreditConfirm = () => {
+    setChangeStep(null)
+    void finalizePayment(pendingAction, false)
+  }
+  const handleCreditCancel = () => setChangeStep('ask')
 
   return (
+    <>
     <FullScreenModal open={open} onClose={onBack} title="Confirm Payment">
       <div className="max-w-6xl mx-auto h-[85vh] flex flex-col min-h-0">
         <button
@@ -376,5 +402,40 @@ export function PaymentConfirmationModal({
         </div>
       </div>
     </FullScreenModal>
+
+    <Modal open={changeStep === 'ask'} onClose={() => setChangeStep(null)} title="Change">
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-gray-700">
+          Change: <span className="font-semibold">{formatCurrency(changeTotal)}</span>
+        </p>
+        <p className="text-sm text-gray-700">Does the customer want to claim this change?</p>
+        <div className="flex gap-2">
+          <Button type="button" className="flex-1" onClick={handleClaimYes}>
+            Yes
+          </Button>
+          <Button type="button" variant="outline" className="flex-1" onClick={handleClaimNo}>
+            No
+          </Button>
+        </div>
+      </div>
+    </Modal>
+
+    <Modal open={changeStep === 'confirm'} onClose={handleCreditCancel} title="Add Change as Credit">
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-gray-700">
+          Change: <span className="font-semibold">{formatCurrency(changeTotal)}</span> will be added to customer&apos;s
+          credit
+        </p>
+        <div className="flex gap-2">
+          <Button type="button" className="flex-1" onClick={handleCreditConfirm}>
+            Confirm
+          </Button>
+          <Button type="button" variant="outline" className="flex-1" onClick={handleCreditCancel}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    </Modal>
+    </>
   )
 }
