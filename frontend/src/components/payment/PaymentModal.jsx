@@ -20,6 +20,12 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const { data: customer } = useCustomer(transaction.customer_id)
   const { data: products } = useProducts()
 
+  // 'credit' is a real payment_method row (so applied credit gets its own
+  // payment_detail row server-side), but it's system-generated only — never
+  // manually selectable from the payment method dropdown.
+  const creditMethodId = useMemo(() => methods?.find((m) => m.payment_method_name === 'credit')?.id, [methods])
+  const selectableMethods = useMemo(() => (methods ?? []).filter((m) => m.payment_method_name !== 'credit'), [methods])
+
   const [methodId, setMethodId] = useState('')
   const [refNumber, setRefNumber] = useState('')
   const [amount, setAmount] = useState('')
@@ -78,7 +84,10 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   // refetch while the modal is already open doesn't clobber unsaved typing.
   useEffect(() => {
     if (!open || !methods?.length) return
-    const drafts = transaction.payment_drafts ?? []
+    // The credit draft row (if any) is restored separately via checkedCredits
+    // above, from draft_credit_applied — it must not also show up as a manual
+    // entry row here, or it'd be double-represented and removable by mistake.
+    const drafts = (transaction.payment_drafts ?? []).filter((d) => d.payment_method_id !== creditMethodId)
     if (drafts.length === 0) {
       setEntries([])
       return
@@ -334,8 +343,12 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     (transaction.transaction_type === 'original' || transaction.transaction_type === 'adjustment') &&
     !anyBalanceChecked
 
+  // A manual cash/online entry isn't the only way to have "paid" — credit
+  // fully covering the total (no cash/online needed at all) counts too.
+  const hasPayment = entries.length > 0 || creditApplied > EPS
+
   const structuralValid =
-    entries.length > 0 &&
+    hasPayment &&
     !entries.some((e) => e.method_name !== 'cash' && !e.ref_number) &&
     cashEntryCount <= 1 &&
     creditValid
@@ -530,7 +543,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                     onChange={(e) => setMethodId(e.target.value)}
                     className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light"
                   >
-                    {(methods ?? []).map((m) => (
+                    {selectableMethods.map((m) => (
                       <option key={m.id} value={m.id}>
                         {PAYMENT_METHOD_LABEL[m.payment_method_name] ?? m.payment_method_name}
                       </option>
@@ -633,13 +646,19 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
 
             <div className="flex items-end justify-between gap-4 flex-wrap">
               <div className="flex flex-col gap-1 text-sm min-w-[200px]">
+                {creditApplied > EPS && (
+                  <div className="flex justify-between gap-6">
+                    <span className="text-gray-700">Credit</span>
+                    <span className="font-semibold text-green-700">{formatCurrency(creditApplied)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between gap-6">
                   <span className="text-gray-700">Total Entered</span>
-                  <span className="font-semibold text-gray-900">{formatCurrency(enteredTotal)}</span>
+                  <span className="font-semibold text-gray-900">{formatCurrency(enteredTotal + creditApplied)}</span>
                 </div>
                 <div className="flex justify-between gap-6">
                   <span className="text-gray-600">Amount to Pay</span>
-                  <span className="font-semibold text-gray-800">{formatCurrency(finalAmount)}</span>
+                  <span className="font-semibold text-gray-800">{formatCurrency(finalAmount + creditApplied)}</span>
                 </div>
                 <div className="flex flex-col gap-1 border-t border-gray-200 pt-1 mt-1">
                   {isFullyCovered && changeAmount > EPS && (

@@ -164,6 +164,16 @@ def _initial_status(customer_type: CustomerTypeEnum, transaction_type: Transacti
     return TransactionStatusEnum.pending_settlement
 
 
+async def _get_payment_method_id(db: AsyncSession, payment_method_name: str) -> int:
+    result = await db.execute(
+        select(PaymentMethod.id).where(PaymentMethod.payment_method_name == payment_method_name)
+    )
+    method_id = result.scalar_one_or_none()
+    if method_id is None:
+        raise ValueError(f"payment_method '{payment_method_name}' not found")
+    return method_id
+
+
 async def _next_order_number(db: AsyncSession) -> str:
     today = datetime.now(timezone.utc)
     prefix = f"TXN-{today:%Y%m%d}-"
@@ -647,18 +657,40 @@ async def save_draft_payments(
             if balances_to_settle
             else None
         )
+        # Cash/online rows the payment user typed in, plus a system-generated
+        # row mirroring the applied credit — kept in the same draft table so it
+        # round-trips through park/unpark exactly like the others (the frontend
+        # filters this row back out by payment_method_id before restoring the
+        # manual entries table, since checkbox state is already restored
+        # separately from draft_credit_applied).
+        rows = [
+            {
+                "payment_method_id": entry.payment_method_id,
+                "ref_number": entry.ref_number,
+                "tendered_amount": entry.tendered_amount,
+                "amount": entry.amount,
+            }
+            for entry in entries
+        ]
+        if credit_applied > 0:
+            rows.append(
+                {
+                    "payment_method_id": await _get_payment_method_id(db, "credit"),
+                    "ref_number": None,
+                    "tendered_amount": None,
+                    "amount": credit_applied,
+                }
+            )
+
         drafts = [
             PaymentDetail(
                 transaction_id=transaction_id,
-                payment_method_id=entry.payment_method_id,
-                ref_number=entry.ref_number,
-                tendered_amount=entry.tendered_amount,
-                amount=entry.amount,
                 is_draft=True,
                 draft_balances_json=balances_json if index == 0 else None,
                 draft_credit_applied=credit_applied if index == 0 else Decimal("0.00"),
+                **row,
             )
-            for index, entry in enumerate(entries)
+            for index, row in enumerate(rows)
         ]
         db.add_all(drafts)
 
@@ -865,6 +897,18 @@ async def process_payment(
             )
             transaction.credit_applied = data.credit_applied
             transaction.total_due -= data.credit_applied
+
+            # Record the applied credit as its own confirmed payment_detail row
+            # (alongside the cash/online rows above) so the payment breakdown for
+            # this transaction is complete without relying on credit_applied alone.
+            db.add(
+                PaymentDetail(
+                    transaction_id=transaction.id,
+                    payment_method_id=await _get_payment_method_id(db, "credit"),
+                    amount=data.credit_applied,
+                    is_draft=False,
+                )
+            )
 
         if transaction.transaction_type == TransactionTypeEnum.balance_settlement:
             # amount was fixed at creation (Receiver's "Balance Settlement Only" toggle) —

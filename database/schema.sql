@@ -474,4 +474,4 @@ INSERT INTO role (role_name)
 VALUES ('receiver'), ('payment'), ('releasing'), ('admin');
 
 INSERT INTO payment_method (payment_method_name)
-VALUES ('cash'), ('gcash'), ('maya'), ('bank_transfer');
+VALUES ('cash'), ('gcash'), ('maya'), ('bank_transfer'), ('credit');
