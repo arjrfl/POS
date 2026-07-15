@@ -190,12 +190,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     const interval = setInterval(() => {
       if (entriesRef.current.length > 0 && !showConfirmationRef.current) {
         const selectedBalances = balanceEntriesRef.current.filter((e) => checkedBalancesRef.current[e.ledger_entry_id])
-        const selectedBalanceTotal = selectedBalances.reduce((sum, e) => sum + Number(e.amount), 0)
         const selectedCredits = creditEntriesRef.current.filter((e) => checkedCreditsRef.current[e.ledger_entry_id])
-        const rawSelectedCreditTotal = selectedCredits.reduce((sum, e) => sum + Number(e.amount), 0)
-        // Same cap as the render-scope creditApplied below — keeps the
-        // persisted draft consistent with what confirm/park would actually apply.
-        const selectedCreditTotal = Math.min(rawSelectedCreditTotal, Number(transaction.total_due) + selectedBalanceTotal)
         put(`/transactions/${transaction.id}/payment-drafts`, {
           entries: entriesRef.current.map((e) => ({
             payment_method_id: e.payment_method_id,
@@ -208,7 +203,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
             ledger_entry_id: e.ledger_entry_id,
             amount: Number(e.amount),
           })),
-          credit_applied: selectedCreditTotal,
+          credit_entries_checked: selectedCredits.map((e) => e.ledger_entry_id),
         }).catch((err) => console.error('Payment draft autosave failed:', err))
       }
     }, DRAFT_AUTOSAVE_INTERVAL_MS)
@@ -266,18 +261,15 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
 
   const finalAmount = totalDueBeforeCredit - creditApplied
 
-  // Read-only Entry Table rows, one per source transaction the applied credit
-  // was drawn from — creditsToApply is already oldest-first (creditEntries
-  // comes from /credit-entries, FIFO-ordered), so capping it here to
-  // creditApplied reproduces the same per-source amounts the backend records.
-  const creditRows = []
-  let creditRowsRemaining = creditApplied
-  for (const c of creditsToApply) {
-    if (creditRowsRemaining <= EPS) break
-    const rowAmount = Math.min(c.amount, creditRowsRemaining)
-    creditRows.push({ ledger_entry_id: c.ledger_entry_id, amount: rowAmount, order_number: c.order_number })
-    creditRowsRemaining -= rowAmount
-  }
+  // Read-only Entry Table rows, one per checked credit entry, each at its full
+  // amount — checking an entry is all-or-nothing (same as a balance checkbox), so
+  // every checked entry gets its own row even when creditApplied above ends up
+  // capped below the raw checked total.
+  const creditRows = creditsToApply.map((c) => ({
+    ledger_entry_id: c.ledger_entry_id,
+    amount: c.amount,
+    order_number: c.order_number,
+  }))
 
   const handleToggleBalanceEntry = (ledgerEntryId) => {
     setCheckedBalances((prev) => ({ ...prev, [ledgerEntryId]: !prev[ledgerEntryId] }))
@@ -357,6 +349,14 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const cashEntryCount = entries.filter((e) => e.method_name === 'cash').length
 
   const isFullyCovered = remainingAfterEntries <= EPS
+  // Whether cash/online entries PLUS already-checked credit entries (at their full,
+  // uncapped amounts) already cover what's owed — compared against totalDueBeforeCredit,
+  // not finalAmount, so this doesn't move as credit checkboxes are toggled. Used to lock
+  // OUT newly checking a credit box once coverage is already met; already-checked boxes
+  // stay clickable so the user can still uncheck them. A single entry bigger than what's
+  // owed can still be checked in the first place (nothing was covered yet at that
+  // moment) — this only blocks checking MORE once coverage is reached.
+  const amountOwedIsCovered = totalDueBeforeCredit - enteredTotal - rawCreditChecked <= EPS
   // matches the backend's process_payment rule: only original orders and
   // substandard-kilo adjustment children can be paid off partially, and only
   // when this payment isn't also collecting an old balance — mixing "new
@@ -412,7 +412,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
           ledger_entry_id: b.ledger_entry_id,
           amount: b.amount,
         })),
-        credit_applied: creditApplied,
+        credit_entries_checked: creditsToApply.map((c) => c.ledger_entry_id),
       })
       await post(`/transactions/${transaction.id}/park`)
       onParked()
@@ -489,30 +489,37 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                           <span>Credit</span>
                           <span>Total: {formatCurrency(creditEntries.reduce((sum, e) => sum + Number(e.amount), 0))}</span>
                         </div>
-                        {creditEntries.map((entry) => (
-                          <label key={entry.ledger_entry_id} className="flex items-center gap-2 py-1">
-                            <input
-                              type="checkbox"
-                              className="accent-green-800"
-                              checked={!!checkedCredits[entry.ledger_entry_id]}
-                              onChange={() => handleToggleCreditEntry(entry.ledger_entry_id)}
-                            />
-                            <span className="text-xs font-mono text-gray-700">{entry.order_number}</span>
-                            <span className="text-xs font-bold text-green-700 ml-auto">
-                              {formatCurrency(Number(entry.amount))}
-                            </span>
-                            <span className="text-xs text-gray-400">
-                              {new Date(entry.created_at).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                              })}
-                            </span>
-                          </label>
-                        ))}
+                        {creditEntries.map((entry) => {
+                          const isChecked = !!checkedCredits[entry.ledger_entry_id]
+                          // Only lock unchecked boxes — a checked one stays clickable so
+                          // the user can always uncheck it, even once entries fully cover.
+                          const checkboxDisabled = !isChecked && amountOwedIsCovered
+                          return (
+                            <label key={entry.ledger_entry_id} className="flex items-center gap-2 py-1">
+                              <input
+                                type="checkbox"
+                                className="accent-green-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                                checked={isChecked}
+                                disabled={checkboxDisabled}
+                                onChange={() => handleToggleCreditEntry(entry.ledger_entry_id)}
+                              />
+                              <span className="text-xs font-mono text-gray-700">{entry.order_number}</span>
+                              <span className="text-xs font-bold text-green-700 ml-auto">
+                                {formatCurrency(Number(entry.amount))}
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                {new Date(entry.created_at).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </span>
+                            </label>
+                          )
+                        })}
                         {anyCreditChecked && (
                           <div className="text-xs text-green-700 font-semibold mt-1">
-                            Applying: {formatCurrency(creditApplied)}
+                            Applying: {formatCurrency(rawCreditChecked)}
                           </div>
                         )}
                       </div>
@@ -683,9 +690,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
               <div className="flex flex-col gap-1 text-sm min-w-[200px]">
                 {creditApplied > EPS && (
                   <div className="flex justify-between gap-6">
-                    <span className="text-gray-700">
-                      Credit <span className="text-xs text-gray-400">— Ref: {transaction.order_number}</span>
-                    </span>
+                    <span className="text-gray-700">Credit</span>
                     <span className="font-semibold text-green-700">{formatCurrency(creditApplied)}</span>
                   </div>
                 )}
@@ -758,6 +763,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
         balancesToSettle={balancesToSettle}
         totalBalanceSettled={totalBalanceSettled}
         creditApplied={creditApplied}
+        creditEntriesChecked={creditsToApply.map((c) => c.ledger_entry_id)}
         finalAmount={finalAmount}
         isPartial={confirmMode === 'partial'}
         onBack={() => setShowConfirmation(false)}

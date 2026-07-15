@@ -213,7 +213,7 @@ async def save_draft_payments(
             payload.entries,
             current_user["user_id"],
             balances_to_settle=payload.draft_balances_to_settle,
-            credit_applied=payload.credit_applied,
+            credit_entries_checked=payload.credit_entries_checked,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))

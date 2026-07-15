@@ -615,10 +615,11 @@ async def save_draft_payments(
     user_id: int,
     *,
     balances_to_settle: list[BalanceSettlementItem] | None = None,
-    credit_applied: Decimal = Decimal("0.00"),
+    credit_entries_checked: list[int] | None = None,
 ) -> list[PaymentDetailResponse]:
     """Persist in-progress payment entries so they survive park/unpark cycles and reloads."""
     balances_to_settle = balances_to_settle or []
+    credit_entries_checked = credit_entries_checked or []
 
     transaction = await db.get(SalesTransaction, transaction_id)
     if transaction is None:
@@ -658,11 +659,23 @@ async def save_draft_payments(
             if balances_to_settle
             else None
         )
-        credit_sources_json = None
-        if credit_applied > 0:
-            breakdown = await customer_service.get_credit_source_breakdown(db, transaction.customer_id, credit_applied)
-            if breakdown:
-                credit_sources_json = json.dumps([{**item, "amount": str(item["amount"])} for item in breakdown])
+        # Checked entries can sum to more than what's owed — same cap process_payment
+        # applies at actual payment time, so the draft stays consistent with what /pay
+        # would do. The breakdown itself still records each checked entry's full
+        # remaining amount (no partial slicing) even when the aggregate below is capped;
+        # the unused remainder simply stays available as credit for a later transaction.
+        total_balance_settled = sum((item.amount for item in balances_to_settle), Decimal("0"))
+        total_due_before_credit = transaction.total_due + total_balance_settled
+        credit_breakdown = await customer_service.get_credit_breakdown_for_entries(
+            db, transaction.customer_id, credit_entries_checked
+        )
+        raw_credit_total = sum((item["amount"] for item in credit_breakdown), Decimal("0.00"))
+        credit_applied = min(raw_credit_total, total_due_before_credit)
+        credit_sources_json = (
+            json.dumps([{**item, "amount": str(item["amount"])} for item in credit_breakdown])
+            if credit_breakdown
+            else None
+        )
         # Cash/online rows the payment user typed in, plus a system-generated
         # row mirroring the applied credit — kept in the same draft table so it
         # round-trips through park/unpark exactly like the others (the frontend
@@ -785,20 +798,23 @@ async def process_payment(
         if total_balance_settled > outstanding_balance_total:
             raise PaymentValidationError("balances_to_settle exceeds the customer's outstanding balance")
 
-    if data.credit_applied > 0:
-        outstanding_credit_total = await customer_service.get_outstanding_credit_total(db, customer.id)
-        if data.credit_applied > outstanding_credit_total:
-            raise PaymentValidationError("credit_applied exceeds the customer's available credit")
-        # The frontend already blocks confirming past this point (creditValid in
-        # PaymentModal), but that's client-side only — without this check here,
-        # a client that skips/bypasses it could drive final_amount negative below.
-        total_due_before_credit = transaction.total_due + total_balance_settled
-        if data.credit_applied > total_due_before_credit:
-            raise PaymentValidationError("credit_applied cannot exceed the amount due before credit is applied")
+    # Each checked id is validated against the customer's currently outstanding
+    # credit_added entries here (raises if stale/already consumed), so there's no
+    # separate "exceeds available credit" check needed — an entry that's still in
+    # this breakdown is by definition still outstanding.
+    credit_breakdown = await customer_service.get_credit_breakdown_for_entries(
+        db, customer.id, data.credit_entries_checked
+    )
+    raw_credit_total = sum((item["amount"] for item in credit_breakdown), Decimal("0.00"))
+    total_due_before_credit = transaction.total_due + total_balance_settled
+    # Checked entries can sum to more than what's owed — cap what's applied to the
+    # transaction at the amount due instead of rejecting the payment; the unused
+    # remainder stays as credit on the customer's account for a later transaction.
+    credit_applied = min(raw_credit_total, total_due_before_credit)
 
     # balance/credit applied at Payment time shift the amount actually owed —
     # entries must sum to this, not the original total_due
-    final_amount = transaction.total_due + total_balance_settled - data.credit_applied
+    final_amount = total_due_before_credit - credit_applied
 
     amount_paid = sum((payment.amount for payment in data.payments), Decimal("0"))
     # A 1-cent tolerance, not an exact match: the frontend sums these as JS
@@ -890,33 +906,30 @@ async def process_payment(
             transaction.balance_settled = total_balance_settled
             transaction.total_due += total_balance_settled
 
-        if data.credit_applied > 0:
-            # Computed fresh here (rather than read back from a possibly-stale/
-            # absent draft row — a credit-only payment can reach /pay without
-            # ever having saved a draft) so the notes breakdown always reflects
-            # what was actually unconsumed at the moment this credit was applied.
-            credit_breakdown = await customer_service.get_credit_source_breakdown(
-                db, customer.id, data.credit_applied
-            )
+        if credit_applied > 0:
+            # credit_breakdown (computed above from the explicitly checked entries)
+            # always lists each entry's full remaining amount, even when credit_applied
+            # itself got capped below what was checked — the note is a record of which
+            # entries were selected, not a claim that every peso of them was consumed.
             credit_notes = (
                 "Applied from " + ", ".join(f"{item['order_number']} (₱{item['amount']:,.2f})" for item in credit_breakdown)
                 if credit_breakdown
                 else f"Credit applied to {transaction.order_number}"
             )
 
-            customer.net_balance -= data.credit_applied
+            customer.net_balance -= credit_applied
             db.add(
                 CustomerLedger(
                     customer_id=customer.id,
                     transaction_id=transaction.id,
                     entry_type=LedgerEntryTypeEnum.credit_used,
-                    amount=data.credit_applied,
+                    amount=credit_applied,
                     running_balance=customer.net_balance,
                     notes=credit_notes,
                 )
             )
-            transaction.credit_applied = data.credit_applied
-            transaction.total_due -= data.credit_applied
+            transaction.credit_applied = credit_applied
+            transaction.total_due -= credit_applied
 
             # Record the applied credit as its own confirmed payment_detail row
             # (alongside the cash/online rows above) so the payment breakdown for
@@ -926,7 +939,7 @@ async def process_payment(
                     transaction_id=transaction.id,
                     payment_method_id=await _get_payment_method_id(db, "credit"),
                     ref_number=transaction.order_number,
-                    amount=data.credit_applied,
+                    amount=credit_applied,
                     is_draft=False,
                 )
             )

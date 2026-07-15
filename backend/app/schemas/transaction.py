@@ -63,7 +63,10 @@ class DraftPaymentSaveRequest(BaseModel):
     # balance/credit checkbox state — sent once per save (not per entry row),
     # stored on the first draft row; see save_draft_payments
     draft_balances_to_settle: list[BalanceSettlementItem] = []
-    credit_applied: Decimal = Decimal("0.00")
+    # explicit credit_added ledger_entry_ids Payment checked — same pattern as
+    # draft_balances_to_settle above. credit_applied is derived server-side from
+    # these, not sent as a precomputed amount (see save_draft_payments).
+    credit_entries_checked: list[int] = []
 
 
 # =============================================================
@@ -259,7 +262,10 @@ class PaymentProcessItem(BaseModel):
 
 class PaymentProcessRequest(BaseModel):
     payments: list[PaymentProcessItem]
-    credit_applied: Decimal = Decimal("0")
+    # explicit credit_added ledger_entry_ids Payment checked — credit_applied is
+    # derived server-side from these (see process_payment), not sent as a
+    # precomputed amount.
+    credit_entries_checked: list[int] = []
     balances_to_settle: list[BalanceSettlementItem] = []
     is_partial: bool = False
     # total actually collected from customer (sum of payment entries) — the

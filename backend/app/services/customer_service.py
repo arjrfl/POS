@@ -80,28 +80,27 @@ async def get_outstanding_balance_total(db: AsyncSession, customer_id: int) -> D
     return sum((e.amount for e in entries), Decimal("0"))
 
 
-async def get_outstanding_credit_total(db: AsyncSession, customer_id: int) -> Decimal:
-    entries = await get_outstanding_credit_entries(db, customer_id)
-    return sum((e.amount for e in entries), Decimal("0"))
-
-
-async def get_credit_source_breakdown(db: AsyncSession, customer_id: int, amount: Decimal) -> list[dict]:
-    """Which outstanding credit_added entries cover `amount` of credit applied, FIFO
-    (oldest entry first) — same ordering get_outstanding_credit_entries already returns."""
-    entries = await get_outstanding_credit_entries(db, customer_id)
+async def get_credit_breakdown_for_entries(
+    db: AsyncSession, customer_id: int, ledger_entry_ids: list[int]
+) -> list[dict]:
+    """Full remaining amount for each explicitly checked credit_added entry, in the
+    order given. Payment now checks specific entries directly (like the balance
+    checkboxes) instead of typing a target amount for the system to break down FIFO —
+    so this looks each checked id up by identity rather than walking oldest-first."""
+    if not ledger_entry_ids:
+        return []
+    entries_by_id = {e.ledger_entry_id: e for e in await get_outstanding_credit_entries(db, customer_id)}
     breakdown = []
-    remaining = amount
-    for entry in entries:
-        if remaining <= 0:
-            break
-        take = min(remaining, entry.amount)
+    for ledger_entry_id in ledger_entry_ids:
+        entry = entries_by_id.get(ledger_entry_id)
+        if entry is None:
+            raise ValueError(f"credit ledger entry {ledger_entry_id} is not outstanding for this customer")
         breakdown.append(
             {
                 "source_transaction_id": entry.transaction_id,
                 "order_number": entry.order_number,
                 "ledger_entry_id": entry.ledger_entry_id,
-                "amount": take,
+                "amount": entry.amount,
             }
         )
-        remaining -= take
     return breakdown

@@ -18,6 +18,7 @@ export function PaymentConfirmationModal({
   balancesToSettle,
   totalBalanceSettled,
   creditApplied,
+  creditEntriesChecked,
   finalAmount,
   isPartial,
   onBack,
@@ -63,7 +64,7 @@ export function PaymentConfirmationModal({
 
     return post(`/transactions/${transaction.id}/pay`, {
       payments,
-      credit_applied: creditApplied,
+      credit_entries_checked: creditEntriesChecked,
       balances_to_settle: balancesToSettle.map((b) => ({
         source_transaction_id: b.source_transaction_id,
         ledger_entry_id: b.ledger_entry_id,
