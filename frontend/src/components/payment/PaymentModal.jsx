@@ -670,10 +670,6 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                   {parking ? 'Parking...' : 'Park Transaction'}
                 </Button>
 
-                <Button type="button" variant="outline" onClick={requestClose}>
-                  Cancel
-                </Button>
-
                 {isFullyCovered ? (
                   <Button type="button" disabled={confirmDisabled} onClick={() => openConfirmation('full')}>
                     Confirm Payment
