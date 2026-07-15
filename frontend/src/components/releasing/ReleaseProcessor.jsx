@@ -131,8 +131,8 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
   }
 
   return (
-    <Card className="flex flex-col gap-4">
-      <div>
+    <Card className="flex flex-col gap-4 h-full overflow-hidden">
+      <div className="flex-shrink-0">
         <div className="text-lg font-bold text-gray-900 mb-1">{transaction.order_number}</div>
         <div className="text-xl font-bold text-primary">{customer?.full_name ?? '...'}</div>
         {customer?.address && <div className="text-sm text-gray-500">{customer.address}</div>}
@@ -145,7 +145,7 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
         )}
       </div>
 
-      <div className="border-t border-gray-200">
+      <div className="flex-1 min-h-0 overflow-y-auto border-t border-gray-200">
         {displayItems.length === 0 ? (
           <p className="py-4 text-sm text-gray-500">No items on this order.</p>
         ) : (
@@ -231,31 +231,33 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
         )}
       </div>
 
-      <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
-        <span className="font-semibold text-gray-900">TOTAL DUE</span>
-        <span className="text-2xl font-bold text-primary">{formatCurrency(transaction.total_due)}</span>
-      </div>
+      <div className="flex-shrink-0 flex flex-col gap-4">
+        <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
+          <span className="font-semibold text-gray-900">TOTAL DUE</span>
+          <span className="text-2xl font-bold text-primary">{formatCurrency(transaction.total_due)}</span>
+        </div>
 
-      <div>
-        {isOnline ? (
-          <Button type="button" disabled={submitting} onClick={onConfirmReady} className="w-full">
-            {submitting ? 'Confirming...' : '✓ Confirm Items Ready'}
-          </Button>
-        ) : weightConfirmed ? (
-          balanceDue === 0 ? (
-            <div className="bg-green-50 border border-green-300 rounded-md p-3 text-sm text-green-800">
-              <p className="font-semibold">Exact weight ✓</p>
-            </div>
+        <div>
+          {isOnline ? (
+            <Button type="button" disabled={submitting} onClick={onConfirmReady} className="w-full">
+              {submitting ? 'Confirming...' : '✓ Confirm Items Ready'}
+            </Button>
+          ) : weightConfirmed ? (
+            balanceDue === 0 ? (
+              <div className="bg-green-50 border border-green-300 rounded-md p-3 text-sm text-green-800">
+                <p className="font-semibold">Exact weight ✓</p>
+              </div>
+            ) : (
+              <SubstandardResolution
+                transaction={transaction}
+                onSendToPayment={() => onResolve('Sent to Payment team')}
+                submitting={submitting}
+              />
+            )
           ) : (
-            <SubstandardResolution
-              transaction={transaction}
-              onSendToPayment={() => onResolve('Sent to Payment team')}
-              submitting={submitting}
-            />
-          )
-        ) : (
-          allItemsConfirmed && <p className="text-sm text-gray-500 text-center">Confirming weights...</p>
-        )}
+            allItemsConfirmed && <p className="text-sm text-gray-500 text-center">Confirming weights...</p>
+          )}
+        </div>
       </div>
 
       {editingItem && (

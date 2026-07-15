@@ -106,7 +106,7 @@ export default function Releasing() {
 
         <div className="flex-[40] h-full min-h-0 flex flex-col">
           <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Order Details</span>
-          <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-3">
+          <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg p-3 flex flex-col">
             <ReleaseProcessor
               key={selectedTransaction?.id ?? 'empty'}
               transaction={selectedTransaction}
