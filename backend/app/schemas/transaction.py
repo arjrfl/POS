@@ -82,9 +82,41 @@ class TransactionItemResponse(BaseModel):
     estimated_weight_kg: Decimal | None
     quantity_kg: Decimal | None
     actual_weight_kg: Decimal | None
+    actual_unit_count: int | None
+    actual_quantity_kg: Decimal | None
     unit_price: Decimal | None
     reference_transaction_id: int | None
     subtotal: Decimal
+    actual_subtotal: Decimal
+
+
+class TransactionParentItemResponse(BaseModel):
+    """A parent transaction's product-type items, as surfaced on an adjustment/refund
+    child's response — used to render the child's article table (the child itself
+    carries no items of its own, see resolve_substandard)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    product_id: int | None
+    product_name: str | None = None
+    brand_name: str | None = None
+    unit_count: int | None
+    quantity_kg: Decimal | None
+    unit_price: Decimal | None
+    subtotal: Decimal
+    actual_unit_count: int | None
+    actual_quantity_kg: Decimal | None
+    actual_subtotal: Decimal
+    actual_weight_kg: Decimal | None
+
+
+class TransactionParentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    order_number: str
+    items: list[TransactionParentItemResponse]
 
 
 class PaymentDetailResponse(BaseModel):
@@ -115,6 +147,12 @@ class TransactionResponse(BaseModel):
     # matching ORM attribute (would require a join), so this always needs the
     # default here and is filled in by _build_transaction_response afterward.
     parent_order_number: str | None = None
+    # Full parent transaction (with its product items) for adjustment/refund
+    # children — the child itself carries no items of its own, so the article
+    # table has to source from here. No matching ORM attribute in this shape,
+    # filled in by _build_transaction_response afterward. None for everything
+    # else (originals have no parent).
+    parent: TransactionParentResponse | None = None
     transaction_type: TransactionTypeEnum
     transaction_status: TransactionStatusEnum
     customer_type: CustomerTypeEnum
@@ -188,7 +226,10 @@ class QueueParkRequest(BaseModel):
 
 class WeightConfirmItem(BaseModel):
     transaction_item_id: int
-    actual_weight_kg: Decimal
+    actual_weight_kg: Decimal | None = None
+    actual_unit_count: int | None = None
+    # required — drives actual_subtotal (see confirm_weight)
+    actual_quantity_kg: Decimal
 
 
 class WeightConfirmRequest(BaseModel):

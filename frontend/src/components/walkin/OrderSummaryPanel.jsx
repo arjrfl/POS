@@ -41,6 +41,12 @@ export function OrderSummaryPanel({
   // domain concept itself.
   headerBadge = null,
   headerSubtext = null,
+  // Optional full override for the items table body — used for adjustment/refund
+  // transactions, whose article table needs to show unadjusted/adjusted rows
+  // sourced from the parent transaction rather than plain `items`. Renders inside
+  // the same QTY | UNIT | ARTICLES | UNIT PRICE | AMOUNT header as the default
+  // table. Leave null for the normal, editable-items behavior (unchanged).
+  itemsTable = null,
 }) {
   const typeBadge = customerType ? CUSTOMER_TYPE_BADGE[customerType] : null
 
@@ -93,6 +99,19 @@ export function OrderSummaryPanel({
                 <td className="py-2 pr-2 font-medium text-red-600">{formatCurrency(total)}</td>
               </tr>
             </tbody>
+          </table>
+        ) : itemsTable ? (
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-white">
+              <tr className="text-left text-gray-500 border-b border-gray-200">
+                <th className="py-2 pr-2 font-medium">QTY</th>
+                <th className="py-2 pr-2 font-medium">UNIT</th>
+                <th className="py-2 pr-2 font-medium">ARTICLES</th>
+                <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
+                <th className="py-2 pr-2 font-medium">AMOUNT</th>
+              </tr>
+            </thead>
+            <tbody>{itemsTable}</tbody>
           </table>
         ) : items.length === 0 ? (
           <p className="py-4 text-sm text-gray-500">No items added yet.</p>

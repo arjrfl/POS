@@ -343,10 +343,24 @@ CREATE TABLE transaction_item (
     -- points to which transaction this balance/credit came from
     -- NULL for product items
 
-    subtotal                 DECIMAL(10,2)  NOT NULL DEFAULT 0.00
+    subtotal                 DECIMAL(10,2)  NOT NULL DEFAULT 0.00,
     -- product items:            unit_price × quantity_kg
     -- balance_settlement items: positive amount (adds to total_due)
     -- credit_usage items:       negative amount (deducts from total_due)
+
+    actual_unit_count        INT            NULL,
+    -- confirmed by Releasing, mirrors unit_count, reference only,
+    -- editable, does NOT drive subtotal
+    -- NULL for balance_settlement and credit_usage items
+
+    actual_quantity_kg       DECIMAL(10,3)  NULL,
+    -- confirmed by Releasing, mirrors quantity_kg (QTY), THIS drives
+    -- actual_subtotal — new variance baseline
+    -- NULL for balance_settlement and credit_usage items
+
+    actual_subtotal          DECIMAL(10,2)  NOT NULL DEFAULT 0.00
+    -- actual_quantity_kg × unit_price, per-item actual amount
+    -- NULL/0.00 for balance_settlement and credit_usage items
 );
 
 CREATE INDEX idx_ti_transaction ON transaction_item (transaction_id);

@@ -33,12 +33,14 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
   const { data: customer } = useCustomer(transaction?.customer_id)
   const { data: products } = useProducts()
 
-  // itemStatuses/itemActualWeights are keyed by transaction_item_id and reset
+  // itemStatuses/itemActualValues are keyed by transaction_item_id and reset
   // whenever a different transaction is selected — Releasing.jsx remounts this
   // component (key={transaction.id}) precisely so this local state can't leak
   // between transactions.
   const [itemStatuses, setItemStatuses] = useState({})
-  const [itemActualWeights, setItemActualWeights] = useState({})
+  // { [itemId]: { actualWeight, actualUnitCount, actualQty } } — actualWeight
+  // may be null (reference-only field, allowed empty)
+  const [itemActualValues, setItemActualValues] = useState({})
   const [editingItemId, setEditingItemId] = useState(null)
   const [reEditConfirmId, setReEditConfirmId] = useState(null)
 
@@ -75,16 +77,21 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
   const lastSentRef = useRef(null)
   useEffect(() => {
     if (!allItemsConfirmed || submitting) return
-    const payload = displayItems.map((item) => ({
-      transaction_item_id: item.id,
-      actual_weight_kg: String(itemActualWeights[item.id]),
-    }))
+    const payload = displayItems.map((item) => {
+      const values = itemActualValues[item.id]
+      return {
+        transaction_item_id: item.id,
+        actual_weight_kg: values.actualWeight != null ? String(values.actualWeight) : null,
+        actual_unit_count: values.actualUnitCount,
+        actual_quantity_kg: String(values.actualQty),
+      }
+    })
     const signature = JSON.stringify(payload)
     if (lastSentRef.current === signature) return
     lastSentRef.current = signature
     onConfirmWeights(payload)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allItemsConfirmed, itemActualWeights, submitting])
+  }, [allItemsConfirmed, itemActualValues, submitting])
 
   // Exact weight has nothing for either team to decide — auto-resolve the
   // instant confirm-weight responds with balance_due === 0. Guarded by a ref
@@ -109,8 +116,8 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
   const typeBadge = CUSTOMER_TYPE_BADGE[transaction.customer_type]
   const editingItem = displayItems.find((item) => item.id === editingItemId) ?? null
 
-  const handleConfirmItem = (itemId, actualWeight, status) => {
-    setItemActualWeights((prev) => ({ ...prev, [itemId]: actualWeight }))
+  const handleConfirmItem = (itemId, values, status) => {
+    setItemActualValues((prev) => ({ ...prev, [itemId]: values }))
     setItemStatuses((prev) => ({ ...prev, [itemId]: status }))
     setEditingItemId(null)
   }
@@ -254,7 +261,7 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
       {editingItem && (
         <ItemEditModal
           item={editingItem}
-          initialWeight={itemActualWeights[editingItem.id]}
+          initialValues={itemActualValues[editingItem.id]}
           onConfirm={handleConfirmItem}
           onCancel={() => setEditingItemId(null)}
         />

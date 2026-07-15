@@ -29,6 +29,8 @@ from app.schemas.transaction import (
     TransactionCreate,
     TransactionItemCreate,
     TransactionListResponse,
+    TransactionParentItemResponse,
+    TransactionParentResponse,
     TransactionResponse,
     WeightConfirmRequest,
 )
@@ -57,6 +59,36 @@ _WITH_CHILDREN = selectinload(SalesTransaction.children, recursion_depth=-1)
 _WITH_PARENT = selectinload(SalesTransaction.parent)
 
 
+def _build_parent_item(item: TransactionItem) -> TransactionParentItemResponse:
+    return TransactionParentItemResponse(
+        id=item.id,
+        product_id=item.product_id,
+        product_name=item.product.product_name if item.product else None,
+        brand_name=item.product.brand_name if item.product else None,
+        unit_count=item.unit_count,
+        quantity_kg=item.quantity_kg,
+        unit_price=item.unit_price,
+        subtotal=item.subtotal,
+        actual_unit_count=item.actual_unit_count,
+        actual_quantity_kg=item.actual_quantity_kg,
+        actual_subtotal=item.actual_subtotal,
+        actual_weight_kg=item.actual_weight_kg,
+    )
+
+
+def _build_parent_summary(parent: SalesTransaction) -> TransactionParentResponse:
+    # adjustment/refund children carry no items of their own (see
+    # resolve_substandard) — their article table sources from here instead.
+    # Only product rows: balance_settlement/credit_usage lines on the parent
+    # (e.g. a walk-in order that also paid off an old balance) aren't part of
+    # the weight-variance picture.
+    return TransactionParentResponse(
+        id=parent.id,
+        order_number=parent.order_number,
+        items=[_build_parent_item(item) for item in parent.items if item.item_type == ItemTypeEnum.product],
+    )
+
+
 def _build_transaction_response(transaction: SalesTransaction) -> TransactionResponse:
     # payment_details (the relationship) loads every payment_detail row regardless
     # of is_draft — split it here so confirmed and draft entries are always kept
@@ -72,6 +104,7 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
         response.draft_balances_json = response.payment_drafts[0].draft_balances_json
         response.draft_credit_applied = response.payment_drafts[0].draft_credit_applied
     response.parent_order_number = transaction.parent.order_number if transaction.parent else None
+    response.parent = _build_parent_summary(transaction.parent) if transaction.parent else None
     response.children = [_build_transaction_response(child) for child in transaction.children]
     return response
 
@@ -110,6 +143,10 @@ class PaymentValidationError(Exception):
 
 class SubstandardValidationError(Exception):
     """The submitted outcome doesn't apply to this transaction's balance_due."""
+
+
+class WeightConfirmValidationError(Exception):
+    """A confirm-weight item is missing a required actual quantity field."""
 
 
 class TransactionEditFlowError(Exception):
@@ -942,14 +979,22 @@ async def confirm_weight(
                 raise ValueError(
                     f"transaction_item {entry.transaction_item_id} does not belong to transaction {transaction_id}"
                 )
-            item.actual_weight_kg = entry.actual_weight_kg
+            if not entry.actual_unit_count:
+                raise WeightConfirmValidationError("Actual unit count is required")
+            if not entry.actual_quantity_kg:
+                raise WeightConfirmValidationError("Actual QTY is required")
+
+            item.actual_weight_kg = entry.actual_weight_kg  # reference only — null is allowed
+            item.actual_unit_count = entry.actual_unit_count
+            item.actual_quantity_kg = entry.actual_quantity_kg
+            item.actual_subtotal = (entry.actual_quantity_kg * item.unit_price).quantize(Decimal("0.01"))
 
         actual_amount = Decimal("0.00")
         for item in transaction.items:
             if item.item_type == ItemTypeEnum.product:
-                if item.actual_weight_kg is None:
-                    raise ValueError(f"transaction_item {item.id} is missing actual_weight_kg")
-                actual_amount += (item.actual_weight_kg * item.unit_price).quantize(Decimal("0.01"))
+                if item.actual_quantity_kg is None:
+                    raise WeightConfirmValidationError(f"transaction_item {item.id} is missing actual_quantity_kg")
+                actual_amount += item.actual_subtotal
 
         transaction.actual_amount = actual_amount
         transaction.releasing_user_id = releasing_user_id

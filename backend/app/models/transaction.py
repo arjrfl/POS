@@ -80,6 +80,8 @@ class TransactionItem(Base):
     estimated_weight_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
     quantity_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
     actual_weight_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
+    actual_unit_count: Mapped[Optional[int]] = mapped_column(Integer)
+    actual_quantity_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
     unit_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2))
 
     # for balance_settlement and credit_usage items
@@ -88,6 +90,7 @@ class TransactionItem(Base):
     )
 
     subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
+    actual_subtotal: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
 
     transaction: Mapped["SalesTransaction"] = relationship(
         back_populates="items", foreign_keys=[transaction_id], lazy="selectin"

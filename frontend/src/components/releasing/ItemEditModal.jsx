@@ -6,25 +6,62 @@ import { formatCurrency } from '../../utils/format'
 
 const EPS = 0.005
 
-export function ItemEditModal({ item, initialWeight, onConfirm, onCancel }) {
-  // First-time edit defaults to estimated_weight_kg (what was actually ordered
-  // for this line item — never product.unit_weight_kg, the generic catalog
-  // weight, which can legitimately differ). Re-editing an already-confirmed
-  // item instead starts from whatever was entered last time.
+export function ItemEditModal({ item, initialValues, onConfirm, onCancel }) {
+  // First-time edit defaults Actual fields to match the originals (never
+  // product.unit_weight_kg, the generic catalog weight, which can legitimately
+  // differ) — this keeps initial variance at 0 ("✓ Exact weight"), same intent
+  // as Receiver's own QTY default. Re-editing an already-confirmed item instead
+  // starts from whatever was entered last time (initialValues, held in
+  // ReleaseProcessor's local state).
   const [actualWeight, setActualWeight] = useState(
-    String(initialWeight ?? item.estimated_weight_kg ?? ''),
+    String(initialValues ? initialValues.actualWeight ?? '' : item.estimated_weight_kg ?? ''),
+  )
+  const [actualUnitCount, setActualUnitCount] = useState(
+    String(initialValues ? initialValues.actualUnitCount ?? '' : item.unit_count ?? ''),
+  )
+  const [actualQty, setActualQty] = useState(
+    String(initialValues ? initialValues.actualQty ?? '' : item.quantity_kg ?? ''),
   )
 
-  const estimatedWeight = Number(item.estimated_weight_kg)
-  const estimatedAmount = estimatedWeight * item.unit_price
+  const quantityKg = Number(item.quantity_kg)
+  const estimatedAmount = quantityKg * item.unit_price
 
-  const parsedWeight = Number(actualWeight)
-  const isValid = actualWeight !== '' && Number.isFinite(parsedWeight) && parsedWeight >= 0
-  const actualAmount = isValid ? parsedWeight * item.unit_price : 0
-  // Variance is measured against estimated_weight_kg — the weight this modal
-  // itself defaults to — so an untouched input always reads as exact, never a
-  // false heavier/lighter from quantity_kg happening to differ from it.
-  const diff = isValid ? (parsedWeight - estimatedWeight) * item.unit_price : 0
+  // "Last touched wins" — whichever of Actual Weight / Actual Unit Count the user
+  // edited most recently overwrites Actual QTY with its raw value. Actual QTY
+  // itself is always freely editable and never re-derived once the user types
+  // into it directly — no "if empty" special-casing, same as Receiver.
+  const handleWeightChange = (value) => {
+    setActualWeight(value)
+    setActualQty(value)
+  }
+
+  const handleUnitCountChange = (value) => {
+    setActualUnitCount(value)
+    setActualQty(value)
+  }
+
+  const handleQtyChange = (value) => {
+    setActualQty(value)
+  }
+
+  const parsedWeight = actualWeight === '' ? null : Number(actualWeight)
+  const parsedUnitCount = actualUnitCount === '' ? null : Number(actualUnitCount)
+  const parsedQty = actualQty === '' ? null : Number(actualQty)
+
+  let validationError = null
+  if (!parsedUnitCount || parsedUnitCount <= 0) {
+    validationError = 'Actual unit count is required'
+  } else if (!parsedQty || parsedQty <= 0) {
+    validationError = 'Actual QTY is required'
+  } else if (actualWeight !== '' && (!Number.isFinite(parsedWeight) || parsedWeight < 0)) {
+    validationError = 'Actual weight must be a valid number'
+  }
+
+  const isValid = validationError === null
+  const actualAmount = isValid ? parsedQty * item.unit_price : 0
+  // Variance is measured against quantity_kg (QTY) — the new baseline — not
+  // estimated_weight_kg, so it reflects what actually drives actual_subtotal.
+  const diff = isValid ? (parsedQty - quantityKg) * item.unit_price : 0
 
   let variance = null
   if (isValid) {
@@ -39,7 +76,11 @@ export function ItemEditModal({ item, initialWeight, onConfirm, onCancel }) {
 
   const handleConfirm = () => {
     if (!isValid || !variance) return
-    onConfirm(item.id, parsedWeight, variance.status)
+    onConfirm(
+      item.id,
+      { actualWeight: parsedWeight, actualUnitCount: parsedUnitCount, actualQty: parsedQty },
+      variance.status,
+    )
   }
 
   return (
@@ -50,41 +91,79 @@ export function ItemEditModal({ item, initialWeight, onConfirm, onCancel }) {
           {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
         </div>
 
-        <div className="border-t border-gray-200 pt-3 flex flex-col gap-1 text-sm">
-          <div className="flex justify-between text-gray-700">
-            <span>Estimated Weight</span>
-            <span>{item.estimated_weight_kg} kg</span>
+        <div className="border-t border-gray-200 pt-3 flex justify-between text-sm text-gray-700">
+          <span>Unit Price</span>
+          <span>{formatCurrency(item.unit_price)}</span>
+        </div>
+
+        <div className="border-t border-gray-200 pt-3 flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <div>
+              <span className="text-sm font-medium text-gray-700">Estimated Weight (kg)</span>
+              <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900">
+                {item.estimated_weight_kg ?? '—'}
+              </div>
+            </div>
+            <Input
+              id="actual-weight"
+              label="Actual Weight (kg)"
+              type="number"
+              step="0.001"
+              min="0"
+              value={actualWeight}
+              onChange={(e) => handleWeightChange(e.target.value)}
+              autoFocus
+            />
           </div>
-          <div className="flex justify-between text-gray-700">
-            <span>Unit Price</span>
-            <span>{formatCurrency(item.unit_price)}</span>
+
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <div>
+              <span className="text-sm font-medium text-gray-700">Unit Count</span>
+              <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900">{item.unit_count}</div>
+            </div>
+            <Input
+              id="actual-unit-count"
+              label="Actual Unit Count"
+              type="number"
+              step="1"
+              min="0"
+              value={actualUnitCount}
+              onChange={(e) => handleUnitCountChange(e.target.value)}
+            />
           </div>
-          <div className="flex justify-between text-gray-700">
-            <span>Estimated Amount</span>
-            <span>{formatCurrency(estimatedAmount)}</span>
+
+          <div className="grid grid-cols-2 gap-3 items-end">
+            <div>
+              <span className="text-sm font-medium text-gray-700">QTY (kg)</span>
+              <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900">{quantityKg.toFixed(3)}</div>
+            </div>
+            <Input
+              id="actual-qty"
+              label="Actual QTY (kg)"
+              type="number"
+              step="0.001"
+              min="0"
+              value={actualQty}
+              onChange={(e) => handleQtyChange(e.target.value)}
+            />
           </div>
         </div>
 
-        <div className="border-t border-gray-200 pt-3 flex flex-col gap-2">
-          <Input
-            id="actual-weight"
-            label="Actual Weight (kg)"
-            type="number"
-            step="0.001"
-            min="0"
-            placeholder={String(item.estimated_weight_kg)}
-            value={actualWeight}
-            onChange={(e) => setActualWeight(e.target.value)}
-            className="w-32"
-            autoFocus
-          />
-
+        <div className="border-t border-gray-200 pt-3 flex flex-col gap-1">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-700">Estimated Amount</span>
+            <span className="text-gray-900">{formatCurrency(estimatedAmount)}</span>
+          </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-700">Actual Amount</span>
             <span className="font-semibold text-gray-900">{formatCurrency(actualAmount)}</span>
           </div>
 
-          {variance && <p className={`text-sm font-semibold ${variance.className}`}>{variance.label}</p>}
+          {variance ? (
+            <p className={`text-sm font-semibold ${variance.className}`}>{variance.label}</p>
+          ) : (
+            validationError && <p className="text-sm font-semibold text-red-600">{validationError}</p>
+          )}
         </div>
 
         <div className="flex gap-2 mt-2">

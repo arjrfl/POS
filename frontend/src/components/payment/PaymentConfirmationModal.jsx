@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { Button } from '../ui/Button'
+import { ArticleRows } from './ArticleRows'
+import { OriginalTransactionLink } from './OriginalTransactionLink'
 import { post } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
@@ -28,6 +30,9 @@ export function PaymentConfirmationModal({
   if (!open) return null
 
   const isBalanceSettlement = transaction.transaction_type === 'balance_settlement'
+  const isAdjustment = transaction.transaction_type === 'adjustment'
+  const isRefund = transaction.transaction_type === 'refund'
+  const isAdjustmentChild = isAdjustment || isRefund
   const enteredTotal = entries.reduce((sum, e) => sum + e.amount, 0)
   const changeTotal = Math.max(enteredTotal - finalAmount, 0)
   const remaining = Math.max(finalAmount - enteredTotal, 0)
@@ -100,7 +105,7 @@ export function PaymentConfirmationModal({
 
   return (
     <FullScreenModal open={open} onClose={onBack} title="Confirm Payment">
-      <div className="max-w-3xl mx-auto h-full flex flex-col min-h-0">
+      <div className="max-w-6xl mx-auto h-[85vh] flex flex-col min-h-0">
         <button
           type="button"
           onClick={onBack}
@@ -109,8 +114,23 @@ export function PaymentConfirmationModal({
           &larr; Back
         </button>
 
-        <div className="print-receipt flex-1 min-h-0 flex flex-col gap-4">
-          <div className="flex-shrink-0 p-3 border border-gray-200 rounded-md">
+        <div className="print-receipt flex-1 min-h-0 flex flex-row gap-4 overflow-hidden">
+          <div className="w-3/5 min-h-0 flex flex-col gap-3 bg-gray-100 border border-gray-400 rounded-lg p-3">
+          <div className="flex-shrink-0">
+            {isAdjustmentChild && (
+              <div className="flex flex-col gap-1 pb-2 mb-2 border-b border-gray-200">
+                <span
+                  className={`inline-flex items-center self-start px-2 py-0.5 rounded-full text-xs font-bold ${
+                    isRefund ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
+                  }`}
+                >
+                  {isRefund ? 'REFUND' : 'ADJUSTMENT'}
+                </span>
+                <div className="text-xs text-gray-500">
+                  <OriginalTransactionLink transaction={transaction} />
+                </div>
+              </div>
+            )}
             <div className="font-semibold text-gray-900">{customer?.full_name}</div>
             {customer?.address && <div className="text-sm text-gray-500">{customer.address}</div>}
             {customer?.contact_number && <div className="text-sm text-gray-500">{customer.contact_number}</div>}
@@ -119,7 +139,7 @@ export function PaymentConfirmationModal({
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto max-h-56 border border-gray-200 rounded-md">
+          <div className="flex-1 min-h-0 overflow-y-auto border border-gray-300 rounded-md bg-white">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-white">
                 <tr className="text-left text-gray-500 border-b border-gray-200">
@@ -131,18 +151,22 @@ export function PaymentConfirmationModal({
                 </tr>
               </thead>
               <tbody>
-                {displayItems.map((item) => (
-                  <tr key={item.id} className="border-b border-gray-100 last:border-b-0 align-top">
-                    <td className="py-2 pl-2 pr-2 text-gray-700">{item.quantity_kg.toFixed(3)}</td>
-                    <td className="py-2 pr-2 text-gray-700">{item.unit_count}</td>
-                    <td className="py-2 pr-2">
-                      <div className="font-medium text-gray-900">{item.product_name}</div>
-                      {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
-                    </td>
-                    <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
-                    <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
-                  </tr>
-                ))}
+                {isAdjustmentChild ? (
+                  <ArticleRows transaction={transaction} />
+                ) : (
+                  displayItems.map((item) => (
+                    <tr key={item.id} className="border-b border-gray-100 last:border-b-0 align-top">
+                      <td className="py-2 pl-2 pr-2 text-gray-700">{item.quantity_kg.toFixed(3)}</td>
+                      <td className="py-2 pr-2 text-gray-700">{item.unit_count}</td>
+                      <td className="py-2 pr-2">
+                        <div className="font-medium text-gray-900">{item.product_name}</div>
+                        {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
+                      </td>
+                      <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
+                      <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
+                    </tr>
+                  ))
+                )}
                 {(balancesToSettle.length > 0 || creditApplied > 0) && (
                   <tr>
                     <td colSpan={5} className="border-t-2 border-gray-300 py-1"></td>
@@ -175,8 +199,10 @@ export function PaymentConfirmationModal({
               </tbody>
             </table>
           </div>
+          </div>
 
-          <div className="flex-shrink-0 p-3 border border-gray-200 rounded-md flex flex-col gap-1 text-sm">
+          <div className="w-2/5 min-h-0 overflow-y-auto flex flex-col gap-3">
+          <div className="p-3 border border-gray-200 rounded-md flex flex-col gap-1 text-sm">
             {isPartial ? (
               <>
                 <div className="flex justify-between">
@@ -301,6 +327,7 @@ export function PaymentConfirmationModal({
               Outstanding balance of {formatCurrency(remaining)} has been added to this customer&apos;s account.
             </p>
           )}
+          </div>
         </div>
 
         {error && <p className="flex-shrink-0 text-sm text-red-600 mt-2">{error}</p>}

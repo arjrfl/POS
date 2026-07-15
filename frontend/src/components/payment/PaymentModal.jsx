@@ -380,123 +380,126 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   return (
     <>
       <FullScreenModal open={open} onClose={requestClose} title={`Process Payment — ${transaction.order_number}`}>
-        <div className="h-full flex flex-col min-h-0 max-w-5xl mx-auto">
-          <div className="flex-shrink-0 grid grid-cols-3 gap-4 pb-4 border-b border-gray-200">
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Balance / Credit</span>
-              {isBalanceSettlement ? (
-                <div className="flex items-start gap-2 p-3 rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800">
-                  <span aria-hidden="true">&#8505;</span>
-                  <div>
-                    <div className="font-semibold">Balance Settlement</div>
-                    <p className="mt-1">
-                      This transaction is for settling the customer&apos;s outstanding balance. The total already
-                      reflects the full balance amount.
-                    </p>
+        <div className="h-[80vh] flex flex-col min-h-0 max-w-6xl mx-auto">
+        <div className="flex-1 min-h-0 flex flex-col bg-gray-100 border border-gray-400 rounded-lg p-4">
+          <div className="flex-1 min-h-0 flex flex-row gap-4 overflow-hidden">
+            <div className="flex-[21] min-w-0 h-full flex flex-col">
+              <span className="text-sm font-semibold text-gray-600 mb-2">BALANCE / CREDIT</span>
+              <div className="flex-1 min-h-0 overflow-y-auto border border-gray-300 rounded-lg p-3 flex flex-col gap-2">
+                {isBalanceSettlement ? (
+                  <div className="flex items-start gap-2 p-3 rounded-md bg-blue-50 border border-blue-200 text-sm text-blue-800">
+                    <span aria-hidden="true">&#8505;</span>
+                    <div>
+                      <div className="font-semibold">Balance Settlement</div>
+                      <p className="mt-1">
+                        This transaction is for settling the customer&apos;s outstanding balance. The total already
+                        reflects the full balance amount.
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <>
-                  {netBalance < 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded-md p-2">
-                      <div className="flex justify-between text-xs font-semibold text-red-700">
-                        <span>Outstanding Balance</span>
-                        <span>Total: {formatCurrency(absBalance)}</span>
-                      </div>
-                      {balanceEntries.length === 0 ? (
-                        <p className="text-xs text-gray-500 py-1">No outstanding balance entries found</p>
-                      ) : (
-                        balanceEntries.map((entry) => (
-                          <label key={entry.ledger_entry_id} className="flex items-center gap-2 py-1">
-                            <input
-                              type="checkbox"
-                              className="accent-green-800"
-                              checked={!!checkedBalances[entry.ledger_entry_id]}
-                              onChange={() => handleToggleBalanceEntry(entry.ledger_entry_id)}
-                            />
-                            <span className="text-xs font-mono text-gray-700">{entry.order_number}</span>
-                            <span className="text-xs font-bold text-red-600 ml-auto">
-                              {formatCurrency(Number(entry.amount))}
-                            </span>
-                            <span className="text-xs text-gray-400">
-                              {new Date(entry.created_at).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                              })}
-                            </span>
-                          </label>
-                        ))
-                      )}
-                      {anyBalanceChecked && (
-                        <div className="text-xs text-red-700 font-semibold mt-1">
-                          Settling: {formatCurrency(totalBalanceSettled)}
+                ) : (
+                  <>
+                    {netBalance < 0 && (
+                      <div className="bg-red-50 border border-red-200 rounded-md p-2">
+                        <div className="flex justify-between text-xs font-semibold text-red-700">
+                          <span>Outstanding Balance</span>
+                          <span>Total: {formatCurrency(absBalance)}</span>
                         </div>
-                      )}
-                    </div>
-                  )}
-                  {netBalance > 0 && (
-                    <div className="bg-green-50 border border-green-200 rounded-md p-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-green-700">Available Credit</span>
-                        <span className="font-bold text-green-600">{formatCurrency(netBalance)}</span>
-                      </div>
-                      <label className="flex items-center gap-1.5 mt-1 text-green-700">
-                        <input
-                          type="checkbox"
-                          className="accent-green-800"
-                          checked={applyCredit}
-                          onChange={(e) => handleToggleApplyCredit(e.target.checked)}
-                        />
-                        Apply to this payment
-                      </label>
-                      {applyCredit && (
-                        <>
-                          <Input
-                            id="credit-amount"
-                            type="number"
-                            step="0.01"
-                            value={creditAmount}
-                            onChange={(e) => setCreditAmount(e.target.value)}
-                            className="mt-1 text-xs"
-                          />
-                          {!creditValid && (
-                            <p className="text-red-600 mt-1">Cannot exceed available credit or order total</p>
-                          )}
-                          <div className="mt-2 pt-2 border-t border-green-200">
-                            <span className="text-gray-500">From:</span>
-                            {creditSources ? (
-                              <>
-                                {creditSources.slice(0, 3).map((s) => (
-                                  <div key={s.id} className="flex justify-between text-gray-600">
-                                    <span>&bull; {s.order_number}</span>
-                                    <span>{formatCurrency(Number(s.amount))}</span>
-                                  </div>
-                                ))}
-                                {creditSources.length > 3 && (
-                                  <div className="text-gray-500">+ {creditSources.length - 3} more</div>
-                                )}
-                              </>
-                            ) : (
-                              <div className="text-gray-500">Credit of {formatCurrency(netBalance)} on account</div>
-                            )}
+                        {balanceEntries.length === 0 ? (
+                          <p className="text-xs text-gray-500 py-1">No outstanding balance entries found</p>
+                        ) : (
+                          balanceEntries.map((entry) => (
+                            <label key={entry.ledger_entry_id} className="flex items-center gap-2 py-1">
+                              <input
+                                type="checkbox"
+                                className="accent-green-800"
+                                checked={!!checkedBalances[entry.ledger_entry_id]}
+                                onChange={() => handleToggleBalanceEntry(entry.ledger_entry_id)}
+                              />
+                              <span className="text-xs font-mono text-gray-700">{entry.order_number}</span>
+                              <span className="text-xs font-bold text-red-600 ml-auto">
+                                {formatCurrency(Number(entry.amount))}
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                {new Date(entry.created_at).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })}
+                              </span>
+                            </label>
+                          ))
+                        )}
+                        {anyBalanceChecked && (
+                          <div className="text-xs text-red-700 font-semibold mt-1">
+                            Settling: {formatCurrency(totalBalanceSettled)}
                           </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {netBalance === 0 && (
-                    <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-xs text-gray-400">
-                      No outstanding balance or credit
-                    </div>
-                  )}
-                </>
-              )}
+                        )}
+                      </div>
+                    )}
+                    {netBalance > 0 && (
+                      <div className="bg-green-50 border border-green-200 rounded-md p-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-green-700">Available Credit</span>
+                          <span className="font-bold text-green-600">{formatCurrency(netBalance)}</span>
+                        </div>
+                        <label className="flex items-center gap-1.5 mt-1 text-green-700">
+                          <input
+                            type="checkbox"
+                            className="accent-green-800"
+                            checked={applyCredit}
+                            onChange={(e) => handleToggleApplyCredit(e.target.checked)}
+                          />
+                          Apply to this payment
+                        </label>
+                        {applyCredit && (
+                          <>
+                            <Input
+                              id="credit-amount"
+                              type="number"
+                              step="0.01"
+                              value={creditAmount}
+                              onChange={(e) => setCreditAmount(e.target.value)}
+                              className="mt-1 text-xs"
+                            />
+                            {!creditValid && (
+                              <p className="text-red-600 mt-1">Cannot exceed available credit or order total</p>
+                            )}
+                            <div className="mt-2 pt-2 border-t border-green-200">
+                              <span className="text-gray-500">From:</span>
+                              {creditSources ? (
+                                <>
+                                  {creditSources.slice(0, 3).map((s) => (
+                                    <div key={s.id} className="flex justify-between text-gray-600">
+                                      <span>&bull; {s.order_number}</span>
+                                      <span>{formatCurrency(Number(s.amount))}</span>
+                                    </div>
+                                  ))}
+                                  {creditSources.length > 3 && (
+                                    <div className="text-gray-500">+ {creditSources.length - 3} more</div>
+                                  )}
+                                </>
+                              ) : (
+                                <div className="text-gray-500">Credit of {formatCurrency(netBalance)} on account</div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {netBalance === 0 && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-xs text-gray-400">
+                        No outstanding balance or credit
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Revised Total</span>
-              <div className="flex flex-col gap-1 p-3 rounded-md border border-gray-200 text-sm">
+            <div className="flex-[21] min-w-0 h-full flex flex-col">
+              <span className="text-sm font-semibold text-gray-600 mb-2">REVISED TOTAL</span>
+              <div className="flex-1 min-h-0 overflow-y-auto border border-gray-300 rounded-lg p-3 flex flex-col gap-1 text-sm">
                 {!isBalanceSettlement && (
                   <div className="flex justify-between">
                     <span className="text-gray-700">Original Total</span>
@@ -522,9 +525,9 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Payment Entry</span>
-              <div className="flex flex-col gap-2">
+            <div className="flex-[21] min-w-0 h-full flex flex-col">
+              <span className="text-sm font-semibold text-gray-600 mb-2">PAYMENT ENTRY</span>
+              <div className="flex-1 min-h-0 overflow-y-auto border border-gray-300 rounded-lg p-3 flex flex-col gap-2">
                 <div className="flex flex-col gap-1">
                   <label htmlFor="payment-method" className="text-sm font-medium text-gray-700">
                     Payment Method
@@ -568,74 +571,52 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                 </Button>
               </div>
             </div>
-          </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto py-4">
-            {entries.length === 0 ? (
-              <p className="text-sm text-gray-500">No payment entries yet.</p>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-500 border-b border-gray-200">
-                    <th className="py-2 pr-2 font-medium">METHOD</th>
-                    <th className="py-2 pr-2 font-medium">AMOUNT</th>
-                    <th className="py-2 pr-2 font-medium">REFERENCE</th>
-                    <th className="py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((entry) => (
-                    <tr key={entry.id} className="border-b border-gray-100 last:border-b-0">
-                      <td className="py-2 pr-2 text-gray-900">
-                        {PAYMENT_METHOD_LABEL[entry.method_name] ?? entry.method_name}
-                      </td>
-                      <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(entry.amount)}</td>
-                      <td className="py-2 pr-2 text-gray-700">{entry.ref_number || '—'}</td>
-                      <td className="py-2 pl-1">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveEntry(entry.id)}
-                          className="text-red-600 hover:text-red-800 font-bold text-lg leading-none"
-                          aria-label="Remove entry"
-                        >
-                          &#10005;
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          <div className="flex-shrink-0">
-            <div className="flex flex-col gap-1 pt-3 border-t border-gray-200 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-700">Total Entered</span>
-                <span className="font-semibold text-gray-900">{formatCurrency(enteredTotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Amount to Pay</span>
-                <span className="font-semibold text-gray-800">{formatCurrency(finalAmount)}</span>
-              </div>
-              <div className="flex flex-col gap-1 border-t border-gray-200 pt-1 mt-1">
-                {isFullyCovered && changeAmount > EPS && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-700">Change</span>
-                    <span className="font-semibold text-green-700">{formatCurrency(changeAmount)}</span>
-                  </div>
-                )}
-                {!isFullyCovered && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-700">Remaining</span>
-                    <span className="font-semibold text-red-600">{formatCurrency(remainingAfterEntries)}</span>
-                  </div>
+            <div className="flex-[34] min-w-0 h-full flex flex-col">
+              <span className="text-sm font-semibold text-gray-600 mb-2">ENTRY TABLE</span>
+              <div className="flex-1 min-h-0 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                {entries.length === 0 ? (
+                  <p className="text-sm text-gray-500">No payment entries yet.</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-500 border-b border-gray-200">
+                        <th className="py-2 pr-2 font-medium">METHOD</th>
+                        <th className="py-2 pr-2 font-medium">AMOUNT</th>
+                        <th className="py-2 pr-2 font-medium">REFERENCE</th>
+                        <th className="py-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {entries.map((entry) => (
+                        <tr key={entry.id} className="border-b border-gray-100 last:border-b-0">
+                          <td className="py-2 pr-2 text-gray-900">
+                            {PAYMENT_METHOD_LABEL[entry.method_name] ?? entry.method_name}
+                          </td>
+                          <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(entry.amount)}</td>
+                          <td className="py-2 pr-2 text-gray-700">{entry.ref_number || '—'}</td>
+                          <td className="py-2 pl-1">
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveEntry(entry.id)}
+                              className="text-red-600 hover:text-red-800 font-bold text-lg leading-none"
+                              aria-label="Remove entry"
+                            >
+                              &#10005;
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 )}
               </div>
             </div>
+          </div>
 
+          <div className="flex-shrink-0 border-t border-gray-200 pt-3 mt-3">
             {!isFullyCovered && partialEligible && (
-              <div className="mt-3 bg-yellow-50 border border-yellow-300 rounded-md p-2 text-xs text-yellow-800">
+              <div className="mb-3 bg-yellow-50 border border-yellow-300 rounded-md p-2 text-xs text-yellow-800">
                 <span className="font-semibold">&#9888; Partial Payment</span>
                 <p className="mt-1">
                   {formatCurrency(remainingAfterEntries)} will be added to the customer&apos;s outstanding balance.
@@ -644,7 +625,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
             )}
 
             {!isFullyCovered && !partialEligible && (
-              <div className="mt-3 bg-red-50 border border-red-300 rounded-md p-2 text-xs text-red-800">
+              <div className="mb-3 bg-red-50 border border-red-300 rounded-md p-2 text-xs text-red-800">
                 <span className="font-semibold">&#10005; Full payment required</span>
                 <p className="mt-1">
                   {isBalanceSettlement
@@ -656,45 +637,70 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
               </div>
             )}
 
-            {parkError && <p className="text-xs text-red-600 mt-2">{parkError}</p>}
+            {parkError && <p className="text-xs text-red-600 mb-2">{parkError}</p>}
 
-            <div className="flex gap-3 mt-3">
-              <Button
-                type="button"
-                variant="warning"
-                className="flex-1"
-                disabled={parking}
-                onClick={handleParkFromModal}
-              >
-                {parking ? 'Parking...' : 'Park Transaction'}
-              </Button>
+            <div className="flex items-end justify-between gap-4 flex-wrap">
+              <div className="flex flex-col gap-1 text-sm min-w-[200px]">
+                <div className="flex justify-between gap-6">
+                  <span className="text-gray-700">Total Entered</span>
+                  <span className="font-semibold text-gray-900">{formatCurrency(enteredTotal)}</span>
+                </div>
+                <div className="flex justify-between gap-6">
+                  <span className="text-gray-600">Amount to Pay</span>
+                  <span className="font-semibold text-gray-800">{formatCurrency(finalAmount)}</span>
+                </div>
+                <div className="flex flex-col gap-1 border-t border-gray-200 pt-1 mt-1">
+                  {isFullyCovered && changeAmount > EPS && (
+                    <div className="flex justify-between gap-6">
+                      <span className="text-gray-700">Change</span>
+                      <span className="font-semibold text-green-700">{formatCurrency(changeAmount)}</span>
+                    </div>
+                  )}
+                  {!isFullyCovered && (
+                    <div className="flex justify-between gap-6">
+                      <span className="text-gray-700">Remaining</span>
+                      <span className="font-semibold text-red-600">{formatCurrency(remainingAfterEntries)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-              {isFullyCovered ? (
-                <Button type="button" className="flex-1" disabled={confirmDisabled} onClick={() => openConfirmation('full')}>
-                  Confirm Payment
+              <div className="flex gap-3 flex-wrap justify-end">
+                <Button type="button" variant="warning" disabled={parking} onClick={handleParkFromModal}>
+                  {parking ? 'Parking...' : 'Park Transaction'}
                 </Button>
-              ) : partialEligible ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="amber"
-                    className="flex-1"
-                    disabled={partialConfirmDisabled}
-                    onClick={() => openConfirmation('partial')}
-                  >
-                    Confirm Partial Payment
-                  </Button>
-                  <Button type="button" className="flex-1" disabled>
-                    Confirm Full Payment
-                  </Button>
-                </>
-              ) : (
-                <Button type="button" className="flex-1" disabled>
-                  {isBalanceSettlement ? 'Confirm Payment' : 'Confirm Full Payment'}
+
+                <Button type="button" variant="outline" onClick={requestClose}>
+                  Cancel
                 </Button>
-              )}
+
+                {isFullyCovered ? (
+                  <Button type="button" disabled={confirmDisabled} onClick={() => openConfirmation('full')}>
+                    Confirm Payment
+                  </Button>
+                ) : partialEligible ? (
+                  <>
+                    <Button
+                      type="button"
+                      variant="amber"
+                      disabled={partialConfirmDisabled}
+                      onClick={() => openConfirmation('partial')}
+                    >
+                      Confirm Partial Payment
+                    </Button>
+                    <Button type="button" disabled>
+                      Confirm Full Payment
+                    </Button>
+                  </>
+                ) : (
+                  <Button type="button" disabled>
+                    {isBalanceSettlement ? 'Confirm Payment' : 'Confirm Full Payment'}
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
+        </div>
         </div>
       </FullScreenModal>
 

@@ -3,6 +3,8 @@ import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { OrderSummaryPanel } from '../walkin/OrderSummaryPanel'
+import { ArticleRows } from './ArticleRows'
+import { OriginalTransactionLink } from './OriginalTransactionLink'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useProducts } from '../../hooks/useProducts'
 import { formatCurrency } from '../../utils/format'
@@ -50,6 +52,7 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
 
   const isAdjustment = transaction.transaction_type === 'adjustment'
   const isRefund = transaction.transaction_type === 'refund'
+  const isAdjustmentChild = isAdjustment || isRefund
 
   return (
     <>
@@ -67,10 +70,11 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
             </span>
           ) : null
         }
-        headerSubtext={transaction.parent_order_number ? `Linked to: ${transaction.parent_order_number}` : null}
+        headerSubtext={isAdjustmentChild ? <OriginalTransactionLink transaction={transaction} /> : null}
         customer={customer}
         customerType={transaction.customer_type}
-        items={displayItems}
+        items={isAdjustmentChild ? [] : displayItems}
+        itemsTable={isAdjustmentChild ? <ArticleRows transaction={transaction} /> : null}
         total={Number(transaction.total_due)}
         totalLabel="TOTAL DUE"
         readOnly
@@ -103,8 +107,8 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
                 {savingCredit ? 'Saving...' : 'Save as Credit'}
               </Button>
             ) : (
-              <>
-                <div>
+              <div className="flex flex-row gap-2">
+                <div className="flex-1 flex flex-col">
                   <Button type="button" className="w-full" onClick={onPay}>
                     Pay
                   </Button>
@@ -118,16 +122,16 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
                   <Button
                     type="button"
                     variant="warning"
-                    className="w-full"
+                    className="flex-1"
                     onClick={() => setConfirmAction('return')}
                   >
                     Return to Receiver
                   </Button>
                 )}
-                <Button type="button" variant="outline" className="w-full" onClick={() => setConfirmAction('park')}>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmAction('park')}>
                   Park
                 </Button>
-              </>
+              </div>
             )}
           </div>
         }
