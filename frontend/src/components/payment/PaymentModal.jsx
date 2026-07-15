@@ -15,31 +15,6 @@ import { get, post, put } from '../../services/api'
 const EPS = 0.005
 const DRAFT_AUTOSAVE_INTERVAL_MS = 120000
 
-// Best-effort only: the ledger doesn't pre-reconcile which specific past
-// entries still make up the current net_balance (a partial settlement
-// doesn't record which original debit(s) it paid down). This walks the most
-// recent entries of the given type and accepts them as "the source" only if
-// they sum to the target within a cent — if that doesn't cleanly reconcile
-// (e.g. because of an intervening partial settlement), the caller falls back
-// to a plain, reference-free message rather than risk showing wrong sources.
-function findLedgerSources(ledgerEntries, entryType, targetAmount) {
-  if (!ledgerEntries?.length || targetAmount <= 0) return null
-
-  const relevant = [...ledgerEntries]
-    .filter((e) => e.entry_type === entryType)
-    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-
-  const collected = []
-  let sum = 0
-  for (const entry of relevant) {
-    if (sum >= targetAmount - EPS) break
-    collected.push(entry)
-    sum += Number(entry.amount)
-  }
-
-  return Math.abs(sum - targetAmount) <= 0.01 ? collected : null
-}
-
 export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const { data: methods } = usePaymentMethods()
   const { data: customer } = useCustomer(transaction.customer_id)
@@ -57,8 +32,8 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
 
   const [balanceEntries, setBalanceEntries] = useState([])
   const [checkedBalances, setCheckedBalances] = useState({})
-  const [applyCredit, setApplyCredit] = useState(false)
-  const [creditAmount, setCreditAmount] = useState('')
+  const [creditEntries, setCreditEntries] = useState([])
+  const [checkedCredits, setCheckedCredits] = useState({})
 
   // Fresh form every time the modal opens — no leftover entries from a
   // previously cancelled attempt on this same transaction. Entries themselves
@@ -80,10 +55,11 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
       setParkError('')
 
       const draftBalances = transaction.draft_balances_json ? JSON.parse(transaction.draft_balances_json) : []
-      const draftCredit = Number(transaction.draft_credit_applied) || 0
       setCheckedBalances(Object.fromEntries(draftBalances.map((b) => [b.ledger_entry_id, true])))
-      setApplyCredit(draftCredit > 0)
-      setCreditAmount(draftCredit > 0 ? String(draftCredit) : '')
+      // Credit doesn't have a per-entry draft column (only the total is
+      // persisted in draft_credit_applied) — restored below once creditEntries
+      // has loaded, by best-effort matching against that saved total.
+      setCheckedCredits({})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -121,18 +97,45 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, methods])
 
-  // Fetch the customer's unsettled balance entries once per modal open, so each
-  // can be shown as its own checkbox instead of one lump-sum amount. Only fetched
-  // when there's actually an outstanding balance to settle.
+  // Fetch the customer's outstanding balance AND credit entries once per modal
+  // open, so each can be shown as its own checkbox instead of one lump-sum
+  // amount. Deliberately NOT gated on the sign of customer.net_balance —
+  // net_balance is a single netted column, so a customer can have outstanding
+  // balance_added entries and outstanding credit_added entries at the same
+  // time even though they net to one sign (e.g. an old ₱100 balance offset by
+  // a ₱150 refund-credit nets to +₱50, but the ₱100 balance is still
+  // individually unsettled and must still show up here).
   useEffect(() => {
-    if (!open || !customer) return
-    if (Number(customer.net_balance) >= 0) {
+    if (!open || !customer) {
       setBalanceEntries([])
+      setCreditEntries([])
       return
     }
     get(`/customers/${transaction.customer_id}/balance-entries`)
       .then((result) => setBalanceEntries(result ?? []))
       .catch(() => setBalanceEntries([]))
+
+    const draftCreditTarget = Number(transaction.draft_credit_applied) || 0
+    get(`/customers/${transaction.customer_id}/credit-entries`)
+      .then((result) => {
+        const list = result ?? []
+        setCreditEntries(list)
+        if (draftCreditTarget > EPS && list.length) {
+          // Best-effort restore of a saved draft credit total: only the sum
+          // is persisted (no per-entry draft column), so this greedily
+          // re-checks the oldest outstanding entries until their total
+          // matches what was saved at park time.
+          let remaining = draftCreditTarget
+          const checked = {}
+          for (const entry of list) {
+            if (remaining <= EPS) break
+            checked[entry.ledger_entry_id] = true
+            remaining -= Number(entry.amount)
+          }
+          setCheckedCredits(checked)
+        }
+      })
+      .catch(() => setCreditEntries([]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, customer])
 
@@ -158,20 +161,22 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   // state instead, and the interval callback re-derives the same way.
   const checkedBalancesRef = useRef(checkedBalances)
   const balanceEntriesRef = useRef(balanceEntries)
-  const applyCreditRef = useRef(applyCredit)
-  const creditAmountRef = useRef(creditAmount)
+  const checkedCreditsRef = useRef(checkedCredits)
+  const creditEntriesRef = useRef(creditEntries)
   useEffect(() => {
     checkedBalancesRef.current = checkedBalances
     balanceEntriesRef.current = balanceEntries
-    applyCreditRef.current = applyCredit
-    creditAmountRef.current = creditAmount
-  }, [checkedBalances, balanceEntries, applyCredit, creditAmount])
+    checkedCreditsRef.current = checkedCredits
+    creditEntriesRef.current = creditEntries
+  }, [checkedBalances, balanceEntries, checkedCredits, creditEntries])
 
   useEffect(() => {
     if (!open) return
     const interval = setInterval(() => {
       if (entriesRef.current.length > 0 && !showConfirmationRef.current) {
         const selectedBalances = balanceEntriesRef.current.filter((e) => checkedBalancesRef.current[e.ledger_entry_id])
+        const selectedCredits = creditEntriesRef.current.filter((e) => checkedCreditsRef.current[e.ledger_entry_id])
+        const selectedCreditTotal = selectedCredits.reduce((sum, e) => sum + Number(e.amount), 0)
         put(`/transactions/${transaction.id}/payment-drafts`, {
           entries: entriesRef.current.map((e) => ({
             payment_method_id: e.payment_method_id,
@@ -184,7 +189,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
             ledger_entry_id: e.ledger_entry_id,
             amount: Number(e.amount),
           })),
-          credit_applied: applyCreditRef.current ? Number(creditAmountRef.current) || 0 : 0,
+          credit_applied: selectedCreditTotal,
         }).catch((err) => console.error('Payment draft autosave failed:', err))
       }
     }, DRAFT_AUTOSAVE_INTERVAL_MS)
@@ -213,8 +218,6 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
 
   const totalDue = Number(transaction.total_due)
   const isBalanceSettlement = transaction.transaction_type === 'balance_settlement'
-  const netBalance = customer ? Number(customer.net_balance) : 0
-  const absBalance = Math.abs(netBalance)
 
   const balancesToSettle = balanceEntries
     .filter((e) => checkedBalances[e.ledger_entry_id])
@@ -227,8 +230,19 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const totalBalanceSettled = balancesToSettle.reduce((sum, b) => sum + b.amount, 0)
   const anyBalanceChecked = balancesToSettle.length > 0
 
-  const creditApplied = applyCredit ? Number(creditAmount) || 0 : 0
-  const creditValid = !applyCredit || (creditApplied > 0 && creditApplied <= netBalance && creditApplied <= totalDue)
+  const creditsToApply = creditEntries
+    .filter((e) => checkedCredits[e.ledger_entry_id])
+    .map((e) => ({
+      ledger_entry_id: e.ledger_entry_id,
+      amount: Number(e.amount),
+      order_number: e.order_number,
+    }))
+  const creditApplied = creditsToApply.reduce((sum, c) => sum + c.amount, 0)
+  const anyCreditChecked = creditsToApply.length > 0
+  // Credit reduces the total, so unlike balance checkboxes, over-checking can
+  // drive the amount owed negative — entries are atomic, so this can't be
+  // capped the way a free-text amount was; block confirming instead.
+  const creditValid = creditApplied <= totalDue + totalBalanceSettled + EPS
 
   const finalAmount = totalDue + totalBalanceSettled - creditApplied
 
@@ -236,9 +250,8 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     setCheckedBalances((prev) => ({ ...prev, [ledgerEntryId]: !prev[ledgerEntryId] }))
   }
 
-  const handleToggleApplyCredit = (checked) => {
-    setApplyCredit(checked)
-    setCreditAmount(checked ? String(Math.min(netBalance, totalDue)) : '')
+  const handleToggleCreditEntry = (ledgerEntryId) => {
+    setCheckedCredits((prev) => ({ ...prev, [ledgerEntryId]: !prev[ledgerEntryId] }))
   }
 
   const selectedMethod = methods?.find((m) => String(m.id) === methodId)
@@ -373,10 +386,6 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     }
   }
 
-  const creditSources = applyCredit
-    ? findLedgerSources(customer?.ledger_entries, 'credit_added', netBalance)
-    : null
-
   return (
     <>
       <FullScreenModal open={open} onClose={requestClose} title={`Process Payment — ${transaction.order_number}`}>
@@ -399,37 +408,38 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                   </div>
                 ) : (
                   <>
-                    {netBalance < 0 && (
+                    {balanceEntries.length === 0 && creditEntries.length === 0 && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-xs text-gray-400">
+                        No outstanding balance or credit
+                      </div>
+                    )}
+                    {balanceEntries.length > 0 && (
                       <div className="bg-red-50 border border-red-200 rounded-md p-2">
                         <div className="flex justify-between text-xs font-semibold text-red-700">
-                          <span>Outstanding Balance</span>
-                          <span>Total: {formatCurrency(absBalance)}</span>
+                          <span>Balance</span>
+                          <span>Total: {formatCurrency(balanceEntries.reduce((sum, e) => sum + Number(e.amount), 0))}</span>
                         </div>
-                        {balanceEntries.length === 0 ? (
-                          <p className="text-xs text-gray-500 py-1">No outstanding balance entries found</p>
-                        ) : (
-                          balanceEntries.map((entry) => (
-                            <label key={entry.ledger_entry_id} className="flex items-center gap-2 py-1">
-                              <input
-                                type="checkbox"
-                                className="accent-green-800"
-                                checked={!!checkedBalances[entry.ledger_entry_id]}
-                                onChange={() => handleToggleBalanceEntry(entry.ledger_entry_id)}
-                              />
-                              <span className="text-xs font-mono text-gray-700">{entry.order_number}</span>
-                              <span className="text-xs font-bold text-red-600 ml-auto">
-                                {formatCurrency(Number(entry.amount))}
-                              </span>
-                              <span className="text-xs text-gray-400">
-                                {new Date(entry.created_at).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  year: 'numeric',
-                                })}
-                              </span>
-                            </label>
-                          ))
-                        )}
+                        {balanceEntries.map((entry) => (
+                          <label key={entry.ledger_entry_id} className="flex items-center gap-2 py-1">
+                            <input
+                              type="checkbox"
+                              className="accent-green-800"
+                              checked={!!checkedBalances[entry.ledger_entry_id]}
+                              onChange={() => handleToggleBalanceEntry(entry.ledger_entry_id)}
+                            />
+                            <span className="text-xs font-mono text-gray-700">{entry.order_number}</span>
+                            <span className="text-xs font-bold text-red-600 ml-auto">
+                              {formatCurrency(Number(entry.amount))}
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              {new Date(entry.created_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </span>
+                          </label>
+                        ))}
                         {anyBalanceChecked && (
                           <div className="text-xs text-red-700 font-semibold mt-1">
                             Settling: {formatCurrency(totalBalanceSettled)}
@@ -437,59 +447,41 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                         )}
                       </div>
                     )}
-                    {netBalance > 0 && (
-                      <div className="bg-green-50 border border-green-200 rounded-md p-2 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-green-700">Available Credit</span>
-                          <span className="font-bold text-green-600">{formatCurrency(netBalance)}</span>
+                    {creditEntries.length > 0 && (
+                      <div className="bg-green-50 border border-green-200 rounded-md p-2">
+                        <div className="flex justify-between text-xs font-semibold text-green-700">
+                          <span>Credit</span>
+                          <span>Total: {formatCurrency(creditEntries.reduce((sum, e) => sum + Number(e.amount), 0))}</span>
                         </div>
-                        <label className="flex items-center gap-1.5 mt-1 text-green-700">
-                          <input
-                            type="checkbox"
-                            className="accent-green-800"
-                            checked={applyCredit}
-                            onChange={(e) => handleToggleApplyCredit(e.target.checked)}
-                          />
-                          Apply to this payment
-                        </label>
-                        {applyCredit && (
-                          <>
-                            <Input
-                              id="credit-amount"
-                              type="number"
-                              step="0.01"
-                              value={creditAmount}
-                              onChange={(e) => setCreditAmount(e.target.value)}
-                              className="mt-1 text-xs"
+                        {creditEntries.map((entry) => (
+                          <label key={entry.ledger_entry_id} className="flex items-center gap-2 py-1">
+                            <input
+                              type="checkbox"
+                              className="accent-green-800"
+                              checked={!!checkedCredits[entry.ledger_entry_id]}
+                              onChange={() => handleToggleCreditEntry(entry.ledger_entry_id)}
                             />
-                            {!creditValid && (
-                              <p className="text-red-600 mt-1">Cannot exceed available credit or order total</p>
-                            )}
-                            <div className="mt-2 pt-2 border-t border-green-200">
-                              <span className="text-gray-500">From:</span>
-                              {creditSources ? (
-                                <>
-                                  {creditSources.slice(0, 3).map((s) => (
-                                    <div key={s.id} className="flex justify-between text-gray-600">
-                                      <span>&bull; {s.order_number}</span>
-                                      <span>{formatCurrency(Number(s.amount))}</span>
-                                    </div>
-                                  ))}
-                                  {creditSources.length > 3 && (
-                                    <div className="text-gray-500">+ {creditSources.length - 3} more</div>
-                                  )}
-                                </>
-                              ) : (
-                                <div className="text-gray-500">Credit of {formatCurrency(netBalance)} on account</div>
-                              )}
-                            </div>
-                          </>
+                            <span className="text-xs font-mono text-gray-700">{entry.order_number}</span>
+                            <span className="text-xs font-bold text-green-700 ml-auto">
+                              {formatCurrency(Number(entry.amount))}
+                            </span>
+                            <span className="text-xs text-gray-400">
+                              {new Date(entry.created_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })}
+                            </span>
+                          </label>
+                        ))}
+                        {anyCreditChecked && (
+                          <div className="text-xs text-green-700 font-semibold mt-1">
+                            Applying: {formatCurrency(creditApplied)}
+                          </div>
                         )}
-                      </div>
-                    )}
-                    {netBalance === 0 && (
-                      <div className="bg-gray-50 border border-gray-200 rounded-md p-2 text-xs text-gray-400">
-                        No outstanding balance or credit
+                        {!creditValid && (
+                          <p className="text-xs text-red-600 mt-1">Cannot exceed the amount due</p>
+                        )}
                       </div>
                     )}
                   </>

@@ -34,6 +34,7 @@ from app.schemas.transaction import (
     TransactionResponse,
     WeightConfirmRequest,
 )
+from app.services import customer_service
 from app.websocket.events import queue_status_changed, transaction_status_changed
 from app.websocket.manager import manager
 
@@ -734,16 +735,20 @@ async def process_payment(
 
     total_balance_settled = sum((item.amount for item in data.balances_to_settle), Decimal("0"))
 
+    # Bounded against actual outstanding *_added ledger entries, not against
+    # customer.net_balance's sign — net_balance is a single netted column, so
+    # a customer can have outstanding balance_added AND outstanding
+    # credit_added entries at the same time even though they net to one sign
+    # (e.g. an old ₱100 balance offset by a ₱150 refund-credit nets to +₱50,
+    # but the ₱100 balance is still individually unsettled).
     if total_balance_settled > 0:
-        if customer.net_balance >= 0:
-            raise PaymentValidationError("customer does not have an outstanding balance")
-        if total_balance_settled > abs(customer.net_balance):
+        outstanding_balance_total = await customer_service.get_outstanding_balance_total(db, customer.id)
+        if total_balance_settled > outstanding_balance_total:
             raise PaymentValidationError("balances_to_settle exceeds the customer's outstanding balance")
 
     if data.credit_applied > 0:
-        if customer.net_balance <= 0:
-            raise PaymentValidationError("customer does not have credit available")
-        if data.credit_applied > customer.net_balance:
+        outstanding_credit_total = await customer_service.get_outstanding_credit_total(db, customer.id)
+        if data.credit_applied > outstanding_credit_total:
             raise PaymentValidationError("credit_applied exceeds the customer's available credit")
 
     # balance/credit applied at Payment time shift the amount actually owed —
@@ -764,10 +769,8 @@ async def process_payment(
     if data.is_partial:
         if transaction.transaction_type not in (TransactionTypeEnum.original, TransactionTypeEnum.adjustment):
             raise PaymentValidationError("Partial payment not allowed for balance settlement transactions")
-        if data.balances_to_settle or data.credit_applied > 0:
-            raise PaymentValidationError(
-                "Partial payment is not allowed when collecting a customer balance or applying credit"
-            )
+        if data.balances_to_settle:
+            raise PaymentValidationError("Partial payment is not allowed when collecting a customer balance")
         if amount_paid <= 0:
             raise PaymentValidationError("Payment amount must be greater than zero")
         if amount_paid >= final_amount:
