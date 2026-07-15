@@ -750,6 +750,12 @@ async def process_payment(
         outstanding_credit_total = await customer_service.get_outstanding_credit_total(db, customer.id)
         if data.credit_applied > outstanding_credit_total:
             raise PaymentValidationError("credit_applied exceeds the customer's available credit")
+        # The frontend already blocks confirming past this point (creditValid in
+        # PaymentModal), but that's client-side only — without this check here,
+        # a client that skips/bypasses it could drive final_amount negative below.
+        total_due_before_credit = transaction.total_due + total_balance_settled
+        if data.credit_applied > total_due_before_credit:
+            raise PaymentValidationError("credit_applied cannot exceed the amount due before credit is applied")
 
     # balance/credit applied at Payment time shift the amount actually owed —
     # entries must sum to this, not the original total_due
@@ -854,6 +860,7 @@ async def process_payment(
                     entry_type=LedgerEntryTypeEnum.credit_used,
                     amount=data.credit_applied,
                     running_balance=customer.net_balance,
+                    notes=f"Credit applied to {transaction.order_number}",
                 )
             )
             transaction.credit_applied = data.credit_applied
