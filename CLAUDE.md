@@ -163,6 +163,23 @@ dependency not listed above without explicit instruction.
 
 ---
 
+## Frontend Deploy Notes
+- `frontend/dist` is bind-mounted into nginx — `npm run build` alone is
+  enough for frontend-only changes. No docker restart needed.
+- `nginx.conf` changes DO need: docker compose exec nginx nginx -s reload
+- App is a Workbox PWA (autoUpdate). After any deploy, the FIRST browser
+  reload on a given terminal may still show the old build — this is
+  expected SW lifecycle behavior, not a broken deploy. A second reload
+  always has the update.
+- Cache-Control policy (already applied in nginx.conf):
+  - /assets/* (hashed): long-cache, immutable
+  - sw.js, workbox-*.js, registerSW.js, manifest.webmanifest, index.html: no-cache
+- Never assume a UI prompt "worked" from Claude Code's own summary —
+  always confirm against http://localhost (real nginx), and expect the
+  one-extra-reload SW quirk before flagging something as still broken.
+
+---
+
 ## Database Rules
 
 - All enum values are defined as PostgreSQL `ENUM` types in `schema.sql`
