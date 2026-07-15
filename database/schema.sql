@@ -393,6 +393,13 @@ CREATE TABLE payment_detail (
     -- Stores the credit_applied amount at time of parking
     -- 0.00 on confirmed (is_draft=FALSE) rows
 
+    draft_credit_sources_json TEXT NULL,
+    -- Only used on is_draft=TRUE rows (first row of a save only)
+    -- JSON-serialized list of {source_transaction_id, order_number,
+    -- ledger_entry_id, amount} — which credit_added entries were
+    -- consumed to cover draft_credit_applied
+    -- NULL on confirmed rows and non-first draft rows
+
     created_at        TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
 

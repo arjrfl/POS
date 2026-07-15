@@ -83,3 +83,25 @@ async def get_outstanding_balance_total(db: AsyncSession, customer_id: int) -> D
 async def get_outstanding_credit_total(db: AsyncSession, customer_id: int) -> Decimal:
     entries = await get_outstanding_credit_entries(db, customer_id)
     return sum((e.amount for e in entries), Decimal("0"))
+
+
+async def get_credit_source_breakdown(db: AsyncSession, customer_id: int, amount: Decimal) -> list[dict]:
+    """Which outstanding credit_added entries cover `amount` of credit applied, FIFO
+    (oldest entry first) — same ordering get_outstanding_credit_entries already returns."""
+    entries = await get_outstanding_credit_entries(db, customer_id)
+    breakdown = []
+    remaining = amount
+    for entry in entries:
+        if remaining <= 0:
+            break
+        take = min(remaining, entry.amount)
+        breakdown.append(
+            {
+                "source_transaction_id": entry.transaction_id,
+                "order_number": entry.order_number,
+                "ledger_entry_id": entry.ledger_entry_id,
+                "amount": take,
+            }
+        )
+        remaining -= take
+    return breakdown

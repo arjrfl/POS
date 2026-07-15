@@ -125,15 +125,21 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
       .catch(() => setBalanceEntries([]))
 
     const draftCreditTarget = Number(transaction.draft_credit_applied) || 0
+    const draftCreditSources = transaction.draft_credit_sources_json
+      ? JSON.parse(transaction.draft_credit_sources_json)
+      : null
     get(`/customers/${transaction.customer_id}/credit-entries`)
       .then((result) => {
         const list = result ?? []
         setCreditEntries(list)
-        if (draftCreditTarget > EPS && list.length) {
-          // Best-effort restore of a saved draft credit total: only the sum
-          // is persisted (no per-entry draft column), so this greedily
-          // re-checks the oldest outstanding entries until their total
-          // matches what was saved at park time.
+        if (draftCreditSources?.length) {
+          // Authoritative: draft_credit_sources_json records exactly which
+          // ledger entries were consumed at save time, by id — no guessing.
+          setCheckedCredits(Object.fromEntries(draftCreditSources.map((s) => [s.ledger_entry_id, true])))
+        } else if (draftCreditTarget > EPS && list.length) {
+          // Fallback for drafts saved before source tracking existed: greedily
+          // re-check the oldest outstanding entries until their total matches
+          // what was saved at park time.
           let remaining = draftCreditTarget
           const checked = {}
           for (const entry of list) {
@@ -184,8 +190,12 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     const interval = setInterval(() => {
       if (entriesRef.current.length > 0 && !showConfirmationRef.current) {
         const selectedBalances = balanceEntriesRef.current.filter((e) => checkedBalancesRef.current[e.ledger_entry_id])
+        const selectedBalanceTotal = selectedBalances.reduce((sum, e) => sum + Number(e.amount), 0)
         const selectedCredits = creditEntriesRef.current.filter((e) => checkedCreditsRef.current[e.ledger_entry_id])
-        const selectedCreditTotal = selectedCredits.reduce((sum, e) => sum + Number(e.amount), 0)
+        const rawSelectedCreditTotal = selectedCredits.reduce((sum, e) => sum + Number(e.amount), 0)
+        // Same cap as the render-scope creditApplied below — keeps the
+        // persisted draft consistent with what confirm/park would actually apply.
+        const selectedCreditTotal = Math.min(rawSelectedCreditTotal, Number(transaction.total_due) + selectedBalanceTotal)
         put(`/transactions/${transaction.id}/payment-drafts`, {
           entries: entriesRef.current.map((e) => ({
             payment_method_id: e.payment_method_id,
@@ -246,14 +256,28 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
       amount: Number(e.amount),
       order_number: e.order_number,
     }))
-  const creditApplied = creditsToApply.reduce((sum, c) => sum + c.amount, 0)
+  const rawCreditChecked = creditsToApply.reduce((sum, c) => sum + c.amount, 0)
   const anyCreditChecked = creditsToApply.length > 0
-  // Credit reduces the total, so unlike balance checkboxes, over-checking can
-  // drive the amount owed negative — entries are atomic, so this can't be
-  // capped the way a free-text amount was; block confirming instead.
-  const creditValid = creditApplied <= totalDue + totalBalanceSettled + EPS
+  const totalDueBeforeCredit = totalDue + totalBalanceSettled
+  // Checked entries can sum to more than what's actually owed — cap what's
+  // applied to the transaction at the amount due instead of blocking the
+  // payment; the unused portion stays as credit on the customer's account.
+  const creditApplied = Math.min(rawCreditChecked, totalDueBeforeCredit)
 
-  const finalAmount = totalDue + totalBalanceSettled - creditApplied
+  const finalAmount = totalDueBeforeCredit - creditApplied
+
+  // Read-only Entry Table rows, one per source transaction the applied credit
+  // was drawn from — creditsToApply is already oldest-first (creditEntries
+  // comes from /credit-entries, FIFO-ordered), so capping it here to
+  // creditApplied reproduces the same per-source amounts the backend records.
+  const creditRows = []
+  let creditRowsRemaining = creditApplied
+  for (const c of creditsToApply) {
+    if (creditRowsRemaining <= EPS) break
+    const rowAmount = Math.min(c.amount, creditRowsRemaining)
+    creditRows.push({ ledger_entry_id: c.ledger_entry_id, amount: rowAmount, order_number: c.order_number })
+    creditRowsRemaining -= rowAmount
+  }
 
   const handleToggleBalanceEntry = (ledgerEntryId) => {
     setCheckedBalances((prev) => ({ ...prev, [ledgerEntryId]: !prev[ledgerEntryId] }))
@@ -350,8 +374,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const structuralValid =
     hasPayment &&
     !entries.some((e) => e.method_name !== 'cash' && !e.ref_number) &&
-    cashEntryCount <= 1 &&
-    creditValid
+    cashEntryCount <= 1
 
   const confirmDisabled = !structuralValid || !isFullyCovered
   const partialConfirmDisabled = !structuralValid || enteredTotal < 1
@@ -492,9 +515,6 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                             Applying: {formatCurrency(creditApplied)}
                           </div>
                         )}
-                        {!creditValid && (
-                          <p className="text-xs text-red-600 mt-1">Cannot exceed the amount due</p>
-                        )}
                       </div>
                     )}
                   </>
@@ -580,7 +600,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
             <div className="flex-[34] min-w-0 h-full flex flex-col">
               <span className="text-sm font-semibold text-gray-600 mb-2">ENTRY TABLE</span>
               <div className="flex-1 min-h-0 overflow-y-auto border border-gray-300 rounded-lg p-3">
-                {entries.length === 0 ? (
+                {entries.length === 0 && creditRows.length === 0 ? (
                   <p className="text-sm text-gray-500">No payment entries yet.</p>
                 ) : (
                   <table className="w-full text-sm">
@@ -610,6 +630,14 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                               &#10005;
                             </button>
                           </td>
+                        </tr>
+                      ))}
+                      {creditRows.map((row) => (
+                        <tr key={`credit-${row.ledger_entry_id}`} className="border-b border-gray-100 last:border-b-0">
+                          <td className="py-2 pr-2 text-gray-900">Credit</td>
+                          <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(row.amount)}</td>
+                          <td className="py-2 pr-2 text-gray-700">{row.order_number}</td>
+                          <td className="py-2 pl-1"></td>
                         </tr>
                       ))}
                     </tbody>
@@ -648,7 +676,9 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
               <div className="flex flex-col gap-1 text-sm min-w-[200px]">
                 {creditApplied > EPS && (
                   <div className="flex justify-between gap-6">
-                    <span className="text-gray-700">Credit</span>
+                    <span className="text-gray-700">
+                      Credit <span className="text-xs text-gray-400">— Ref: {transaction.order_number}</span>
+                    </span>
                     <span className="font-semibold text-green-700">{formatCurrency(creditApplied)}</span>
                   </div>
                 )}

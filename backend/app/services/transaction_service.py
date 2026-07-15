@@ -104,6 +104,7 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
     if response.payment_drafts:
         response.draft_balances_json = response.payment_drafts[0].draft_balances_json
         response.draft_credit_applied = response.payment_drafts[0].draft_credit_applied
+        response.draft_credit_sources_json = response.payment_drafts[0].draft_credit_sources_json
     response.parent_order_number = transaction.parent.order_number if transaction.parent else None
     response.parent = _build_parent_summary(transaction.parent) if transaction.parent else None
     response.children = [_build_transaction_response(child) for child in transaction.children]
@@ -657,6 +658,11 @@ async def save_draft_payments(
             if balances_to_settle
             else None
         )
+        credit_sources_json = None
+        if credit_applied > 0:
+            breakdown = await customer_service.get_credit_source_breakdown(db, transaction.customer_id, credit_applied)
+            if breakdown:
+                credit_sources_json = json.dumps([{**item, "amount": str(item["amount"])} for item in breakdown])
         # Cash/online rows the payment user typed in, plus a system-generated
         # row mirroring the applied credit — kept in the same draft table so it
         # round-trips through park/unpark exactly like the others (the frontend
@@ -676,7 +682,7 @@ async def save_draft_payments(
             rows.append(
                 {
                     "payment_method_id": await _get_payment_method_id(db, "credit"),
-                    "ref_number": None,
+                    "ref_number": transaction.order_number,
                     "tendered_amount": None,
                     "amount": credit_applied,
                 }
@@ -688,6 +694,7 @@ async def save_draft_payments(
                 is_draft=True,
                 draft_balances_json=balances_json if index == 0 else None,
                 draft_credit_applied=credit_applied if index == 0 else Decimal("0.00"),
+                draft_credit_sources_json=credit_sources_json if index == 0 else None,
                 **row,
             )
             for index, row in enumerate(rows)
@@ -884,6 +891,19 @@ async def process_payment(
             transaction.total_due += total_balance_settled
 
         if data.credit_applied > 0:
+            # Computed fresh here (rather than read back from a possibly-stale/
+            # absent draft row — a credit-only payment can reach /pay without
+            # ever having saved a draft) so the notes breakdown always reflects
+            # what was actually unconsumed at the moment this credit was applied.
+            credit_breakdown = await customer_service.get_credit_source_breakdown(
+                db, customer.id, data.credit_applied
+            )
+            credit_notes = (
+                "Applied from " + ", ".join(f"{item['order_number']} (₱{item['amount']:,.2f})" for item in credit_breakdown)
+                if credit_breakdown
+                else f"Credit applied to {transaction.order_number}"
+            )
+
             customer.net_balance -= data.credit_applied
             db.add(
                 CustomerLedger(
@@ -892,7 +912,7 @@ async def process_payment(
                     entry_type=LedgerEntryTypeEnum.credit_used,
                     amount=data.credit_applied,
                     running_balance=customer.net_balance,
-                    notes=f"Credit applied to {transaction.order_number}",
+                    notes=credit_notes,
                 )
             )
             transaction.credit_applied = data.credit_applied
@@ -905,6 +925,7 @@ async def process_payment(
                 PaymentDetail(
                     transaction_id=transaction.id,
                     payment_method_id=await _get_payment_method_id(db, "credit"),
+                    ref_number=transaction.order_number,
                     amount=data.credit_applied,
                     is_draft=False,
                 )

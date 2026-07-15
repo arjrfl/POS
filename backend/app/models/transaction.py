@@ -222,6 +222,10 @@ class PaymentDetail(Base):
     # everywhere else, including all confirmed (is_draft=FALSE) rows.
     draft_balances_json: Mapped[Optional[str]] = mapped_column(Text)
     draft_credit_applied: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
+    # JSON-serialized list of {source_transaction_id, order_number, ledger_entry_id, amount} —
+    # which credit_added entries were consumed to cover draft_credit_applied (FIFO, oldest
+    # first). Only meaningful on the first draft row of a save, like draft_balances_json above.
+    draft_credit_sources_json: Mapped[Optional[str]] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     transaction: Mapped["SalesTransaction"] = relationship(back_populates="payment_details", lazy="selectin")

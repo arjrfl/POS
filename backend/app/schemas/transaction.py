@@ -133,6 +133,9 @@ class PaymentDetailResponse(BaseModel):
     # NULL on confirmed rows and non-first draft rows; parsed by the frontend
     draft_balances_json: str | None
     draft_credit_applied: Decimal
+    # raw JSON string of the credit source breakdown at time of parking —
+    # NULL on confirmed rows and non-first draft rows; parsed by the frontend
+    draft_credit_sources_json: str | None
     created_at: datetime
 
 
@@ -200,6 +203,7 @@ class TransactionResponse(BaseModel):
     # draft row it lives on. None/0 when there are no drafts, or none was checked when parked.
     draft_balances_json: str | None = None
     draft_credit_applied: Decimal = Decimal("0")
+    draft_credit_sources_json: str | None = None
     children: list["TransactionResponse"]
 
 
