@@ -33,7 +33,7 @@ export function Navbar({ title, actions }) {
           </>
         )}
         {actions}
-        <Button variant="secondary" onClick={logout}>
+        <Button variant="secondary" className="hover:!bg-primary-dark hover:!text-white" onClick={logout}>
           Log out
         </Button>
       </div>
