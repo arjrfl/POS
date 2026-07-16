@@ -54,6 +54,11 @@ CREATE TYPE transaction_status_enum AS ENUM (
     -- Payment has resolved the adjustment/refund child (paid in full,
     --   partially paid, or saved as credit). Parent is waiting for
     --   Releasing's final handover confirmation before moving to 'completed'.
+    'pending_handover',
+    -- online only: Payment has confirmed payment for the order.
+    -- Waiting on Releasing's final confirmation before the
+    -- transaction moves to 'completed'. Distinct from 'settled',
+    -- which is reserved for substandard adjustment/refund resolution.
     'completed',
     -- Fully done, no pending actions
     'voided',

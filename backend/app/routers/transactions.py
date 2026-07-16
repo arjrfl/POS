@@ -371,6 +371,21 @@ async def confirm_handover(
     return {"data": transaction, "error": None}
 
 
+@router.post("/{transaction_id}/complete-online", dependencies=[Depends(require_role("releasing"))])
+async def complete_online(
+    transaction_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        transaction = await transaction_service.complete_online(db, transaction_id, current_user["user_id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except transaction_service.QueueConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return {"data": transaction, "error": None}
+
+
 @router.post("/{transaction_id}/resolve-as-credit", dependencies=[Depends(require_role("payment"))])
 async def resolve_refund_as_credit(
     transaction_id: int,

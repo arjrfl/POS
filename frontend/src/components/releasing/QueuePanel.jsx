@@ -20,7 +20,7 @@ function EmptyState() {
   )
 }
 
-export function QueuePanel({ transactions, isLoading, onProcess, onReview }) {
+export function QueuePanel({ transactions, isLoading, onProcess, onReview, onConfirmOnline }) {
   if (isLoading) {
     return <p className="px-4 text-gray-500">Loading queue...</p>
   }
@@ -43,7 +43,13 @@ export function QueuePanel({ transactions, isLoading, onProcess, onReview }) {
   return (
     <div>
       {ordered.map((transaction) => (
-        <QueueTransactionRow key={transaction.id} transaction={transaction} onProcess={onProcess} onReview={onReview} />
+        <QueueTransactionRow
+          key={transaction.id}
+          transaction={transaction}
+          onProcess={onProcess}
+          onReview={onReview}
+          onConfirmOnline={onConfirmOnline}
+        />
       ))}
     </div>
   )

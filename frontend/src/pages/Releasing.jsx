@@ -5,6 +5,7 @@ import { useReleasingQueue } from '../hooks/useQueue'
 import { QueuePanel } from '../components/releasing/QueuePanel'
 import { ReleaseProcessor } from '../components/releasing/ReleaseProcessor'
 import { HandoverOutcomeModal } from '../components/releasing/HandoverOutcomeModal'
+import { PaymentConfirmedModal } from '../components/releasing/PaymentConfirmedModal'
 import { Toast } from '../components/ui/Toast'
 import { get, post } from '../services/api'
 
@@ -21,6 +22,9 @@ export default function Releasing() {
   const [outcome, setOutcome] = useState(null)
   const [outcomeLoading, setOutcomeLoading] = useState(false)
   const [confirmingHandover, setConfirmingHandover] = useState(false)
+
+  const [onlineHandoverTransaction, setOnlineHandoverTransaction] = useState(null)
+  const [confirmingOnlineHandover, setConfirmingOnlineHandover] = useState(false)
 
   const refreshQueue = () => queryClient.invalidateQueries({ queryKey: ['transactions'] })
 
@@ -144,6 +148,32 @@ export default function Releasing() {
     }
   }
 
+  // 'pending_handover' cards (a plain online order Payment has confirmed) need
+  // no grab/lock either, and unlike the settled flow above, everything the
+  // panel needs is already on the transaction object from the queue list — no
+  // separate outcome fetch before opening it.
+  const handleReviewOnline = (transaction) => {
+    setOnlineHandoverTransaction(transaction)
+  }
+
+  const handleCloseOnlineHandover = () => {
+    setOnlineHandoverTransaction(null)
+  }
+
+  const handleConfirmOnlineHandover = async () => {
+    setConfirmingOnlineHandover(true)
+    try {
+      await post(`/transactions/${onlineHandoverTransaction.id}/complete-online`)
+      setOnlineHandoverTransaction(null)
+      showToast('Transaction complete', 'success')
+      refreshQueue()
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setConfirmingOnlineHandover(false)
+    }
+  }
+
   return (
     <PageLayout title="Releasing Queue">
       <div className="h-full flex gap-6 min-h-0">
@@ -164,6 +194,7 @@ export default function Releasing() {
               isLoading={isLoading}
               onProcess={handleProcess}
               onReview={handleReview}
+              onConfirmOnline={handleReviewOnline}
             />
           </div>
         </div>
@@ -192,6 +223,14 @@ export default function Releasing() {
         submitting={confirmingHandover}
         onClose={handleCloseReview}
         onConfirm={handleConfirmHandover}
+      />
+
+      <PaymentConfirmedModal
+        open={!!onlineHandoverTransaction}
+        transaction={onlineHandoverTransaction}
+        submitting={confirmingOnlineHandover}
+        onClose={handleCloseOnlineHandover}
+        onConfirm={handleConfirmOnlineHandover}
       />
 
       <Toast toast={toast} />

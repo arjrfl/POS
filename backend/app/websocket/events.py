@@ -13,6 +13,12 @@ STATUS_TEAM_ROOM: dict[str, str] = {
     # Payment resolved the adjustment/refund child — parent re-enters Releasing's
     # active queue as an actionable "Payment Resolved" card awaiting handover.
     "settled": "releasing-queue",
+    # online only: Payment has confirmed the order's payment — Releasing gets
+    # one more actionable card ("Payment Confirmed") for the final handover
+    # confirmation before this completes (see complete_online). Distinct from
+    # 'settled', which is the substandard-adjustment counterpart of this same
+    # "one more step" idea.
+    "pending_handover": "releasing-queue",
     "pending_edit": "receiver-queue",
 }
 

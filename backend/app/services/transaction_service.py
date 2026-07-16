@@ -124,14 +124,17 @@ ROLE_QUEUE_STATUS: dict[str, TransactionStatusEnum] = {
 
 # statuses a role's queue LIST view includes — separate from ROLE_QUEUE_STATUS
 # because releasing's list also surfaces pending_adjustment cards (awaiting
-# Payment's resolution) and settled cards (awaiting Releasing's handover
-# confirmation) even though neither is grabbable the normal way
+# Payment's resolution), settled cards (awaiting Releasing's handover
+# confirmation for a substandard resolution), and pending_handover cards
+# (awaiting Releasing's handover confirmation for a plain online payment)
+# even though none of the three is grabbable the normal way
 ROLE_QUEUE_LIST_STATUSES: dict[str, list[TransactionStatusEnum]] = {
     "payment": [TransactionStatusEnum.pending_payment],
     "releasing": [
         TransactionStatusEnum.pending_settlement,
         TransactionStatusEnum.pending_adjustment,
         TransactionStatusEnum.settled,
+        TransactionStatusEnum.pending_handover,
     ],
     "receiver": [TransactionStatusEnum.pending_edit],
 }
@@ -1017,6 +1020,14 @@ async def process_payment(
         if transaction.customer_type == CustomerTypeEnum.walk_in and not skip_releasing:
             transaction.transaction_status = TransactionStatusEnum.pending_settlement
             transaction.queue_status = QueueStatusEnum.waiting
+        elif transaction.customer_type == CustomerTypeEnum.online and not skip_releasing:
+            # Payment succeeded for a plain online order — Releasing still owes
+            # one more explicit confirmation before this is truly done (stock
+            # already left the shelf at confirm_items_ready, so this is a pure
+            # status handoff, not another stock decrement). Applies whether the
+            # payment was full or partial — see complete_online.
+            transaction.transaction_status = TransactionStatusEnum.pending_handover
+            transaction.queue_status = QueueStatusEnum.waiting
         else:
             transaction.transaction_status = TransactionStatusEnum.completed
             transaction.queue_status = QueueStatusEnum.done
@@ -1705,6 +1716,46 @@ async def confirm_handover(db: AsyncSession, transaction_id: int, releasing_user
         # child has none of its own (see resolve_substandard).
         await _decrement_stock_for_handover(db, transaction.items, "actual_quantity_kg")
 
+        transaction.transaction_status = TransactionStatusEnum.completed
+        transaction.queue_status = QueueStatusEnum.done
+        transaction.processing_by_user_id = None
+        transaction.processing_started_at = None
+
+        _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    rooms, event = transaction_status_changed(
+        transaction_id=transaction.id,
+        old_status=old_status,
+        new_status=transaction.transaction_status.value,
+        customer_type=transaction.customer_type.value,
+    )
+    await manager.broadcast_multi(rooms, event)
+
+    return await get_transaction(db, transaction.id)
+
+
+async def complete_online(db: AsyncSession, transaction_id: int, releasing_user_id: int) -> TransactionResponse:
+    """Releasing's final confirmation for a plain online order once Payment has
+    collected payment — the online counterpart to confirm_handover, but for the
+    ordinary 'original' flow rather than a substandard adjustment/refund
+    resolution. Stock already left at confirm_items_ready, so this is a pure
+    status transition — no second stock_quantity decrement here."""
+    transaction = await _get_transaction_for_update(db, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    if transaction.transaction_status != TransactionStatusEnum.pending_handover:
+        raise QueueConflictError(f"transaction {transaction_id} is not pending handover")
+
+    old_status = transaction.transaction_status.value
+    old_queue = transaction.queue_status.value
+
+    try:
         transaction.transaction_status = TransactionStatusEnum.completed
         transaction.queue_status = QueueStatusEnum.done
         transaction.processing_by_user_id = None

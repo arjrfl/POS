@@ -25,6 +25,7 @@ class TransactionStatusEnum(str, enum.Enum):
     pending_settlement = "pending_settlement"
     pending_adjustment = "pending_adjustment"
     settled = "settled"
+    pending_handover = "pending_handover"
     completed = "completed"
     voided = "voided"
     pending_edit = "pending_edit"
