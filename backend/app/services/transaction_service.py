@@ -1359,6 +1359,8 @@ async def return_to_receiver(db: AsyncSession, transaction_id: int, payment_user
 
     if transaction.customer_type != CustomerTypeEnum.walk_in:
         raise TransactionEditFlowError("Online orders cannot be returned to Receiver")
+    if transaction.transaction_type != TransactionTypeEnum.original or transaction.parent_transaction_id is not None:
+        raise TransactionEditFlowError("Only original transactions can be returned to Receiver")
     if transaction.transaction_status != TransactionStatusEnum.pending_payment:
         raise TransactionEditFlowError(f"transaction {transaction_id} is not pending payment")
     if transaction.queue_status != QueueStatusEnum.processing:

@@ -118,7 +118,9 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
                     </p>
                   )}
                 </div>
-                {transaction.customer_type === 'walk_in' && (
+                {transaction.customer_type === 'walk_in' &&
+                  transaction.transaction_type === 'original' &&
+                  transaction.parent_transaction_id === null && (
                   <Button
                     type="button"
                     variant="warning"
