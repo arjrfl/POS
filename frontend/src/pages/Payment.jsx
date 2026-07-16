@@ -26,6 +26,15 @@ export default function Payment() {
   const [payModalOpen, setPayModalOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
+  const [queueFilter, setQueueFilter] = useState('regular')
+
+  const isAdjustmentChild = (t) => ['adjustment', 'refund'].includes(t.transaction_type) && t.parent_transaction_id != null
+
+  const queueItems = data?.items ?? []
+  const filteredQueueItems =
+    queueFilter === 'adjustments'
+      ? queueItems.filter(isAdjustmentChild)
+      : queueItems.filter((t) => !isAdjustmentChild(t))
 
   const refreshQueue = () => queryClient.invalidateQueries({ queryKey: ['transactions'] })
 
@@ -140,7 +149,28 @@ export default function Payment() {
     <PageLayout title="Payment Queue">
       <div className="h-full flex gap-6 min-h-0">
         <div className="flex-[60] h-full min-h-0 flex flex-col">
-          <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Queue</span>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Queue</span>
+            <div className="inline-flex rounded-full bg-gray-200 p-0.5">
+              {[
+                { value: 'regular', label: 'Regular' },
+                { value: 'adjustments', label: 'Adjustments' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setQueueFilter(option.value)}
+                  className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                    queueFilter === option.value
+                      ? 'bg-primary text-white'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div
             className={`flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 ${
               selectedTransaction ? 'opacity-50 pointer-events-none' : ''
@@ -151,7 +181,7 @@ export default function Payment() {
                 Finish or park the current transaction before processing another.
               </div>
             )}
-            <QueuePanel transactions={data?.items ?? []} isLoading={isLoading} onProcess={handleProcess} />
+            <QueuePanel transactions={filteredQueueItems} isLoading={isLoading} onProcess={handleProcess} />
           </div>
         </div>
 
