@@ -115,6 +115,11 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
 
   const typeBadge = CUSTOMER_TYPE_BADGE[transaction.customer_type]
   const editingItem = displayItems.find((item) => item.id === editingItemId) ?? null
+  const creditApplied = Number(transaction.credit_applied) || 0
+  // total_due is fixed at Payment time as estimated_amount - credit_applied (+ balance_settled)
+  // and is never recomputed from actual_amount once Releasing confirms weights, so adding
+  // credit_applied back is what actually reconstructs the pre-credit total at every phase.
+  const originalTotal = Number(transaction.total_due) + creditApplied
 
   const handleConfirmItem = (itemId, values, status) => {
     setItemActualValues((prev) => ({ ...prev, [itemId]: values }))
@@ -232,9 +237,23 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
       </div>
 
       <div className="flex-shrink-0 flex flex-col gap-4">
-        <div className="border-t border-gray-200 pt-3 flex justify-between items-center">
-          <span className="font-semibold text-gray-900">TOTAL DUE</span>
-          <span className="text-2xl font-bold text-primary">{formatCurrency(transaction.total_due)}</span>
+        <div className="border-t border-gray-200 pt-3 flex flex-col gap-1">
+          {creditApplied > 0 && (
+            <>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-700">Original Total</span>
+                <span className="text-gray-900">{formatCurrency(originalTotal)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-green-700">
+                <span>Credit Applied</span>
+                <span>-{formatCurrency(creditApplied)}</span>
+              </div>
+            </>
+          )}
+          <div className="flex justify-between items-center">
+            <span className="font-semibold text-gray-900">TOTAL DUE</span>
+            <span className="text-2xl font-bold text-primary">{formatCurrency(transaction.total_due)}</span>
+          </div>
         </div>
 
         <div>
