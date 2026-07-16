@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
@@ -9,13 +9,26 @@ import { post } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
 import { generateId } from '../../utils/id'
+import { useAuthStore } from '../../store/authStore'
+import { loadReceiverDraft, saveReceiverDraft, clearReceiverDraft } from '../../utils/receiverDraft'
 
-function initialState() {
+function initialState(draft) {
+  if (draft) {
+    return {
+      customer: draft.customer ?? null,
+      customerType: draft.customerType ?? null,
+      items: Array.isArray(draft.items) ? draft.items : [],
+      settleOnly: !!draft.settleOnly,
+    }
+  }
   return { customer: null, customerType: null, items: [], settleOnly: false }
 }
 
 export function CreateTransactionModal({ open, onClose, onCreated }) {
-  const [{ customer, customerType, items, settleOnly }, setState] = useState(initialState)
+  const username = useAuthStore((state) => state.user?.username)
+  const [{ customer, customerType, items, settleOnly }, setState] = useState(() =>
+    initialState(loadReceiverDraft(username)),
+  )
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [confirmation, setConfirmation] = useState(null)
@@ -34,13 +47,24 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
     : !!customer && !!customerType && items.length > 0
 
   const resetForm = () => {
-    setState(initialState())
+    setState(initialState(null))
     setError('')
     setConfirmation(null)
     setChangeGuard(null)
     setDiscardGuard(false)
     setSettleOnlyGuard(false)
+    clearReceiverDraft(username)
   }
+
+  // Mirror open/closed + form fields to localStorage so a reload can restore an
+  // in-progress transaction. Debounced to avoid excessive writes while typing.
+  useEffect(() => {
+    if (!username) return
+    const handle = setTimeout(() => {
+      saveReceiverDraft(username, { open, customer, customerType, items, settleOnly })
+    }, 500)
+    return () => clearTimeout(handle)
+  }, [username, open, customer, customerType, items, settleOnly])
 
   const clearCustomer = () => {
     setState((prev) => ({ ...prev, customer: null, items: [], settleOnly: false }))
@@ -146,6 +170,7 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
           }
 
       const transaction = await post('/transactions', payload)
+      clearReceiverDraft(username)
       setConfirmation({
         order_number: transaction.order_number,
         customer_name: customer.full_name,

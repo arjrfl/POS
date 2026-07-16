@@ -8,12 +8,15 @@ import { Toast } from '../components/ui/Toast'
 import { Button } from '../components/ui/Button'
 import { useReceiverQueue } from '../hooks/useQueue'
 import { post } from '../services/api'
+import { useAuthStore } from '../store/authStore'
+import { loadReceiverDraft } from '../utils/receiverDraft'
 
 export default function WalkIn() {
   const { data, isLoading } = useReceiverQueue()
   const queryClient = useQueryClient()
+  const username = useAuthStore((state) => state.user?.username)
 
-  const [createOpen, setCreateOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(() => !!loadReceiverDraft(username)?.open)
   const [editingTransaction, setEditingTransaction] = useState(null)
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
