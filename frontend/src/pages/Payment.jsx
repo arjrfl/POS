@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { PageLayout } from '../components/layout/PageLayout'
 import { usePaymentQueue } from '../hooks/useQueue'
@@ -29,7 +30,20 @@ export default function Payment() {
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
   const [queueFilter, setQueueFilter] = useState('regular')
-  const [view, setView] = useState('queue')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const view = searchParams.get('view') === 'history' ? 'history' : 'queue'
+
+  const toggleView = () => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (view === 'history') {
+        next.delete('view')
+      } else {
+        next.set('view', 'history')
+      }
+      return next
+    })
+  }
 
   const isAdjustmentChild = (t) => ['adjustment', 'refund'].includes(t.transaction_type) && t.parent_transaction_id != null
 
@@ -152,7 +166,11 @@ export default function Payment() {
     <PageLayout
       title="Payment Queue"
       actions={
-        <Button variant="secondary" onClick={() => setView(view === 'history' ? 'queue' : 'history')}>
+        <Button
+          variant="secondary"
+          className="hover:!bg-primary-dark hover:!text-white"
+          onClick={toggleView}
+        >
           {view === 'history' ? 'Back to Queue' : 'History'}
         </Button>
       }
