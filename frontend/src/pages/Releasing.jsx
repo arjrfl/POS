@@ -6,13 +6,16 @@ import { QueuePanel } from '../components/releasing/QueuePanel'
 import { ReleaseProcessor } from '../components/releasing/ReleaseProcessor'
 import { HandoverOutcomeModal } from '../components/releasing/HandoverOutcomeModal'
 import { PaymentConfirmedModal } from '../components/releasing/PaymentConfirmedModal'
+import { InventoryView } from '../components/releasing/InventoryView'
 import { Toast } from '../components/ui/Toast'
+import { Button } from '../components/ui/Button'
 import { get, post } from '../services/api'
 
 export default function Releasing() {
   const { data, isLoading } = useReleasingQueue()
   const queryClient = useQueryClient()
 
+  const [activeView, setActiveView] = useState('queue') // 'queue' | 'inventory'
   const [selectedTransaction, setSelectedTransaction] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState(null)
@@ -175,45 +178,60 @@ export default function Releasing() {
   }
 
   return (
-    <PageLayout title="Releasing Queue">
-      <div className="h-full flex gap-6 min-h-0">
-        <div className="flex-[60] h-full min-h-0 flex flex-col">
-          <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Queue</span>
-          <div
-            className={`flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 ${
-              selectedTransaction ? 'opacity-50 pointer-events-none' : ''
-            }`}
-          >
-            {selectedTransaction && (
-              <div className="mb-3 px-3 py-2 rounded-md bg-yellow-100 text-sm text-amber-800">
-                Finish the current transaction before processing another.
-              </div>
-            )}
-            <QueuePanel
-              transactions={data?.items ?? []}
-              isLoading={isLoading}
-              onProcess={handleProcess}
-              onReview={handleReview}
-              onConfirmOnline={handleReviewOnline}
-            />
+    <PageLayout
+      title="Releasing Queue"
+      actions={
+        <Button
+          variant="secondary"
+          className="hover:!bg-primary-dark hover:!text-white"
+          onClick={() => setActiveView(activeView === 'inventory' ? 'queue' : 'inventory')}
+        >
+          {activeView === 'inventory' ? 'Back to Queue' : 'Inventory'}
+        </Button>
+      }
+    >
+      {activeView === 'inventory' ? (
+        <InventoryView />
+      ) : (
+        <div className="h-full flex gap-6 min-h-0">
+          <div className="flex-[60] h-full min-h-0 flex flex-col">
+            <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Queue</span>
+            <div
+              className={`flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 ${
+                selectedTransaction ? 'opacity-50 pointer-events-none' : ''
+              }`}
+            >
+              {selectedTransaction && (
+                <div className="mb-3 px-3 py-2 rounded-md bg-yellow-100 text-sm text-amber-800">
+                  Finish the current transaction before processing another.
+                </div>
+              )}
+              <QueuePanel
+                transactions={data?.items ?? []}
+                isLoading={isLoading}
+                onProcess={handleProcess}
+                onReview={handleReview}
+                onConfirmOnline={handleReviewOnline}
+              />
+            </div>
           </div>
-        </div>
 
-        <div className="flex-[40] h-full min-h-0 flex flex-col">
-          <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Order Details</span>
-          <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg p-3 flex flex-col">
-            <ReleaseProcessor
-              key={selectedTransaction?.id ?? 'empty'}
-              transaction={selectedTransaction}
-              onConfirmReady={handleConfirmReady}
-              onConfirmWeights={handleConfirmWeights}
-              onResolve={handleResolve}
-              onCompleteExact={handleCompleteExact}
-              submitting={submitting}
-            />
+          <div className="flex-[40] h-full min-h-0 flex flex-col">
+            <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Order Details</span>
+            <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg p-3 flex flex-col">
+              <ReleaseProcessor
+                key={selectedTransaction?.id ?? 'empty'}
+                transaction={selectedTransaction}
+                onConfirmReady={handleConfirmReady}
+                onConfirmWeights={handleConfirmWeights}
+                onResolve={handleResolve}
+                onCompleteExact={handleCompleteExact}
+                submitting={submitting}
+              />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <HandoverOutcomeModal
         open={!!reviewTransaction}
