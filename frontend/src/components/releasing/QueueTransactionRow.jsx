@@ -10,17 +10,25 @@ const STATUS_PILL = {
 }
 
 const AWAITING_PAYMENT_PILL = { label: 'Awaiting Payment', className: 'bg-purple-100 text-purple-700' }
+const PAYMENT_RESOLVED_PILL = { label: 'Payment Resolved', className: 'bg-green-100 text-green-700' }
 
-export function QueueTransactionRow({ transaction, onProcess }) {
+export function QueueTransactionRow({ transaction, onProcess, onReview }) {
   const { data: customer } = useCustomer(transaction.customer_id)
   // Releasing already handed this off to Payment (a child adjustment/refund is
   // sitting in their queue) — this card is read-only until Payment resolves it,
   // no grab/process action makes sense here.
   const isAwaitingPayment = transaction.transaction_status === 'pending_adjustment'
+  // Payment has resolved the adjustment/refund child — actionable again, but
+  // through the handover-review step instead of the normal grab/process flow.
+  const isSettled = transaction.transaction_status === 'settled'
   const isParked = transaction.queue_status === 'parked'
   const isProcessing = transaction.queue_status === 'processing'
   const typeBadge = CUSTOMER_TYPE_BADGE[transaction.customer_type]
-  const statusPill = isAwaitingPayment ? AWAITING_PAYMENT_PILL : STATUS_PILL[transaction.queue_status] ?? STATUS_PILL.waiting
+  const statusPill = isAwaitingPayment
+    ? AWAITING_PAYMENT_PILL
+    : isSettled
+      ? PAYMENT_RESOLVED_PILL
+      : STATUS_PILL[transaction.queue_status] ?? STATUS_PILL.waiting
 
   // Force a re-render every 60s so the relative time stays live.
   const [, setTick] = useState(0)
@@ -29,8 +37,22 @@ export function QueueTransactionRow({ transaction, onProcess }) {
     return () => clearInterval(interval)
   }, [])
 
-  const cardBg = isAwaitingPayment ? 'bg-gray-100' : isParked ? 'bg-yellow-50' : isProcessing ? 'bg-blue-50' : 'bg-white'
-  const accent = isParked ? 'border-l-4 border-l-yellow-400' : isProcessing ? 'border-l-4 border-l-blue-400' : ''
+  const cardBg = isAwaitingPayment
+    ? 'bg-gray-100'
+    : isSettled
+      ? 'bg-green-50'
+      : isParked
+        ? 'bg-yellow-50'
+        : isProcessing
+          ? 'bg-blue-50'
+          : 'bg-white'
+  const accent = isSettled
+    ? 'border-l-4 border-l-green-500'
+    : isParked
+      ? 'border-l-4 border-l-yellow-400'
+      : isProcessing
+        ? 'border-l-4 border-l-blue-400'
+        : ''
 
   return (
     <div
@@ -63,7 +85,15 @@ export function QueueTransactionRow({ transaction, onProcess }) {
       </div>
 
       <div className="flex-none flex items-center gap-4">
-        {isAwaitingPayment ? null : isProcessing ? (
+        {isAwaitingPayment ? null : isSettled ? (
+          <button
+            type="button"
+            onClick={() => onReview(transaction)}
+            className="px-4 py-1.5 text-sm rounded-md bg-green-600 text-white hover:bg-green-700"
+          >
+            Review &amp; Confirm
+          </button>
+        ) : isProcessing ? (
           <button type="button" disabled className="px-4 py-1.5 text-sm rounded-md bg-gray-200 text-gray-500">
             Processing...
           </button>

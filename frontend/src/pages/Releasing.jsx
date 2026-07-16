@@ -4,8 +4,9 @@ import { PageLayout } from '../components/layout/PageLayout'
 import { useReleasingQueue } from '../hooks/useQueue'
 import { QueuePanel } from '../components/releasing/QueuePanel'
 import { ReleaseProcessor } from '../components/releasing/ReleaseProcessor'
+import { HandoverOutcomeModal } from '../components/releasing/HandoverOutcomeModal'
 import { Toast } from '../components/ui/Toast'
-import { post } from '../services/api'
+import { get, post } from '../services/api'
 
 export default function Releasing() {
   const { data, isLoading } = useReleasingQueue()
@@ -15,6 +16,11 @@ export default function Releasing() {
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
+
+  const [reviewTransaction, setReviewTransaction] = useState(null)
+  const [outcome, setOutcome] = useState(null)
+  const [outcomeLoading, setOutcomeLoading] = useState(false)
+  const [confirmingHandover, setConfirmingHandover] = useState(false)
 
   const refreshQueue = () => queryClient.invalidateQueries({ queryKey: ['transactions'] })
 
@@ -85,6 +91,43 @@ export default function Releasing() {
     }
   }
 
+  // 'settled' cards need no grab/lock — just a quick review of what Payment
+  // did, then a single confirm that hands the item over and drops stock.
+  const handleReview = async (transaction) => {
+    setReviewTransaction(transaction)
+    setOutcome(null)
+    setOutcomeLoading(true)
+    try {
+      const result = await get(`/transactions/${transaction.id}/handover-outcome`)
+      setOutcome(result)
+    } catch (err) {
+      showToast(err.message, 'error')
+      setReviewTransaction(null)
+    } finally {
+      setOutcomeLoading(false)
+    }
+  }
+
+  const handleCloseReview = () => {
+    setReviewTransaction(null)
+    setOutcome(null)
+  }
+
+  const handleConfirmHandover = async () => {
+    setConfirmingHandover(true)
+    try {
+      await post(`/transactions/${reviewTransaction.id}/confirm-handover`)
+      setReviewTransaction(null)
+      setOutcome(null)
+      showToast('Transaction complete', 'success')
+      refreshQueue()
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setConfirmingHandover(false)
+    }
+  }
+
   return (
     <PageLayout title="Releasing Queue">
       <div className="h-full flex gap-6 min-h-0">
@@ -100,7 +143,12 @@ export default function Releasing() {
                 Finish the current transaction before processing another.
               </div>
             )}
-            <QueuePanel transactions={data?.items ?? []} isLoading={isLoading} onProcess={handleProcess} />
+            <QueuePanel
+              transactions={data?.items ?? []}
+              isLoading={isLoading}
+              onProcess={handleProcess}
+              onReview={handleReview}
+            />
           </div>
         </div>
 
@@ -118,6 +166,16 @@ export default function Releasing() {
           </div>
         </div>
       </div>
+
+      <HandoverOutcomeModal
+        open={!!reviewTransaction}
+        transaction={reviewTransaction}
+        outcome={outcome}
+        loading={outcomeLoading}
+        submitting={confirmingHandover}
+        onClose={handleCloseReview}
+        onConfirm={handleConfirmHandover}
+      />
 
       <Toast toast={toast} />
     </PageLayout>

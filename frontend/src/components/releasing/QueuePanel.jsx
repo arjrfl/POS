@@ -20,7 +20,7 @@ function EmptyState() {
   )
 }
 
-export function QueuePanel({ transactions, isLoading, onProcess }) {
+export function QueuePanel({ transactions, isLoading, onProcess, onReview }) {
   if (isLoading) {
     return <p className="px-4 text-gray-500">Loading queue...</p>
   }
@@ -32,8 +32,10 @@ export function QueuePanel({ transactions, isLoading, onProcess }) {
   // Parked and awaiting-payment transactions sink to the bottom of the list —
   // visually distinct but otherwise part of the same flat list. Awaiting-payment
   // (pending_adjustment) cards are read-only, so they sink lowest of all,
-  // keeping actionable cards (waiting/processing/parked) on top.
-  const active = transactions.filter((t) => t.queue_status !== 'parked' && t.transaction_status !== 'pending_adjustment')
+  // keeping actionable cards (waiting/processing/parked/settled) on top.
+  const active = transactions.filter(
+    (t) => t.queue_status !== 'parked' && t.transaction_status !== 'pending_adjustment',
+  )
   const parked = transactions.filter((t) => t.queue_status === 'parked')
   const awaitingPayment = transactions.filter((t) => t.transaction_status === 'pending_adjustment')
   const ordered = [...active, ...parked, ...awaitingPayment]
@@ -41,7 +43,7 @@ export function QueuePanel({ transactions, isLoading, onProcess }) {
   return (
     <div>
       {ordered.map((transaction) => (
-        <QueueTransactionRow key={transaction.id} transaction={transaction} onProcess={onProcess} />
+        <QueueTransactionRow key={transaction.id} transaction={transaction} onProcess={onProcess} onReview={onReview} />
       ))}
     </div>
   )

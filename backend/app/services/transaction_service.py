@@ -23,6 +23,7 @@ from app.models.transaction import (
 from app.schemas.transaction import (
     BalanceSettlementItem,
     DraftPaymentEntry,
+    HandoverOutcomeResponse,
     PaymentDetailResponse,
     PaymentProcessRequest,
     SubstandardOutcomeRequest,
@@ -123,10 +124,15 @@ ROLE_QUEUE_STATUS: dict[str, TransactionStatusEnum] = {
 
 # statuses a role's queue LIST view includes — separate from ROLE_QUEUE_STATUS
 # because releasing's list also surfaces pending_adjustment cards (awaiting
-# Payment's resolution) even though those aren't grabbable
+# Payment's resolution) and settled cards (awaiting Releasing's handover
+# confirmation) even though neither is grabbable the normal way
 ROLE_QUEUE_LIST_STATUSES: dict[str, list[TransactionStatusEnum]] = {
     "payment": [TransactionStatusEnum.pending_payment],
-    "releasing": [TransactionStatusEnum.pending_settlement, TransactionStatusEnum.pending_adjustment],
+    "releasing": [
+        TransactionStatusEnum.pending_settlement,
+        TransactionStatusEnum.pending_adjustment,
+        TransactionStatusEnum.settled,
+    ],
     "receiver": [TransactionStatusEnum.pending_edit],
 }
 
@@ -1021,9 +1027,12 @@ async def process_payment(
 
         _record_status_change_audit(db, transaction, payment_user_id, old_transaction_status, old_queue_status)
 
-        # An adjustment/refund child reaching a terminal state here means Payment
-        # has finished handling the weight variance — release the parent's own
-        # read-only hold on Releasing's queue (pending_adjustment) too.
+        # An adjustment child reaching a terminal state here means Payment has
+        # finished collecting the weight variance — the parent moves to 'settled'
+        # and re-enters Releasing's active queue (as an actionable "Payment
+        # Resolved" card) instead of completing outright; Releasing still has to
+        # hand the item over and confirm that before stock actually leaves and
+        # the transaction is truly done (see confirm_handover).
         parent: SalesTransaction | None = None
         if transaction.parent_transaction_id is not None:
             candidate = await db.get(SalesTransaction, transaction.parent_transaction_id)
@@ -1031,8 +1040,8 @@ async def process_payment(
                 parent = candidate
                 parent_old_status = parent.transaction_status.value
                 parent_old_queue = parent.queue_status.value
-                parent.transaction_status = TransactionStatusEnum.completed
-                parent.queue_status = QueueStatusEnum.done
+                parent.transaction_status = TransactionStatusEnum.settled
+                parent.queue_status = QueueStatusEnum.waiting
                 _record_status_change_audit(db, parent, payment_user_id, parent_old_status, parent_old_queue)
 
         await db.commit()
@@ -1058,6 +1067,25 @@ async def process_payment(
         await manager.broadcast_multi(parent_rooms, parent_event)
 
     return await get_transaction(db, transaction.id)
+
+
+async def _decrement_stock_for_handover(db: AsyncSession, items: list[TransactionItem], quantity_attr: str) -> None:
+    """Deducts each product item's handed-over quantity from product.stock_quantity.
+
+    quantity_attr picks which item field represents what physically left the shelf:
+    'actual_quantity_kg' for walk-in (Releasing's confirmed QTY, the actual_subtotal
+    driver), 'quantity_kg' for online (Releasing never confirms a per-item actual for
+    online orders — see confirm_items_ready).
+    """
+    for item in items:
+        if item.item_type != ItemTypeEnum.product:
+            continue
+        quantity = getattr(item, quantity_attr)
+        if quantity is None:
+            continue
+        product = await db.get(Product, item.product_id)
+        if product is not None:
+            product.stock_quantity -= quantity
 
 
 async def confirm_weight(
@@ -1138,6 +1166,11 @@ async def confirm_items_ready(db: AsyncSession, transaction_id: int, releasing_u
         transaction.queue_status = QueueStatusEnum.waiting
         transaction.processing_by_user_id = None
         transaction.processing_started_at = None
+
+        # Items are handed over to the customer right now (online has no
+        # separate handover step) — decrement using quantity_kg, the only
+        # weight field Releasing ever populates for this flow.
+        await _decrement_stock_for_handover(db, transaction.items, "quantity_kg")
 
         _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
 
@@ -1224,7 +1257,9 @@ async def resolve_substandard(
 
     try:
         if balance_due == 0:
-            # Exact weight — nothing for either team to decide.
+            # Exact weight — nothing for either team to decide, and the item is
+            # handed over right now, so this is where stock actually leaves.
+            await _decrement_stock_for_handover(db, transaction.items, "actual_quantity_kg")
             transaction.transaction_status = TransactionStatusEnum.completed
             transaction.queue_status = QueueStatusEnum.done
         elif balance_due > 0:
@@ -1294,7 +1329,7 @@ async def resolve_refund_as_credit(
 
     old_status = transaction.transaction_status.value
     old_queue = transaction.queue_status.value
-    parent_completed = False
+    parent_settled = False
 
     try:
         customer.net_balance += amount
@@ -1318,14 +1353,16 @@ async def resolve_refund_as_credit(
 
         # Releasing still holds a read-only pending_adjustment card for the parent
         # until Payment resolves this child — same handoff process_payment already
-        # does for the adjustment side.
+        # does for the adjustment side. It moves to 'settled' (not 'completed')
+        # so Releasing gets one more actionable step to confirm the handover
+        # before stock actually leaves (see confirm_handover).
         if parent is not None and parent.transaction_status == TransactionStatusEnum.pending_adjustment:
             parent_old_status = parent.transaction_status.value
             parent_old_queue = parent.queue_status.value
-            parent.transaction_status = TransactionStatusEnum.completed
-            parent.queue_status = QueueStatusEnum.done
+            parent.transaction_status = TransactionStatusEnum.settled
+            parent.queue_status = QueueStatusEnum.waiting
             _record_status_change_audit(db, parent, resolved_by_user_id, parent_old_status, parent_old_queue)
-            parent_completed = True
+            parent_settled = True
 
         await db.commit()
     except Exception:
@@ -1340,7 +1377,7 @@ async def resolve_refund_as_credit(
     )
     await manager.broadcast_multi(rooms, event)
 
-    if parent_completed:
+    if parent_settled:
         parent_rooms, parent_event = transaction_status_changed(
             transaction_id=parent.id,
             old_status=TransactionStatusEnum.pending_adjustment.value,
@@ -1507,6 +1544,108 @@ async def resubmit_to_payment(db: AsyncSession, transaction_id: int, receiver_us
                 new_value=transaction.transaction_status.value,
             )
         )
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    rooms, event = transaction_status_changed(
+        transaction_id=transaction.id,
+        old_status=old_status,
+        new_status=transaction.transaction_status.value,
+        customer_type=transaction.customer_type.value,
+    )
+    await manager.broadcast_multi(rooms, event)
+
+    return await get_transaction(db, transaction.id)
+
+
+async def _get_adjustment_child(db: AsyncSession, parent_id: int) -> SalesTransaction:
+    # resolve_substandard creates at most one adjustment/refund child per parent
+    # (see _create_adjustment_child) — order_by/limit here is defensive, not a
+    # real disambiguation need.
+    result = await db.execute(
+        select(SalesTransaction)
+        .where(
+            SalesTransaction.parent_transaction_id == parent_id,
+            SalesTransaction.transaction_type.in_([TransactionTypeEnum.adjustment, TransactionTypeEnum.refund]),
+        )
+        .order_by(SalesTransaction.id.desc())
+    )
+    child = result.scalars().first()
+    if child is None:
+        raise ValueError(f"transaction {parent_id} has no adjustment/refund child")
+    return child
+
+
+async def get_handover_outcome(db: AsyncSession, transaction_id: int) -> HandoverOutcomeResponse:
+    parent = await db.get(SalesTransaction, transaction_id)
+    if parent is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+    if parent.transaction_status != TransactionStatusEnum.settled:
+        raise QueueConflictError(f"transaction {transaction_id} is not settled")
+
+    child = await _get_adjustment_child(db, parent.id)
+
+    amount_paid = (
+        await db.execute(
+            select(func.coalesce(func.sum(PaymentDetail.amount), Decimal("0.00"))).where(
+                PaymentDetail.transaction_id == child.id, PaymentDetail.is_draft.is_(False)
+            )
+        )
+    ).scalar_one()
+    remaining_balance_added = (
+        await db.execute(
+            select(func.coalesce(func.sum(CustomerLedger.amount), Decimal("0.00"))).where(
+                CustomerLedger.transaction_id == child.id,
+                CustomerLedger.entry_type == LedgerEntryTypeEnum.balance_added,
+            )
+        )
+    ).scalar_one()
+    credit_added = (
+        await db.execute(
+            select(func.coalesce(func.sum(CustomerLedger.amount), Decimal("0.00"))).where(
+                CustomerLedger.transaction_id == child.id,
+                CustomerLedger.entry_type == LedgerEntryTypeEnum.credit_added,
+            )
+        )
+    ).scalar_one()
+
+    return HandoverOutcomeResponse(
+        child_transaction_id=child.id,
+        child_transaction_type=child.transaction_type,
+        child_total_due=child.total_due,
+        amount_paid=amount_paid,
+        remaining_balance_added=remaining_balance_added,
+        credit_added=credit_added,
+    )
+
+
+async def confirm_handover(db: AsyncSession, transaction_id: int, releasing_user_id: int) -> TransactionResponse:
+    transaction = await _get_transaction_for_update(db, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    if transaction.transaction_status != TransactionStatusEnum.settled:
+        raise QueueConflictError(f"transaction {transaction_id} is not settled")
+
+    old_status = transaction.transaction_status.value
+    old_queue = transaction.queue_status.value
+
+    try:
+        # Item is handed to the customer right now — this is where stock
+        # actually leaves for the substandard-kilo flow (see PROJECT_CONTEXT.md).
+        # Parent's own items carry the confirmed weights; the adjustment/refund
+        # child has none of its own (see resolve_substandard).
+        await _decrement_stock_for_handover(db, transaction.items, "actual_quantity_kg")
+
+        transaction.transaction_status = TransactionStatusEnum.completed
+        transaction.queue_status = QueueStatusEnum.done
+        transaction.processing_by_user_id = None
+        transaction.processing_started_at = None
+
+        _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
 
         await db.commit()
     except Exception:

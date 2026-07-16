@@ -261,6 +261,23 @@ class PaymentProcessItem(BaseModel):
     ref_number: str | None = None
 
 
+class HandoverOutcomeResponse(BaseModel):
+    """What Payment did with a settled transaction's adjustment/refund child —
+    rendered by Releasing's outcome panel before it confirms the handover."""
+
+    child_transaction_id: int
+    child_transaction_type: TransactionTypeEnum
+    child_total_due: Decimal
+    # sum of the child's confirmed payment_detail rows (cash/online + any credit
+    # row) — 0.00 for a refund child, since that path never touches payment_detail
+    amount_paid: Decimal
+    # > 0 only when the adjustment was partially paid — the underpaid remainder
+    # logged as a new balance_added entry against the child
+    remaining_balance_added: Decimal
+    # > 0 only for a refund child resolved via resolve-as-credit
+    credit_added: Decimal
+
+
 class PaymentProcessRequest(BaseModel):
     payments: list[PaymentProcessItem]
     # explicit credit_added ledger_entry_ids Payment checked — credit_applied is

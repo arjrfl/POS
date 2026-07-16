@@ -51,7 +51,9 @@ CREATE TYPE transaction_status_enum AS ENUM (
     -- Releasing confirmed variance, child adjustment/refund sent to Payment
     -- queue, waiting for Payment to resolve
     'settled',
-    -- Releasing confirmed weight, adjustment/refund generated if needed
+    -- Payment has resolved the adjustment/refund child (paid in full,
+    --   partially paid, or saved as credit). Parent is waiting for
+    --   Releasing's final handover confirmation before moving to 'completed'.
     'completed',
     -- Fully done, no pending actions
     'voided',

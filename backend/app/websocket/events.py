@@ -10,6 +10,9 @@ STATUS_TEAM_ROOM: dict[str, str] = {
     # holds a read-only card for it until Payment resolves the child — so it
     # stays routed to releasing-queue rather than dropping out of team rooms.
     "pending_adjustment": "releasing-queue",
+    # Payment resolved the adjustment/refund child — parent re-enters Releasing's
+    # active queue as an actionable "Payment Resolved" card awaiting handover.
+    "settled": "releasing-queue",
     "pending_edit": "receiver-queue",
 }
 
