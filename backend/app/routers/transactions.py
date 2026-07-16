@@ -321,6 +321,27 @@ async def resolve_substandard(
     return {"data": transaction, "error": None}
 
 
+@router.post("/{transaction_id}/complete-exact", dependencies=[Depends(require_role("releasing"))])
+async def complete_exact(
+    transaction_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        transaction = await transaction_service.complete_exact(db, transaction_id, current_user["user_id"])
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except transaction_service.QueuePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except transaction_service.QueueConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except transaction_service.WeightConfirmValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except transaction_service.SubstandardValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return {"data": transaction, "error": None}
+
+
 @router.get("/{transaction_id}/handover-outcome", dependencies=[Depends(require_role("releasing"))])
 async def get_handover_outcome(
     transaction_id: int,

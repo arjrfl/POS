@@ -74,15 +74,31 @@ export default function Releasing() {
     }
   }
 
-  // 'send_to_payment' is the only outcome the backend accepts now — Releasing
-  // makes no financial decision, so the caller only needs to say what toast
-  // fits what actually happened (exact-weight auto-complete vs. handed to Payment).
+  // 'send_to_payment' is the only outcome the backend accepts, and only for a
+  // transaction with an actual variance — Releasing makes no financial decision,
+  // just hands the weight difference to Payment.
   const handleResolve = async (successMessage) => {
     setSubmitting(true)
     try {
       await post(`/transactions/${selectedTransaction.id}/resolve`, { outcome: 'send_to_payment' })
       setSelectedTransaction(null)
       showToast(successMessage, 'success')
+      refreshQueue()
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Walk-in exact weight — Releasing's own explicit action now, no longer an
+  // automatic side effect of confirming the last item.
+  const handleCompleteExact = async () => {
+    setSubmitting(true)
+    try {
+      await post(`/transactions/${selectedTransaction.id}/complete-exact`)
+      setSelectedTransaction(null)
+      showToast('Transaction complete', 'success')
       refreshQueue()
     } catch (err) {
       showToast(err.message, 'error')
@@ -161,6 +177,7 @@ export default function Releasing() {
               onConfirmReady={handleConfirmReady}
               onConfirmWeights={handleConfirmWeights}
               onResolve={handleResolve}
+              onCompleteExact={handleCompleteExact}
               submitting={submitting}
             />
           </div>

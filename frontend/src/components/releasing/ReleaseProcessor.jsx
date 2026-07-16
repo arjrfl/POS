@@ -29,7 +29,14 @@ function PencilIcon() {
   )
 }
 
-export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights, onResolve, submitting }) {
+export function ReleaseProcessor({
+  transaction,
+  onConfirmReady,
+  onConfirmWeights,
+  onResolve,
+  onCompleteExact,
+  submitting,
+}) {
   const { data: customer } = useCustomer(transaction?.customer_id)
   const { data: products } = useProducts()
 
@@ -92,18 +99,6 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
     onConfirmWeights(payload)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allItemsConfirmed, itemActualValues, submitting])
-
-  // Exact weight has nothing for either team to decide — auto-resolve the
-  // instant confirm-weight responds with balance_due === 0. Guarded by a ref
-  // (not just a submitting check) because StrictMode double-invokes effects
-  // in dev, which would otherwise fire this mutating call twice.
-  const autoResolvedRef = useRef(false)
-  useEffect(() => {
-    if (balanceDue !== 0 || autoResolvedRef.current) return
-    autoResolvedRef.current = true
-    onResolve('Transaction complete ✓')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [balanceDue])
 
   if (!transaction) {
     return (
@@ -263,9 +258,9 @@ export function ReleaseProcessor({ transaction, onConfirmReady, onConfirmWeights
             </Button>
           ) : weightConfirmed ? (
             balanceDue === 0 ? (
-              <div className="bg-green-50 border border-green-300 rounded-md p-3 text-sm text-green-800">
-                <p className="font-semibold">Exact weight ✓</p>
-              </div>
+              <Button type="button" variant="success" disabled={submitting} onClick={onCompleteExact} className="w-full">
+                {submitting ? 'Completing...' : 'Complete Transaction'}
+              </Button>
             ) : (
               <SubstandardResolution
                 transaction={transaction}

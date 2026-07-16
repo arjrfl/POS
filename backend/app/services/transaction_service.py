@@ -1251,18 +1251,20 @@ async def resolve_substandard(
         raise QueueConflictError(f"transaction {transaction_id} has no confirmed weight yet")
 
     balance_due = transaction.balance_due
+    if balance_due == 0:
+        # Exact weight has no variance to send to Payment — that case is
+        # handled entirely by /complete-exact instead, so items stay editable
+        # and nothing auto-completes just because they happen to match.
+        raise SubstandardValidationError(
+            f"transaction {transaction_id} has no weight variance — use /complete-exact instead"
+        )
+
     old_status = transaction.transaction_status.value
     old_queue = transaction.queue_status.value
     child: SalesTransaction | None = None
 
     try:
-        if balance_due == 0:
-            # Exact weight — nothing for either team to decide, and the item is
-            # handed over right now, so this is where stock actually leaves.
-            await _decrement_stock_for_handover(db, transaction.items, "actual_quantity_kg")
-            transaction.transaction_status = TransactionStatusEnum.completed
-            transaction.queue_status = QueueStatusEnum.done
-        elif balance_due > 0:
+        if balance_due > 0:
             child = await _create_adjustment_child(
                 db, transaction, TransactionTypeEnum.adjustment, balance_due, releasing_user_id
             )
@@ -1303,6 +1305,69 @@ async def resolve_substandard(
             customer_type=child.customer_type.value,
         )
         await manager.broadcast_multi(child_rooms, child_event)
+
+    return await get_transaction(db, transaction.id)
+
+
+async def complete_exact(db: AsyncSession, transaction_id: int, releasing_user_id: int) -> TransactionResponse:
+    """Walk-in exact-weight completion — the standard-flow counterpart to the
+    substandard flow's confirm_handover. Distinct precondition (pending_settlement,
+    not settled) and distinct trigger (Releasing's own button, not Payment's
+    resolution), so it's kept as its own endpoint rather than merged with it."""
+    transaction = await _get_transaction_for_update(db, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    if transaction.transaction_status != TransactionStatusEnum.pending_settlement:
+        raise QueueConflictError(f"transaction {transaction_id} is not pending settlement")
+    if transaction.queue_status != QueueStatusEnum.processing:
+        raise QueueConflictError(f"transaction {transaction_id} has not been grabbed for releasing")
+    if transaction.processing_by_user_id != releasing_user_id:
+        raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
+
+    product_items = [item for item in transaction.items if item.item_type == ItemTypeEnum.product]
+    # actual_quantity_kg (not actual_weight_kg, which is optional/reference-only —
+    # see schema.sql) is what confirm_weight requires and what actual_subtotal is
+    # derived from, so it's the authoritative "has this item been confirmed" signal.
+    if not product_items or any(item.actual_quantity_kg is None for item in product_items):
+        raise WeightConfirmValidationError("All items must have a confirmed actual QTY before completing")
+
+    # Recomputed from the item rows rather than trusting transaction.actual_amount/
+    # balance_due — never trust a cached value for a completion gate.
+    actual_amount = sum((item.actual_subtotal for item in product_items), Decimal("0.00"))
+    if actual_amount - transaction.estimated_amount != 0:
+        raise SubstandardValidationError(
+            f"transaction {transaction_id} has a weight variance — use /resolve to send it to Payment instead"
+        )
+
+    old_status = transaction.transaction_status.value
+    old_queue = transaction.queue_status.value
+
+    try:
+        # Item is handed to the customer right now — this is where stock
+        # actually leaves for the standard exact-weight flow.
+        await _decrement_stock_for_handover(db, transaction.items, "actual_quantity_kg")
+
+        transaction.actual_amount = actual_amount
+        transaction.transaction_status = TransactionStatusEnum.completed
+        transaction.queue_status = QueueStatusEnum.done
+        transaction.processing_by_user_id = None
+        transaction.processing_started_at = None
+
+        _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    rooms, event = transaction_status_changed(
+        transaction_id=transaction.id,
+        old_status=old_status,
+        new_status=transaction.transaction_status.value,
+        customer_type=transaction.customer_type.value,
+    )
+    await manager.broadcast_multi(rooms, event)
 
     return await get_transaction(db, transaction.id)
 
