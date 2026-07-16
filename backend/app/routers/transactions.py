@@ -117,6 +117,12 @@ async def list_transactions(
     return {"data": result, "error": None}
 
 
+@router.get("/history", dependencies=[Depends(get_current_user)])
+async def get_transaction_history(db: AsyncSession = Depends(get_db)):
+    history = await transaction_service.get_transaction_history(db)
+    return {"data": history, "error": None}
+
+
 @router.get("/{transaction_id}", dependencies=[Depends(get_current_user)])
 async def get_transaction(transaction_id: int, db: AsyncSession = Depends(get_db)):
     try:

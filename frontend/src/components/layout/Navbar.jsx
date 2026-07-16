@@ -9,7 +9,7 @@ const ROLE_BADGE_STYLES = {
   admin: 'bg-red-100 text-red-800',
 }
 
-export function Navbar({ title }) {
+export function Navbar({ title, actions }) {
   const { user, logout } = useAuth()
 
   return (
@@ -32,6 +32,7 @@ export function Navbar({ title }) {
             </span>
           </>
         )}
+        {actions}
         <Button variant="secondary" onClick={logout}>
           Log out
         </Button>

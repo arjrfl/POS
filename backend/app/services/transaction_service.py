@@ -28,6 +28,7 @@ from app.schemas.transaction import (
     PaymentProcessRequest,
     SubstandardOutcomeRequest,
     TransactionCreate,
+    TransactionHistoryItem,
     TransactionItemCreate,
     TransactionListResponse,
     TransactionParentItemResponse,
@@ -446,6 +447,46 @@ async def list_transactions(
     )
     items = result.scalars().all()
     return TransactionListResponse(total=total, items=[_build_transaction_response(t) for t in items])
+
+
+def _build_history_item(transaction: SalesTransaction) -> TransactionHistoryItem:
+    payment_methods: list[str] = []
+    for pd in transaction.payment_details:
+        if pd.is_draft:
+            continue
+        name = pd.payment_method.payment_method_name
+        if name not in payment_methods:
+            payment_methods.append(name)
+
+    return TransactionHistoryItem(
+        id=transaction.id,
+        order_number=transaction.order_number,
+        transaction_type=transaction.transaction_type,
+        transaction_status=transaction.transaction_status,
+        customer_name=transaction.customer.full_name,
+        customer_type=transaction.customer_type,
+        total_due=transaction.total_due,
+        payment_methods=payment_methods,
+        parent_order_number=transaction.parent.order_number if transaction.parent else None,
+        finished_at=transaction.updated_at,
+        created_at=transaction.walkin_at or transaction.created_at,
+    )
+
+
+async def get_transaction_history(db: AsyncSession) -> list[TransactionHistoryItem]:
+    result = await db.execute(
+        select(SalesTransaction)
+        .where(
+            SalesTransaction.transaction_status.in_(
+                [TransactionStatusEnum.completed, TransactionStatusEnum.voided]
+            )
+        )
+        .order_by(SalesTransaction.updated_at.desc())
+        .limit(100)
+        .options(_WITH_PARENT)
+    )
+    transactions = result.scalars().all()
+    return [_build_history_item(t) for t in transactions]
 
 
 async def _finalize_queue_change(

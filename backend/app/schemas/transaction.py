@@ -219,6 +219,24 @@ class TransactionListResponse(BaseModel):
     items: list[TransactionResponse]
 
 
+class TransactionHistoryItem(BaseModel):
+    """Flat, read-only row for the completed/voided transaction history list —
+    deliberately not TransactionResponse (no items/payment_details/children),
+    since the history list never drills into a transaction's full chain."""
+
+    id: int
+    order_number: str
+    transaction_type: TransactionTypeEnum
+    transaction_status: TransactionStatusEnum
+    customer_name: str
+    customer_type: CustomerTypeEnum
+    total_due: Decimal
+    payment_methods: list[str]
+    parent_order_number: str | None
+    finished_at: datetime
+    created_at: datetime
+
+
 # =============================================================
 # ACTION SCHEMAS (used by later routes)
 # =============================================================

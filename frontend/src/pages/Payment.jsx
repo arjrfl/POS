@@ -5,7 +5,9 @@ import { usePaymentQueue } from '../hooks/useQueue'
 import { QueuePanel } from '../components/payment/QueuePanel'
 import { TransactionDetailPanel } from '../components/payment/TransactionDetailPanel'
 import { PaymentModal } from '../components/payment/PaymentModal'
+import { TransactionHistory } from '../components/payment/TransactionHistory'
 import { Toast } from '../components/ui/Toast'
+import { Button } from '../components/ui/Button'
 import { get, post } from '../services/api'
 import { useNotificationStore } from '../store/notificationStore'
 import { useCustomer } from '../hooks/useCustomer'
@@ -27,6 +29,7 @@ export default function Payment() {
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
   const [queueFilter, setQueueFilter] = useState('regular')
+  const [view, setView] = useState('queue')
 
   const isAdjustmentChild = (t) => ['adjustment', 'refund'].includes(t.transaction_type) && t.parent_transaction_id != null
 
@@ -146,58 +149,69 @@ export default function Payment() {
   }
 
   return (
-    <PageLayout title="Payment Queue">
-      <div className="h-full flex gap-6 min-h-0">
-        <div className="flex-[60] h-full min-h-0 flex flex-col">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Queue</span>
-            <div className="inline-flex rounded-full bg-gray-200 p-0.5">
-              {[
-                { value: 'regular', label: 'Regular' },
-                { value: 'adjustments', label: 'Adjustments' },
-              ].map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setQueueFilter(option.value)}
-                  className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
-                    queueFilter === option.value
-                      ? 'bg-primary text-white'
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
+    <PageLayout
+      title="Payment Queue"
+      actions={
+        <Button variant="secondary" onClick={() => setView(view === 'history' ? 'queue' : 'history')}>
+          {view === 'history' ? 'Back to Queue' : 'History'}
+        </Button>
+      }
+    >
+      {view === 'history' ? (
+        <TransactionHistory />
+      ) : (
+        <div className="h-full flex gap-6 min-h-0">
+          <div className="flex-[60] h-full min-h-0 flex flex-col">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Queue</span>
+              <div className="inline-flex rounded-full bg-gray-200 p-0.5">
+                {[
+                  { value: 'regular', label: 'Regular' },
+                  { value: 'adjustments', label: 'Adjustments' },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setQueueFilter(option.value)}
+                    className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                      queueFilter === option.value
+                        ? 'bg-primary text-white'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div
+              className={`flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 ${
+                selectedTransaction ? 'opacity-50 pointer-events-none' : ''
+              }`}
+            >
+              {selectedTransaction && (
+                <div className="mb-3 px-3 py-2 rounded-md bg-yellow-100 text-sm text-amber-800">
+                  Finish or park the current transaction before processing another.
+                </div>
+              )}
+              <QueuePanel transactions={filteredQueueItems} isLoading={isLoading} onProcess={handleProcess} />
             </div>
           </div>
-          <div
-            className={`flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 ${
-              selectedTransaction ? 'opacity-50 pointer-events-none' : ''
-            }`}
-          >
-            {selectedTransaction && (
-              <div className="mb-3 px-3 py-2 rounded-md bg-yellow-100 text-sm text-amber-800">
-                Finish or park the current transaction before processing another.
-              </div>
-            )}
-            <QueuePanel transactions={filteredQueueItems} isLoading={isLoading} onProcess={handleProcess} />
-          </div>
-        </div>
 
-        <div className="flex-[40] h-full min-h-0 flex flex-col">
-          <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Order Details</span>
-          <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg p-3">
-            <TransactionDetailPanel
-              transaction={selectedTransaction}
-              onPay={() => setPayModalOpen(true)}
-              onPark={handlePark}
-              onReturnToReceiver={handleReturnToReceiver}
-              onSaveAsCredit={handleSaveAsCredit}
-            />
+          <div className="flex-[40] h-full min-h-0 flex flex-col">
+            <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Order Details</span>
+            <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg p-3">
+              <TransactionDetailPanel
+                transaction={selectedTransaction}
+                onPay={() => setPayModalOpen(true)}
+                onPark={handlePark}
+                onReturnToReceiver={handleReturnToReceiver}
+                onSaveAsCredit={handleSaveAsCredit}
+              />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {selectedTransaction && (
         <PaymentModal
