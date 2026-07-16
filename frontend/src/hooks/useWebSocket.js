@@ -14,7 +14,6 @@ const ROLE_ROOM = {
 }
 
 export function useWebSocket() {
-  const token = useAuthStore((state) => state.token)
   const roleName = useAuthStore((state) => state.user?.role_name)
   const setLastEvent = useNotificationStore((state) => state.setLastEvent)
   const queryClient = useQueryClient()
@@ -27,6 +26,11 @@ export function useWebSocket() {
   const room = ROLE_ROOM[roleName]
 
   const connect = useCallback(() => {
+    // Read the token fresh at connect time rather than subscribing to it —
+    // the sliding-session refresh silently swaps the token on every API call,
+    // and reacting to that here would tear down and reopen the socket on
+    // every single request instead of only on login/reconnect.
+    const token = useAuthStore.getState().token
     if (!room || !token) return
 
     // Same-origin so this works through the Vite dev proxy (localhost:5173) and
@@ -66,7 +70,7 @@ export function useWebSocket() {
     }
 
     socketRef.current = socket
-  }, [room, token, setLastEvent, queryClient])
+  }, [room, setLastEvent, queryClient])
 
   useEffect(() => {
     connect()

@@ -26,12 +26,22 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
-def decode_access_token(token: str) -> dict:
+def decode_access_token_soft(token: str) -> dict | None:
+    """Same as decode_access_token but returns None instead of raising —
+    for callers (e.g. the sliding-session refresh middleware) that need to
+    treat an invalid/expired token as "nothing to do" rather than a 401."""
     try:
         return jwt.decode(token, settings.SECRET_KEY, algorithms=[ALGORITHM])
     except JWTError:
+        return None
+
+
+def decode_access_token(token: str) -> dict:
+    payload = decode_access_token_soft(token)
+    if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    return payload

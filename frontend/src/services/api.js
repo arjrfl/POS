@@ -23,6 +23,14 @@ async function request(path, { method = 'GET', body, headers } = {}) {
     throw new Error('Network error — check your connection')
   }
 
+  // Sliding session: a still-valid token gets silently reissued on every
+  // authenticated request (see backend's refresh_token_middleware). Swap it
+  // in without any user-visible action so an active terminal never expires.
+  const refreshedToken = res.headers.get('X-Refreshed-Token')
+  if (refreshedToken) {
+    useAuthStore.getState().setToken(refreshedToken)
+  }
+
   const envelope = await res.json().catch(() => null)
 
   // A 401 with no token attached is a login failure, not an expired session —

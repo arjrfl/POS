@@ -10,6 +10,9 @@ export const useAuthStore = create(
 
       login: (userData, token) => set({ user: userData, token, isAuthenticated: true }),
 
+      // Silent sliding-session refresh — swaps the token only, no user-visible action.
+      setToken: (token) => set({ token }),
+
       logout: () => set({ user: null, token: null, isAuthenticated: false }),
     }),
     {

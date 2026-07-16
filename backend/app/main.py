@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import engine, get_db
+from app.core.security import create_access_token, decode_access_token_soft
 from app.routers import auth, customers, payment_methods, products, transactions, ws
 
 
@@ -28,6 +29,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Sliding session: a still-valid token on any authenticated request gets
+# reissued with a fresh expiry, so an actively-used terminal is never logged
+# out mid-transaction. A terminal that goes genuinely idle (no requests at
+# all) gets no refresh and its token expires normally after
+# ACCESS_TOKEN_EXPIRE_MINUTES. Stateless — no session store involved, just a
+# new JWT handed back on top of the normal response.
+@app.middleware("http")
+async def refresh_token_middleware(request: Request, call_next):
+    response = await call_next(request)
+
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.removeprefix("Bearer ").strip()
+        payload = decode_access_token_soft(token)
+        if payload is not None:
+            payload.pop("exp", None)
+            response.headers["X-Refreshed-Token"] = create_access_token(payload)
+
+    return response
 
 
 @app.exception_handler(HTTPException)
