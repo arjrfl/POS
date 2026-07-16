@@ -11,11 +11,14 @@ import { formatCurrency } from '../../utils/format'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
 import { generateId } from '../../utils/id'
 import { get, post, put } from '../../services/api'
+import { useAuthStore } from '../../store/authStore'
+import { loadPaymentDraft, savePaymentDraft, clearPaymentDraft } from '../../utils/paymentDraft'
 
 const EPS = 0.005
 const DRAFT_AUTOSAVE_INTERVAL_MS = 120000
 
 export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
+  const username = useAuthStore((state) => state.user?.username)
   const { data: methods } = usePaymentMethods()
   const { data: customer } = useCustomer(transaction.customer_id)
   const { data: products } = useProducts()
@@ -41,6 +44,14 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const [creditEntries, setCreditEntries] = useState([])
   const [checkedCredits, setCheckedCredits] = useState({})
 
+  // localStorage draft, if any — a reload-safety net for in-progress work that
+  // hasn't reached the DB yet (2-minute autosave or Park). Read once per modal
+  // open and stashed in a ref so the other two seed effects below (which run
+  // on their own [open, methods] / [open, customer] schedules, possibly in a
+  // later commit once those queries resolve) know to skip their DB-draft
+  // fallback instead of clobbering what was just restored here.
+  const restoredDraftRef = useRef(null)
+
   // Fresh form every time the modal opens — no leftover entries from a
   // previously cancelled attempt on this same transaction. Entries themselves
   // are seeded separately below, from any saved drafts. Balance/credit
@@ -51,21 +62,35 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   // is already open shouldn't clobber the user's in-progress edits.
   useEffect(() => {
     if (open) {
-      setMethodId('')
-      setRefNumber('')
-      setAmount('')
+      const draft = loadPaymentDraft(username, transaction.id)
+      restoredDraftRef.current = draft
+
+      setMethodId(draft?.methodId ?? '')
+      setRefNumber(draft?.refNumber ?? '')
+      setAmount(draft?.amount ?? '')
       setCloseGuard(false)
-      setShowConfirmation(false)
-      setConfirmMode('full')
+      setShowConfirmation(!!draft?.confirmStep)
+      setConfirmMode(draft?.confirmMode ?? 'full')
       setParking(false)
       setParkError('')
 
-      const draftBalances = transaction.draft_balances_json ? JSON.parse(transaction.draft_balances_json) : []
-      setCheckedBalances(Object.fromEntries(draftBalances.map((b) => [b.ledger_entry_id, true])))
+      if (draft?.entries) {
+        setEntries(draft.entries)
+      }
+
+      if (draft?.checkedBalances) {
+        setCheckedBalances(draft.checkedBalances)
+      } else {
+        const draftBalances = transaction.draft_balances_json ? JSON.parse(transaction.draft_balances_json) : []
+        setCheckedBalances(Object.fromEntries(draftBalances.map((b) => [b.ledger_entry_id, true])))
+      }
       // Credit doesn't have a per-entry draft column (only the total is
       // persisted in draft_credit_applied) — restored below once creditEntries
-      // has loaded, by best-effort matching against that saved total.
-      setCheckedCredits({})
+      // has loaded, by best-effort matching against that saved total. Skipped
+      // entirely if the localStorage draft already has explicit checked state.
+      setCheckedCredits(draft?.checkedCredits ?? {})
+    } else {
+      restoredDraftRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -84,6 +109,10 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   // refetch while the modal is already open doesn't clobber unsaved typing.
   useEffect(() => {
     if (!open || !methods?.length) return
+    // Entries already restored from the localStorage draft (which carries its
+    // own method_name per row, no need to wait for `methods`) — don't let the
+    // DB-draft fallback below overwrite them once `methods` finishes loading.
+    if (restoredDraftRef.current?.entries) return
     // The credit draft row (if any) is restored separately via checkedCredits
     // above, from draft_credit_applied — it must not also show up as a manual
     // entry row here, or it'd be double-represented and removable by mistake.
@@ -132,6 +161,11 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
       .then((result) => {
         const list = result ?? []
         setCreditEntries(list)
+        // Checked state already restored from the localStorage draft above —
+        // don't let the DB-draft fallback below override it.
+        if (restoredDraftRef.current?.checkedCredits) {
+          return
+        }
         if (draftCreditSources?.length) {
           // Authoritative: draft_credit_sources_json records exactly which
           // ledger entries were consumed at save time, by id — no guessing.
@@ -153,6 +187,41 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
       .catch(() => setCreditEntries([]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, customer])
+
+  // Mirror in-progress state to localStorage so a reload can restore it before
+  // the 2-minute DB autosave fires or Park is clicked. Debounced to avoid
+  // excessive writes while typing. Only while actually open — real closes
+  // (cancel/park/pay) clear the draft explicitly instead of writing open:false
+  // here, so this can't race a clear and write a stale draft back.
+  useEffect(() => {
+    if (!open || !username) return
+    const handle = setTimeout(() => {
+      savePaymentDraft(username, transaction.id, {
+        open: true,
+        confirmStep: showConfirmation,
+        confirmMode,
+        methodId,
+        refNumber,
+        amount,
+        entries,
+        checkedBalances,
+        checkedCredits,
+      })
+    }, 500)
+    return () => clearTimeout(handle)
+  }, [
+    open,
+    username,
+    transaction.id,
+    showConfirmation,
+    confirmMode,
+    methodId,
+    refNumber,
+    amount,
+    entries,
+    checkedBalances,
+    checkedCredits,
+  ])
 
   // Background auto-save every 2min while the modal is open — silent, no
   // toast/loading state. Refs keep the interval itself stable (created once
@@ -387,11 +456,13 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
   const requestClose = () => setCloseGuard(true)
   const confirmClose = () => {
     setCloseGuard(false)
+    clearPaymentDraft(username, transaction.id)
     onClose()
   }
 
   const handleConfirmationDone = (paid) => {
     setShowConfirmation(false)
+    clearPaymentDraft(username, transaction.id)
     onPaid(paid)
   }
 
@@ -415,6 +486,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
         credit_entries_checked: creditsToApply.map((c) => c.ledger_entry_id),
       })
       await post(`/transactions/${transaction.id}/park`)
+      clearPaymentDraft(username, transaction.id)
       onParked()
     } catch (err) {
       setParkError(err.message)

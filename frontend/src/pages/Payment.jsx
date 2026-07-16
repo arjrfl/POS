@@ -10,6 +10,8 @@ import { get, post } from '../services/api'
 import { useNotificationStore } from '../store/notificationStore'
 import { useCustomer } from '../hooks/useCustomer'
 import { formatCurrency } from '../utils/format'
+import { useAuthStore } from '../store/authStore'
+import { loadPaymentDraft } from '../utils/paymentDraft'
 
 const TERMINAL_STATUSES = ['completed', 'settled', 'voided']
 
@@ -17,6 +19,7 @@ export default function Payment() {
   const { data, isLoading } = usePaymentQueue()
   const queryClient = useQueryClient()
   const lastEvent = useNotificationStore((state) => state.lastEvent)
+  const username = useAuthStore((state) => state.user?.username)
 
   const [selectedTransaction, setSelectedTransaction] = useState(null)
   const { data: selectedCustomer } = useCustomer(selectedTransaction?.customer_id)
@@ -29,14 +32,19 @@ export default function Payment() {
   // Covers the narrow race window before FIX 4's disconnect-triggered release
   // finishes: if this same user still holds a transaction from just before
   // the reload, restore it instead of losing the in-progress work silently.
+  // If a localStorage draft for that same transaction says the Payment modal
+  // was open, reopen it too — PaymentModal itself restores the entry rows.
   useEffect(() => {
     get('/transactions?status=pending_payment&processing_by=me')
       .then((result) => {
         const mine = result?.items?.[0]
-        if (mine) setSelectedTransaction(mine)
+        if (mine) {
+          setSelectedTransaction(mine)
+          if (loadPaymentDraft(username, mine.id)?.open) setPayModalOpen(true)
+        }
       })
       .catch(() => {})
-  }, [])
+  }, [username])
 
   const showToast = (message, variant = 'info') => {
     window.clearTimeout(toastTimerRef.current)
