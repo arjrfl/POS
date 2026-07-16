@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
-import { Badge } from '../ui/Badge'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 
 const fetchTransactionHistory = () => get('/transactions/history')
@@ -40,15 +39,14 @@ function HistoryCard({ transaction }) {
             {typeBadge.label}
           </span>
         )}
-        <Badge status={transaction.transaction_status} />
       </div>
 
-      <div className="flex-none text-right">
-        <div className="font-bold text-sm text-primary whitespace-nowrap">{formatCurrency(transaction.total_due)}</div>
-        {transaction.payment_methods.length > 0 && (
-          <div className="text-xs text-gray-500">{transaction.payment_methods.join(', ')}</div>
-        )}
-        <div className="text-xs text-gray-400">{new Date(transaction.finished_at).toLocaleString()}</div>
+      <div className="flex-none text-right w-44 mr-20">
+        <div className="text-sm text-gray-400 whitespace-nowrap">{new Date(transaction.finished_at).toLocaleString()}</div>
+      </div>
+
+      <div className="flex-none text-right w-28">
+        <div className="font-bold text-base text-primary whitespace-nowrap">{formatCurrency(transaction.total_due)}</div>
       </div>
     </div>
   )
