@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
@@ -58,9 +59,43 @@ export function TransactionHistory() {
     queryFn: fetchTransactionHistory,
   })
 
+  const [searchInput, setSearchInput] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+
+  const runSearch = () => setSearchTerm(searchInput.trim().toLowerCase())
+
+  const filteredData = useMemo(() => {
+    if (!data) return data
+    if (!searchTerm) return data
+    return data.filter((transaction) => {
+      const orderNumber = transaction.order_number?.toLowerCase() ?? ''
+      const customerName = transaction.customer_name?.toLowerCase() ?? ''
+      return orderNumber.includes(searchTerm) || customerName.includes(searchTerm)
+    })
+  }, [data, searchTerm])
+
   return (
     <div className="h-full flex flex-col min-h-0">
-      <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Transaction History</span>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Transaction History</span>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+            placeholder="Search order number or customer..."
+            className="w-72 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50"
+          />
+          <button
+            type="button"
+            onClick={runSearch}
+            className="px-4 py-1.5 text-sm font-medium bg-primary text-white rounded-md hover:bg-primary/90"
+          >
+            Search
+          </button>
+        </div>
+      </div>
       <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4">
         {isLoading ? (
           <div className="h-full flex items-center justify-center">
@@ -70,8 +105,12 @@ export function TransactionHistory() {
           <div className="h-full flex items-center justify-center">
             <p className="text-sm text-gray-400 italic">No completed transactions yet</p>
           </div>
+        ) : filteredData.length === 0 ? (
+          <div className="h-full flex items-center justify-center">
+            <p className="text-sm text-gray-400 italic">No matching transactions</p>
+          </div>
         ) : (
-          data.map((transaction) => <HistoryCard key={transaction.id} transaction={transaction} />)
+          filteredData.map((transaction) => <HistoryCard key={transaction.id} transaction={transaction} />)
         )}
       </div>
     </div>
