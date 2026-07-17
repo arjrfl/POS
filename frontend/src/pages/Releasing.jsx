@@ -191,7 +191,7 @@ export default function Releasing() {
       }
     >
       {activeView === 'inventory' ? (
-        <InventoryView />
+        <InventoryView showToast={showToast} />
       ) : (
         <div className="h-full flex gap-6 min-h-0">
           <div className="flex-[60] h-full min-h-0 flex flex-col">

@@ -6,7 +6,7 @@ from app.models.ledger import (
     TransactionAuditLog,
     TransactionVoidLog,
 )
-from app.models.product import Product, ProductStatusEnum
+from app.models.product import Product, ProductAuditLog, ProductChangeTypeEnum, ProductStatusEnum
 from app.models.transaction import (
     CustomerTypeEnum,
     ItemTypeEnum,
@@ -31,6 +31,8 @@ __all__ = [
     "PaymentDetail",
     "PaymentMethod",
     "Product",
+    "ProductAuditLog",
+    "ProductChangeTypeEnum",
     "ProductStatusEnum",
     "QueueStatusEnum",
     "Role",

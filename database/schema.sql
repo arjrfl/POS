@@ -101,6 +101,14 @@ CREATE TYPE audit_change_type_enum AS ENUM (
     'queue_status'        -- queue state changed (e.g. waiting → processing)
 );
 
+CREATE TYPE product_change_type_enum AS ENUM (
+    'created',
+    'updated',
+    'stock_adjusted',
+    'deactivated',
+    'reactivated'
+);
+
 -- =============================================================
 -- ROLE
 -- =============================================================
@@ -174,6 +182,26 @@ CREATE INDEX idx_product_status ON product (product_status);
 CREATE TRIGGER trg_product_updated_at
     BEFORE UPDATE ON product
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =============================================================
+-- PRODUCT AUDIT LOG
+-- Tracks every create/update/stock/status change on a product.
+-- Full traceability: who did what, when, and what changed.
+-- =============================================================
+CREATE TABLE product_audit_log (
+    id                 SERIAL PRIMARY KEY,
+    product_id         INT                       NOT NULL REFERENCES product(id) ON DELETE CASCADE,
+    changed_by_user_id INT                       NOT NULL REFERENCES "user"(id)   ON DELETE RESTRICT,
+    change_type        product_change_type_enum  NOT NULL,
+    old_value          TEXT                      NULL,     -- JSON, only changed fields, NULL for 'created'
+    new_value          TEXT                      NOT NULL, -- JSON, only changed fields
+    stock_delta        DECIMAL(10,3)             NULL,     -- only for 'stock_adjusted', signed (+/-)
+    notes              TEXT                      NULL,
+    changed_at         TIMESTAMPTZ               NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_pal_product     ON product_audit_log (product_id);
+CREATE INDEX idx_pal_change_type ON product_audit_log (change_type);
 
 -- =============================================================
 -- PAYMENT METHOD

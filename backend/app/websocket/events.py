@@ -54,6 +54,18 @@ def transaction_status_changed(
     return _rooms_for_transition(old_status, new_status), event
 
 
+PRODUCT_ROOMS = ["releasing-queue", "admin"]
+
+
+def product_changed(product_id: int, change_type: str) -> tuple[list[str], dict]:
+    event = {
+        "type": "product_changed",
+        "product_id": product_id,
+        "change_type": change_type,
+    }
+    return PRODUCT_ROOMS, event
+
+
 def queue_status_changed(
     transaction_id: int, old_queue_status: str, new_queue_status: str, transaction_status: str
 ) -> tuple[list[str], dict]:
