@@ -2,7 +2,7 @@ import json
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -73,7 +73,12 @@ async def list_products(
     if current_user.get("role_name") not in PRODUCT_WRITE_ROLES:
         stmt = stmt.where(Product.product_status == ProductStatusEnum.active)
     if search:
-        stmt = stmt.where(Product.product_name.ilike(f"%{search}%"))
+        stmt = stmt.where(
+            or_(
+                Product.product_name.ilike(f"%{search}%"),
+                Product.brand_name.ilike(f"%{search}%"),
+            )
+        )
     stmt = stmt.order_by(Product.product_name)
 
     result = await db.execute(stmt)

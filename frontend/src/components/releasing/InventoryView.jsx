@@ -266,13 +266,17 @@ function ProductRow({ product, onEdit, onAdjustStock, confirmingToggle, toggling
 }
 
 export function InventoryView({ showToast }) {
-  const { data: products, isLoading } = useProducts()
-  const queryClient = useQueryClient()
-
   const [editingProduct, setEditingProduct] = useState(null)
   const [adjustingProduct, setAdjustingProduct] = useState(null)
   const [confirmingToggleId, setConfirmingToggleId] = useState(null)
   const [togglingId, setTogglingId] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [committedSearch, setCommittedSearch] = useState('')
+
+  const { data: products, isLoading } = useProducts(committedSearch)
+  const queryClient = useQueryClient()
+
+  const runSearch = () => setCommittedSearch(searchQuery.trim())
 
   const refreshProducts = () => queryClient.invalidateQueries({ queryKey: ['products'] })
 
@@ -314,7 +318,22 @@ export function InventoryView({ showToast }) {
       </div>
 
       <div className="flex-1 h-full min-h-0 flex flex-col">
-        <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Products</span>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Products</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+              className="w-64 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light"
+            />
+            <Button type="button" variant="primary" className="!px-4 !py-1.5 text-sm" onClick={runSearch}>
+              Search
+            </Button>
+          </div>
+        </div>
         <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
           <div className="sticky top-0 z-10 bg-gray-100 px-4 pt-4">
             <div className={`${ROW_GRID} pb-2 mb-2 border-b border-gray-300 text-xs font-semibold text-gray-600 uppercase tracking-wide`}>
