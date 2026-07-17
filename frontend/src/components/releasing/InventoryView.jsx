@@ -88,6 +88,10 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
           ...basePayload,
           stock_quantity: form.stock_quantity === '' ? 0 : Number(form.stock_quantity),
         })
+        // editingProduct is already null in Add mode, so onSaved's setEditingProduct(null)
+        // is a no-op and won't re-trigger the reset effect — clear the form directly.
+        setForm(emptyForm())
+        document.getElementById('field-product-name')?.focus()
         onSaved('Product added')
       }
     } catch (err) {

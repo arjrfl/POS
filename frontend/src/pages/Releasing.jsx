@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { PageLayout } from '../components/layout/PageLayout'
 import { useReleasingQueue } from '../hooks/useQueue'
@@ -15,7 +16,12 @@ export default function Releasing() {
   const { data, isLoading } = useReleasingQueue()
   const queryClient = useQueryClient()
 
-  const [activeView, setActiveView] = useState('queue') // 'queue' | 'inventory'
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Read synchronously from the URL so the correct tab renders on the first
+  // paint — no flash of Queue before flipping to Inventory on reload.
+  const [activeView, setActiveView] = useState(() =>
+    searchParams.get('view') === 'inventory' ? 'inventory' : 'queue',
+  ) // 'queue' | 'inventory'
   const [selectedTransaction, setSelectedTransaction] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [toast, setToast] = useState(null)
@@ -30,6 +36,13 @@ export default function Releasing() {
   const [confirmingOnlineHandover, setConfirmingOnlineHandover] = useState(false)
 
   const refreshQueue = () => queryClient.invalidateQueries({ queryKey: ['transactions'] })
+
+  const toggleActiveView = () => {
+    const next = activeView === 'inventory' ? 'queue' : 'inventory'
+    setActiveView(next)
+    // replace (not push) so toggling tabs doesn't stack browser history
+    setSearchParams(next === 'inventory' ? { view: 'inventory' } : {}, { replace: true })
+  }
 
   const showToast = (message, variant = 'info') => {
     window.clearTimeout(toastTimerRef.current)
@@ -184,7 +197,7 @@ export default function Releasing() {
         <Button
           variant="secondary"
           className="hover:!bg-primary-dark hover:!text-white"
-          onClick={() => setActiveView(activeView === 'inventory' ? 'queue' : 'inventory')}
+          onClick={toggleActiveView}
         >
           {activeView === 'inventory' ? 'Back to Queue' : 'Inventory'}
         </Button>
