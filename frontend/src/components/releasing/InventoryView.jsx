@@ -9,8 +9,6 @@ import { Badge } from '../ui/Badge'
 import { AdjustStockModal } from './AdjustStockModal'
 import { formatCurrency } from '../../utils/format'
 
-const ROW_GRID = 'grid grid-cols-[48px_1.3fr_0.9fr_0.7fr_0.9fr_0.6fr_0.8fr_0.9fr] gap-2 items-center'
-
 function emptyForm() {
   return { product_name: '', brand_name: '', unit_weight_kg: '', unit_price_php: '', stock_quantity: '0' }
 }
@@ -189,79 +187,87 @@ function ProductRow({ product, onEdit, onAdjustStock, confirmingToggle, toggling
   if (confirmingToggle) {
     const willDeactivate = product.product_status === 'active'
     return (
-      <div className="px-4 py-3 border border-yellow-300 bg-yellow-50 rounded-md mb-1 flex items-center justify-between gap-3">
-        <span className="text-sm text-amber-800">
-          {willDeactivate ? 'Deactivate' : 'Reactivate'} "{product.product_name}"?
-        </span>
-        <div className="flex gap-2 shrink-0">
-          <Button
-            type="button"
-            variant="secondary"
-            className="!px-3 !py-1 text-xs"
-            onClick={onCancelToggle}
-            disabled={togglingId === product.id}
-          >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant={willDeactivate ? 'danger' : 'success'}
-            className="!px-3 !py-1 text-xs"
-            onClick={() => onConfirmToggle(product)}
-            disabled={togglingId === product.id}
-          >
-            {togglingId === product.id ? 'Saving...' : 'Yes'}
-          </Button>
-        </div>
-      </div>
+      <tr className="border-b border-yellow-300 bg-yellow-50">
+        <td colSpan={8} className="px-4 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-amber-800">
+              {willDeactivate ? 'Deactivate' : 'Reactivate'} "{product.product_name}"?
+            </span>
+            <div className="flex gap-2 shrink-0">
+              <Button
+                type="button"
+                variant="secondary"
+                className="!px-3 !py-1 text-xs"
+                onClick={onCancelToggle}
+                disabled={togglingId === product.id}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant={willDeactivate ? 'danger' : 'success'}
+                className="!px-3 !py-1 text-xs"
+                onClick={() => onConfirmToggle(product)}
+                disabled={togglingId === product.id}
+              >
+                {togglingId === product.id ? 'Saving...' : 'Yes'}
+              </Button>
+            </div>
+          </div>
+        </td>
+      </tr>
     )
   }
 
   return (
-    <div
-      className={`${ROW_GRID} px-4 py-3 border border-gray-200 rounded-md mb-1 bg-white hover:bg-primary/5 hover:border-primary/30 transition-colors`}
-    >
-      <span className="font-mono text-sm text-gray-500">{product.id}</span>
-      <span className="font-medium text-gray-900">{product.product_name}</span>
-      <span className="text-sm text-gray-600">{product.brand_name ?? '—'}</span>
-      <span className="text-sm text-gray-700">
+    <tr className="border-b border-gray-200 hover:bg-gray-50">
+      <td className="px-4 py-2 text-sm text-left font-mono text-gray-500">{product.id}</td>
+      <td className="px-4 py-2 text-sm text-left font-medium text-gray-900">{product.product_name}</td>
+      <td className="px-4 py-2 text-sm text-left text-gray-600">{product.brand_name ?? '—'}</td>
+      <td className="px-4 py-2 text-sm text-center tabular-nums text-gray-800">
         {product.unit_weight_kg != null ? `${Number(product.unit_weight_kg)}kg` : '—'}
-      </span>
-      <span className="text-sm text-gray-700">{formatCurrency(product.unit_price_php)}</span>
-      <span className="text-sm text-gray-700">{Number(product.stock_quantity)}</span>
-      <Badge status={product.product_status} />
-      <div className="flex gap-1 justify-end">
-        <button
-          type="button"
-          onClick={() => onEdit(product)}
-          className="p-1.5 rounded-md text-gray-500 hover:text-primary hover:bg-primary/10"
-          aria-label={`Edit ${product.product_name}`}
-          title="Edit"
-        >
-          <Pencil size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => onAdjustStock(product)}
-          className="p-1.5 rounded-md text-gray-500 hover:text-primary hover:bg-primary/10"
-          aria-label={`Adjust stock for ${product.product_name}`}
-          title="Adjust Stock"
-        >
-          <ArrowUpDown size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={() => onToggleStatus(product)}
-          className={`p-1.5 rounded-md hover:bg-gray-100 ${
-            product.product_status === 'active' ? 'text-green-600' : 'text-gray-400'
-          }`}
-          aria-label={`Toggle status for ${product.product_name}`}
-          title="Toggle Status"
-        >
-          <Power size={16} />
-        </button>
-      </div>
-    </div>
+      </td>
+      <td className="px-4 py-2 text-sm text-right tabular-nums text-gray-800">
+        {formatCurrency(product.unit_price_php)}
+      </td>
+      <td className="px-4 py-2 text-sm text-right tabular-nums text-gray-800">{Number(product.stock_quantity)}</td>
+      <td className="px-4 py-2 text-center">
+        <Badge status={product.product_status} />
+      </td>
+      <td className="px-4 py-2 text-center whitespace-nowrap">
+        <div className="flex gap-1 justify-center">
+          <button
+            type="button"
+            onClick={() => onEdit(product)}
+            className="p-1.5 rounded-md text-gray-500 hover:text-primary hover:bg-primary/10"
+            aria-label={`Edit ${product.product_name}`}
+            title="Edit"
+          >
+            <Pencil size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onAdjustStock(product)}
+            className="p-1.5 rounded-md text-gray-500 hover:text-primary hover:bg-primary/10"
+            aria-label={`Adjust stock for ${product.product_name}`}
+            title="Adjust Stock"
+          >
+            <ArrowUpDown size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleStatus(product)}
+            className={`p-1.5 rounded-md hover:bg-gray-100 ${
+              product.product_status === 'active' ? 'text-green-600' : 'text-gray-400'
+            }`}
+            aria-label={`Toggle status for ${product.product_name}`}
+            title="Toggle Status"
+          >
+            <Power size={16} />
+          </button>
+        </div>
+      </td>
+    </tr>
   )
 }
 
@@ -335,35 +341,63 @@ export function InventoryView({ showToast }) {
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
-          <div className="sticky top-0 z-10 bg-gray-100 px-4 pt-4">
-            <div className={`${ROW_GRID} pb-2 mb-2 border-b border-gray-300 text-xs font-semibold text-gray-600 uppercase tracking-wide`}>
-              <span>ID</span>
-              <span>Product Name</span>
-              <span>Brand</span>
-              <span>Unit Weight</span>
-              <span>Unit Price</span>
-              <span>Stock</span>
-              <span>Status</span>
-              <span className="text-right">Action</span>
-            </div>
-          </div>
-          <div className="px-4 pb-4">
-            {isLoading && <p className="text-sm text-gray-500 py-4">Loading...</p>}
-            {!isLoading && products?.length === 0 && <p className="text-sm text-gray-500 py-4">No products found.</p>}
-            {products?.map((product) => (
-              <ProductRow
-                key={product.id}
-                product={product}
-                onEdit={setEditingProduct}
-                onAdjustStock={setAdjustingProduct}
-                confirmingToggle={confirmingToggleId === product.id}
-                togglingId={togglingId}
-                onToggleStatus={(p) => setConfirmingToggleId(p.id)}
-                onConfirmToggle={handleConfirmToggle}
-                onCancelToggle={() => setConfirmingToggleId(null)}
-              />
-            ))}
-          </div>
+          <table className="table-auto w-full border-collapse">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-gray-50 border-b border-gray-300">
+                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">ID</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
+                  Product Name
+                </th>
+                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
+                  Brand
+                </th>
+                <th className="px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-600">
+                  Unit Weight
+                </th>
+                <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">
+                  Unit Price
+                </th>
+                <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">
+                  Stock
+                </th>
+                <th className="px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-600">
+                  Status
+                </th>
+                <th className="px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-600">
+                  Action
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-4 text-sm text-gray-500">
+                    Loading...
+                  </td>
+                </tr>
+              )}
+              {!isLoading && products?.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-4 text-sm text-gray-500">
+                    No products found.
+                  </td>
+                </tr>
+              )}
+              {products?.map((product) => (
+                <ProductRow
+                  key={product.id}
+                  product={product}
+                  onEdit={setEditingProduct}
+                  onAdjustStock={setAdjustingProduct}
+                  confirmingToggle={confirmingToggleId === product.id}
+                  togglingId={togglingId}
+                  onToggleStatus={(p) => setConfirmingToggleId(p.id)}
+                  onConfirmToggle={handleConfirmToggle}
+                  onCancelToggle={() => setConfirmingToggleId(null)}
+                />
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
