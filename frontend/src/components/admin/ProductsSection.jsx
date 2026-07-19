@@ -7,7 +7,7 @@ import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
-import { formatCurrency } from '../../utils/format'
+import { formatCurrency, formatWeight } from '../../utils/format'
 
 export function ProductsSection() {
   const [search, setSearch] = useState('')
@@ -86,7 +86,7 @@ export function ProductsSection() {
                   <td className="px-3 py-2 text-sm font-medium text-gray-900">{product.product_name}</td>
                   <td className="px-3 py-2 text-sm text-gray-600">{product.brand_name ?? '—'}</td>
                   <td className="px-3 py-2 text-sm text-right text-gray-700">
-                    {product.unit_weight_kg != null ? `${Number(product.unit_weight_kg)}kg` : '—'}
+                    {formatWeight(product.unit_weight_kg)}
                   </td>
                   <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(product.unit_price_php)}</td>
                   <td className="px-3 py-2 text-sm text-right text-gray-700">{Number(product.stock_quantity)}</td>

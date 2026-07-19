@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
-import { formatCurrency } from '../../utils/format'
+import { formatCurrency, formatWeight } from '../../utils/format'
 
 export function ProductSelector({ onAddItem }) {
   const [searchTerm, setSearchTerm] = useState('')
@@ -132,7 +132,7 @@ export function ProductSelector({ onAddItem }) {
                       )}
                     </div>
                     <div className="text-sm text-gray-500">
-                      {product.unit_weight_kg && `${Number(product.unit_weight_kg)}kg · `}
+                      {product.unit_weight_kg && `${formatWeight(product.unit_weight_kg)} · `}
                       {formatCurrency(product.unit_price_php)}/kg
                     </div>
                   </button>

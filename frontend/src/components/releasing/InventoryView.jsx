@@ -7,7 +7,7 @@ import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { Badge } from '../ui/Badge'
 import { AdjustStockModal } from './AdjustStockModal'
-import { formatCurrency } from '../../utils/format'
+import { formatCurrency, formatWeight } from '../../utils/format'
 
 function emptyForm() {
   return { product_name: '', brand_name: '', unit_weight_kg: '', unit_price_php: '', stock_quantity: '0' }
@@ -129,7 +129,7 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
           type="number"
           step="0.001"
           min="0"
-          placeholder="1"
+          placeholder="e.g. 1.000"
           value={form.unit_weight_kg}
           onChange={setField('unit_weight_kg')}
         />
@@ -225,7 +225,7 @@ function ProductRow({ product, onEdit, onAdjustStock, confirmingToggle, toggling
       <td className="px-4 py-2 text-sm text-left font-medium text-gray-900">{product.product_name}</td>
       <td className="px-4 py-2 text-sm text-left text-gray-600">{product.brand_name ?? '—'}</td>
       <td className="px-4 py-2 text-sm text-center tabular-nums text-gray-800">
-        {product.unit_weight_kg != null ? `${Number(product.unit_weight_kg)}kg` : '—'}
+        {formatWeight(product.unit_weight_kg)}
       </td>
       <td className="px-4 py-2 text-sm text-right tabular-nums text-gray-800">
         {formatCurrency(product.unit_price_php)}
