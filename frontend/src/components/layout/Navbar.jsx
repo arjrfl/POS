@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { Button } from '../ui/Button'
+import { Modal } from '../ui/Modal'
 import logo from '../../assets/meatshop-logo.png'
 
 const ROLE_BADGE_STYLES = {
@@ -11,6 +13,7 @@ const ROLE_BADGE_STYLES = {
 
 export function Navbar({ title, actions }) {
   const { user, logout } = useAuth()
+  const [confirmLogout, setConfirmLogout] = useState(false)
 
   return (
     <header className="grid grid-cols-3 items-center gap-4 px-6 py-3 bg-primary text-white">
@@ -33,10 +36,36 @@ export function Navbar({ title, actions }) {
           </>
         )}
         {actions}
-        <Button variant="secondary" className="hover:!bg-primary-dark hover:!text-white" onClick={logout}>
+        <Button
+          variant="secondary"
+          className="hover:!bg-primary-dark hover:!text-white"
+          onClick={() => setConfirmLogout(true)}
+        >
           Log out
         </Button>
       </div>
+
+      <Modal open={confirmLogout} onClose={() => setConfirmLogout(false)} title="Log Out">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-gray-700">Are you sure you want to log out?</p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="danger"
+              className="flex-1"
+              onClick={() => {
+                setConfirmLogout(false)
+                logout()
+              }}
+            >
+              Log Out
+            </Button>
+            <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmLogout(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </header>
   )
 }
