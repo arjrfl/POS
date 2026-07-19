@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.customer import Customer
 from app.models.ledger import AuditChangeTypeEnum, CustomerLedger, LedgerEntryTypeEnum, TransactionAuditLog
-from app.models.product import Product
+from app.models.product import Product, ProductAuditLog, ProductChangeTypeEnum
 from app.models.transaction import (
     CustomerTypeEnum,
     ItemTypeEnum,
@@ -1121,23 +1121,77 @@ async def process_payment(
     return await get_transaction(db, transaction.id)
 
 
-async def _decrement_stock_for_handover(db: AsyncSession, items: list[TransactionItem], quantity_attr: str) -> None:
-    """Deducts each product item's handed-over quantity from product.stock_quantity.
-
-    quantity_attr picks which item field represents what physically left the shelf:
-    'actual_quantity_kg' for walk-in (Releasing's confirmed QTY, the actual_subtotal
-    driver), 'quantity_kg' for online (Releasing never confirms a per-item actual for
-    online orders — see confirm_items_ready).
+async def _decrement_stock_online(db: AsyncSession, items: list[TransactionItem]) -> None:
+    """Deducts each product item's quantity_kg from product.stock_quantity — online
+    orders only. Releasing never confirms a per-item actual for online orders (see
+    confirm_items_ready), so there's no actual_unit_count/actual_weight_kg to base a
+    unit-based decrement on here — quantity_kg is the only weight field this flow
+    ever populates.
     """
     for item in items:
         if item.item_type != ItemTypeEnum.product:
             continue
-        quantity = getattr(item, quantity_attr)
-        if quantity is None:
+        if item.quantity_kg is None:
             continue
         product = await db.get(Product, item.product_id)
         if product is not None:
-            product.stock_quantity -= quantity
+            product.stock_quantity -= item.quantity_kg
+
+
+async def _decrement_stock_for_walkin_handover(
+    db: AsyncSession, items: list[TransactionItem], releasing_user_id: int
+) -> None:
+    """Deducts each product item's handed-over quantity from product.stock_quantity —
+    walk-in only (see _decrement_stock_online for the online counterpart).
+
+    Stock moves by how many physical units Releasing counted (actual_unit_count)
+    times the product's catalog per-unit weight (product.unit_weight_kg) — NOT by
+    actual_quantity_kg, which drives the customer's bill (actual_subtotal/balance_due)
+    and legitimately differs from the physical unit count on a substandard-kilo
+    variance. Falls back to the measured actual_weight_kg only for a bulk/loose
+    product with no unit_weight_kg on record, where a per-unit count has no meaning.
+    Each decrement is logged to product_audit_log so the basis is traceable.
+    """
+    for item in items:
+        if item.item_type != ItemTypeEnum.product:
+            continue
+        if item.actual_quantity_kg is None:
+            continue
+        product = await db.get(Product, item.product_id)
+        if product is None:
+            continue
+
+        if product.unit_weight_kg is not None and item.actual_unit_count is not None:
+            stock_decrement = item.actual_unit_count * product.unit_weight_kg
+            notes = (
+                f"Stock decremented via Releasing: {item.actual_unit_count} unit(s) x "
+                f"{product.unit_weight_kg}kg = {stock_decrement}kg"
+            )
+        elif item.actual_weight_kg is not None:
+            stock_decrement = item.actual_weight_kg
+            notes = (
+                "Stock decremented via Releasing (weight-based fallback, no "
+                f"unit_weight_kg on record): {item.actual_weight_kg}kg"
+            )
+        else:
+            # Nothing to base a decrement on (no unit_weight_kg on record and no
+            # actual_weight_kg entered) — same defensive skip as the None-quantity
+            # guards above, rather than crashing the whole handover on one item.
+            continue
+
+        before = product.stock_quantity
+        product.stock_quantity -= stock_decrement
+        db.add(
+            ProductAuditLog(
+                product_id=product.id,
+                changed_by_user_id=releasing_user_id,
+                change_type=ProductChangeTypeEnum.stock_adjusted,
+                old_value=json.dumps({"stock_quantity": str(before)}),
+                new_value=json.dumps({"stock_quantity": str(product.stock_quantity)}),
+                stock_delta=-stock_decrement,
+                notes=notes,
+            )
+        )
 
 
 async def confirm_weight(
@@ -1222,7 +1276,7 @@ async def confirm_items_ready(db: AsyncSession, transaction_id: int, releasing_u
         # Items are handed over to the customer right now (online has no
         # separate handover step) — decrement using quantity_kg, the only
         # weight field Releasing ever populates for this flow.
-        await _decrement_stock_for_handover(db, transaction.items, "quantity_kg")
+        await _decrement_stock_online(db, transaction.items)
 
         _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
 
@@ -1398,7 +1452,7 @@ async def complete_exact(db: AsyncSession, transaction_id: int, releasing_user_i
     try:
         # Item is handed to the customer right now — this is where stock
         # actually leaves for the standard exact-weight flow.
-        await _decrement_stock_for_handover(db, transaction.items, "actual_quantity_kg")
+        await _decrement_stock_for_walkin_handover(db, transaction.items, releasing_user_id)
 
         transaction.actual_amount = actual_amount
         transaction.transaction_status = TransactionStatusEnum.completed
@@ -1755,7 +1809,7 @@ async def confirm_handover(db: AsyncSession, transaction_id: int, releasing_user
         # actually leaves for the substandard-kilo flow (see PROJECT_CONTEXT.md).
         # Parent's own items carry the confirmed weights; the adjustment/refund
         # child has none of its own (see resolve_substandard).
-        await _decrement_stock_for_handover(db, transaction.items, "actual_quantity_kg")
+        await _decrement_stock_for_walkin_handover(db, transaction.items, releasing_user_id)
 
         transaction.transaction_status = TransactionStatusEnum.completed
         transaction.queue_status = QueueStatusEnum.done

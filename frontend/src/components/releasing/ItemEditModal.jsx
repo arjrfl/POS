@@ -27,17 +27,23 @@ export function ItemEditModal({ item, initialValues, onConfirm, onCancel }) {
   const estimatedAmount = quantityKg * item.unit_price
 
   // "Last touched wins" — whichever of Actual Weight / Actual Unit Count the user
-  // edited most recently overwrites Actual QTY with its raw value. Actual QTY
-  // itself is always freely editable and never re-derived once the user types
-  // into it directly — no "if empty" special-casing, same as Receiver.
+  // edited most recently recomputes Actual QTY as weight * count. If the other
+  // field is still empty/0 (not yet entered), Actual QTY falls back to the raw
+  // new value instead of multiplying to zero. Actual QTY itself is always
+  // freely editable and never re-derived once the user types into it directly
+  // — same as Receiver (see ProductSelector.jsx).
+  const multiplyKg = (weight, count) => Math.round(weight * count * 1000) / 1000
+
   const handleWeightChange = (value) => {
     setActualWeight(value)
-    setActualQty(value)
+    const count = actualUnitCount === '' ? 0 : Number(actualUnitCount)
+    setActualQty(value === '' || !count ? value : String(multiplyKg(Number(value), count)))
   }
 
   const handleUnitCountChange = (value) => {
     setActualUnitCount(value)
-    setActualQty(value)
+    const weight = actualWeight === '' ? 0 : Number(actualWeight)
+    setActualQty(value === '' || !weight ? value : String(multiplyKg(weight, Number(value))))
   }
 
   const handleQtyChange = (value) => {

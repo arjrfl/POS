@@ -171,6 +171,9 @@ CREATE TABLE product (
     unit_weight_kg  DECIMAL(10,3),               -- expected weight per unit/box
     unit_price_php  DECIMAL(10,2)       NOT NULL, -- price per kg
     stock_quantity  DECIMAL(10,3)       NOT NULL DEFAULT 0,
+    -- decremented at Releasing handover as actual_unit_count x unit_weight_kg
+    -- (falls back to actual_weight_kg when unit_weight_kg is NULL — see
+    -- transaction_item.actual_unit_count below and transaction_service.py)
     product_status  product_status_enum NOT NULL DEFAULT 'active',
 
     created_at      TIMESTAMPTZ         NOT NULL DEFAULT NOW(),
@@ -374,6 +377,9 @@ CREATE TABLE transaction_item (
     -- confirmed by Releasing team after physical weighing
     -- NULL until Releasing confirms
     -- NULL for balance_settlement and credit_usage items
+    -- reference only — actual_quantity_kg still drives pricing/variance/
+    -- balance_due, UNCHANGED. Used as the stock-decrement basis only as a
+    -- fallback when product.unit_weight_kg is NULL — see actual_unit_count
 
     unit_price               DECIMAL(10,2)  NULL,
     -- price per kg at time of transaction
@@ -391,9 +397,12 @@ CREATE TABLE transaction_item (
     -- credit_usage items:       negative amount (deducts from total_due)
 
     actual_unit_count        INT            NULL,
-    -- confirmed by Releasing, mirrors unit_count, reference only,
-    -- editable, does NOT drive subtotal
+    -- confirmed by Releasing team after physical count
+    -- NULL until Releasing confirms
     -- NULL for balance_settlement and credit_usage items
+    -- drives STOCK DECREMENT (see product.stock_quantity above and
+    -- transaction_service.py) — does NOT drive pricing/variance;
+    -- actual_quantity_kg still does that, UNCHANGED
 
     actual_quantity_kg       DECIMAL(10,3)  NULL,
     -- confirmed by Releasing, mirrors quantity_kg (QTY), THIS drives
