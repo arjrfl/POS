@@ -53,16 +53,22 @@ export function ProductSelector({ onAddItem }) {
   const unitPrice = selectedProduct ? Number(selectedProduct.unit_price_php) : 0
 
   // "Last touched wins" — whichever of Estimated Weight / Unit Count the user
-  // edited most recently overwrites QTY with its raw value. QTY itself is
-  // always freely editable and never re-derived once the user types into it.
+  // edited most recently recomputes QTY as weight * count. If the other field
+  // is still empty/0 (not yet entered), QTY falls back to the raw new value
+  // instead of multiplying to zero. QTY itself is always freely editable and
+  // never re-derived once the user types into it directly.
+  const multiplyKg = (weight, count) => Math.round(weight * count * 1000) / 1000
+
   const handleWeightChange = (value) => {
     setEstimatedWeight(value)
-    setQty(value)
+    const count = unitCount === '' ? 0 : Number(unitCount)
+    setQty(value === '' || !count ? value : String(multiplyKg(Number(value), count)))
   }
 
   const handleUnitCountChange = (value) => {
     setUnitCount(value)
-    setQty(value)
+    const weight = estimatedWeight === '' ? 0 : Number(estimatedWeight)
+    setQty(value === '' || !weight ? value : String(multiplyKg(weight, Number(value))))
   }
 
   const handleQtyChange = (value) => {
