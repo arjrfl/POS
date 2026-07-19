@@ -1,38 +1,28 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Printer } from 'lucide-react'
 import { get } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
+import { Button } from '../ui/Button'
 
 const fetchTransactionHistory = () => get('/transactions/history')
 
-const CHILD_TYPE_BADGE = {
-  adjustment: { label: 'ADJUSTMENT', className: 'bg-purple-100 text-purple-800' },
-  refund: { label: 'REFUND', className: 'bg-pink-100 text-pink-800' },
+function formatHistoryDateTime(iso) {
+  const d = new Date(iso)
+  const datePart = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  return `${datePart}, ${timePart}`
 }
 
-function HistoryCard({ transaction }) {
+function HistoryRow({ transaction }) {
   const typeBadge = CUSTOMER_TYPE_BADGE[transaction.customer_type]
-  const childBadge = CHILD_TYPE_BADGE[transaction.transaction_type]
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 border border-gray-200 rounded-md mb-1 bg-white">
-      <div className="flex-none w-56">
-        <div className="font-mono font-bold text-base text-gray-900 truncate">{transaction.order_number}</div>
-        <div className="text-sm text-gray-600 truncate">{transaction.customer_name}</div>
-        {transaction.parent_order_number && childBadge && (
-          <div className="mt-1 flex items-center gap-1">
-            <span
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${childBadge.className}`}
-            >
-              {childBadge.label}
-            </span>
-            <span className="text-xs text-gray-500">Linked to: {transaction.parent_order_number}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="flex-1 flex items-center justify-center gap-2">
+    <tr className="border-b border-gray-200 hover:bg-gray-50">
+      <td className="px-4 py-2 text-sm text-left font-mono text-gray-900">{transaction.order_number}</td>
+      <td className="px-4 py-2 text-sm text-left text-gray-800">{transaction.customer_name}</td>
+      <td className="px-4 py-2 text-center">
         {typeBadge && (
           <span
             className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${typeBadge.className}`}
@@ -40,16 +30,20 @@ function HistoryCard({ transaction }) {
             {typeBadge.label}
           </span>
         )}
-      </div>
-
-      <div className="flex-none text-right w-44 mr-20">
-        <div className="text-sm text-gray-400 whitespace-nowrap">{new Date(transaction.finished_at).toLocaleString()}</div>
-      </div>
-
-      <div className="flex-none text-right w-28">
-        <div className="font-bold text-base text-primary whitespace-nowrap">{formatCurrency(transaction.total_due)}</div>
-      </div>
-    </div>
+      </td>
+      <td className="px-4 py-2 text-center text-sm text-gray-600 whitespace-nowrap">
+        {formatHistoryDateTime(transaction.finished_at)}
+      </td>
+      <td className="px-4 py-2 text-sm text-right tabular-nums text-gray-800">
+        {formatCurrency(transaction.total_due)}
+      </td>
+      <td className="px-4 py-2 text-center whitespace-nowrap">
+        <Button type="button" variant="outline" className="!px-3 !py-1 text-xs inline-flex items-center gap-1">
+          <Printer size={14} />
+          Print
+        </Button>
+      </td>
+    </tr>
   )
 }
 
@@ -96,22 +90,54 @@ export function TransactionHistory() {
           </button>
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4">
-        {isLoading ? (
-          <div className="h-full flex items-center justify-center">
-            <p className="text-sm text-gray-400 italic">Loading history...</p>
-          </div>
-        ) : !data || data.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <p className="text-sm text-gray-400 italic">No completed transactions yet</p>
-          </div>
-        ) : filteredData.length === 0 ? (
-          <div className="h-full flex items-center justify-center">
-            <p className="text-sm text-gray-400 italic">No matching transactions</p>
-          </div>
-        ) : (
-          filteredData.map((transaction) => <HistoryCard key={transaction.id} transaction={transaction} />)
-        )}
+      <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
+        <table className="table-auto w-full border-collapse">
+          <thead className="sticky top-0 z-10 bg-gray-50">
+            <tr className="bg-gray-50 border-b border-gray-300">
+              <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
+                Transaction ID
+              </th>
+              <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
+                Customer
+              </th>
+              <th className="px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-600">
+                Type
+              </th>
+              <th className="px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-600">
+                Date &amp; Time
+              </th>
+              <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">
+                Total
+              </th>
+              <th className="px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-600">
+                Action
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400 italic">
+                  Loading history...
+                </td>
+              </tr>
+            ) : !data || data.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400 italic">
+                  No completed transactions yet
+                </td>
+              </tr>
+            ) : filteredData.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400 italic">
+                  No matching transactions
+                </td>
+              </tr>
+            ) : (
+              filteredData.map((transaction) => <HistoryRow key={transaction.id} transaction={transaction} />)
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   )
