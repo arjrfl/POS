@@ -62,8 +62,16 @@ async def get_customer_ledger(
     category: Literal["balance", "credit"] = Query(...),
     db: AsyncSession = Depends(get_db),
 ):
+    # Same outstanding-remaining-amount logic Payment's own balance/credit
+    # checkboxes use (get_outstanding_balance_entries / get_outstanding_credit_entries)
+    # — fully settled/used entries are already excluded, and amounts are already
+    # net of whatever's been settled/used against them.
     await _get_customer_or_404(customer_id, db)
-    entries = await customer_service.get_ledger_entries_by_category(db, customer_id, category)
+    if category == "balance":
+        entries = await customer_service.get_outstanding_balance_entries(db, customer_id)
+    else:
+        entries = await customer_service.get_outstanding_credit_entries(db, customer_id)
+    entries.sort(key=lambda entry: entry.created_at, reverse=True)
     return {"data": entries, "error": None}
 
 

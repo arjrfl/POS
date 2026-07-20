@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ledger import CustomerLedger, LedgerEntryTypeEnum
 from app.models.transaction import SalesTransaction
-from app.schemas.customer import CustomerBalanceEntryResponse, CustomerLedgerCategoryEntryResponse
+from app.schemas.customer import CustomerBalanceEntryResponse
 
 # balance_added/credit_added increase what's outstanding; balance_settled and
 # credit_used/credit_auto_used pay it back down — same bucket/sign convention
@@ -37,51 +37,6 @@ def compute_ledger_totals(ledger_entries: list[CustomerLedger]) -> tuple[Decimal
         else:
             total_credit += signed_amount
     return max(total_balance, Decimal("0")), max(total_credit, Decimal("0"))
-
-
-_LEDGER_CATEGORY_TYPES: dict[str, tuple[LedgerEntryTypeEnum, ...]] = {
-    "balance": (LedgerEntryTypeEnum.balance_added, LedgerEntryTypeEnum.balance_settled),
-    "credit": (LedgerEntryTypeEnum.credit_added, LedgerEntryTypeEnum.credit_used, LedgerEntryTypeEnum.credit_auto_used),
-}
-
-# Display sign for the per-entry ledger history (Admin Customer Details modal).
-# credit_auto_used is a consumption — same direction as credit_used, per the
-# schema.sql comment ("system auto-deducted credit to cover balance at
-# releasing") and the same grouping get_outstanding_credit_entries already
-# uses below — so it stays negative here too, consistent with _LEDGER_ENTRY_SIGN.
-_LEDGER_ENTRY_DISPLAY_SIGN: dict[LedgerEntryTypeEnum, int] = {
-    LedgerEntryTypeEnum.balance_added: 1,
-    LedgerEntryTypeEnum.balance_settled: -1,
-    LedgerEntryTypeEnum.credit_added: 1,
-    LedgerEntryTypeEnum.credit_used: -1,
-    LedgerEntryTypeEnum.credit_auto_used: -1,
-}
-
-
-async def get_ledger_entries_by_category(
-    db: AsyncSession, customer_id: int, category: str
-) -> list[CustomerLedgerCategoryEntryResponse]:
-    entry_types = _LEDGER_CATEGORY_TYPES[category]
-    stmt = (
-        select(CustomerLedger, SalesTransaction.order_number)
-        .join(SalesTransaction, CustomerLedger.transaction_id == SalesTransaction.id)
-        .where(
-            CustomerLedger.customer_id == customer_id,
-            CustomerLedger.entry_type.in_(entry_types),
-        )
-        .order_by(CustomerLedger.created_at.desc())
-    )
-    result = await db.execute(stmt)
-    return [
-        CustomerLedgerCategoryEntryResponse(
-            id=entry.id,
-            transaction_id=entry.transaction_id,
-            order_number=order_number,
-            signed_amount=entry.amount * _LEDGER_ENTRY_DISPLAY_SIGN[entry.entry_type],
-            created_at=entry.created_at,
-        )
-        for entry, order_number in result.all()
-    ]
 
 
 async def _get_outstanding_entries(

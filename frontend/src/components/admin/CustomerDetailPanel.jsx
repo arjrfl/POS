@@ -25,15 +25,6 @@ const ENTRY_SIGN = {
   credit_auto_used: { bucket: 'credit', sign: -1 },
 }
 
-// Same green/red-on-sign convention as NetBalanceCell in CustomersSection.jsx
-// (the existing pattern for signed ₱ amounts elsewhere in the Admin screen).
-function SignedAmountCell({ amount }) {
-  const value = Number(amount)
-  if (value > 0) return <span className="text-green-700 font-medium">+{formatCurrency(value)}</span>
-  if (value < 0) return <span className="text-red-600 font-medium">-{formatCurrency(Math.abs(value))}</span>
-  return <span className="text-gray-500">₱0.00</span>
-}
-
 function computeLedgerTotals(ledgerEntries) {
   let totalBalance = 0
   let totalCredit = 0
@@ -208,11 +199,15 @@ export function CustomerDetailPanel({ customerId }) {
                       </thead>
                       <tbody>
                         {ledgerEntries.map((entry) => (
-                          <tr key={entry.id} className="border-b border-gray-200 last:border-b-0">
+                          <tr key={entry.ledger_entry_id} className="border-b border-gray-200 last:border-b-0">
                             <td className="px-2 py-1.5 text-sm text-gray-900 truncate">{entry.order_number}</td>
                             <td className="px-2 py-1.5 text-sm text-gray-600">{new Date(entry.created_at).toLocaleString()}</td>
-                            <td className="px-2 py-1.5 text-sm text-right">
-                              <SignedAmountCell amount={entry.signed_amount} />
+                            <td
+                              className={`px-2 py-1.5 text-sm text-right font-medium ${
+                                ledgerTab === 'balance' ? 'text-red-700' : 'text-green-700'
+                              }`}
+                            >
+                              {formatCurrency(entry.amount)}
                             </td>
                           </tr>
                         ))}

@@ -70,13 +70,3 @@ class CustomerBalanceEntryResponse(BaseModel):
     order_number: str
     amount: Decimal
     created_at: datetime
-
-
-class CustomerLedgerCategoryEntryResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    transaction_id: int
-    order_number: str
-    signed_amount: Decimal
-    created_at: datetime
