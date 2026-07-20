@@ -103,7 +103,7 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <p className="text-sm font-semibold text-gray-700">
           {editingProduct ? `Editing #${editingProduct.id}` : 'Add New Product'}
@@ -172,7 +172,7 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
       </form>
 
       {editingProduct && (
-        <div className="mt-4 pt-3 border-t border-gray-300">
+        <div className="mt-auto pt-3 border-t border-gray-300">
           <Button
             type="button"
             variant="secondary"
