@@ -20,8 +20,8 @@ export function CustomersSection() {
   const { data: customers, isLoading } = useCustomers(search)
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <Card className="flex flex-col gap-3">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full min-h-0">
+      <Card className="flex flex-col gap-3 min-h-0">
         <Input
           id="customer-list-search"
           label="Search customers"
@@ -32,7 +32,7 @@ export function CustomersSection() {
 
         {isLoading && <p className="text-sm text-gray-500">Loading...</p>}
         {!isLoading && (
-          <div className="overflow-x-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200">
