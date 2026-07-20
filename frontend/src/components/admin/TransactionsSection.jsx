@@ -4,7 +4,6 @@ import { useCustomer } from '../../hooks/useCustomer'
 import { useTransactions } from '../../hooks/useTransactions'
 import { get } from '../../services/api'
 import { TransactionChainDetails } from './TransactionChainDetails'
-import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
@@ -12,7 +11,7 @@ import { formatCurrency } from '../../utils/format'
 
 const STATUSES = ['pending_payment', 'pending_settlement', 'settled', 'completed', 'voided']
 const SELECT_CLASSES =
-  'px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light text-sm'
+  'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light text-sm'
 
 function CustomerSearchFilter({ selectedCustomer, onSelect, onClear }) {
   const [term, setTerm] = useState('')
@@ -133,9 +132,10 @@ export function TransactionsSection() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+    <div className="h-full flex gap-6 min-h-0">
+      <div className="w-[300px] shrink-0 h-full min-h-0 flex flex-col">
+        <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Filter Fields</span>
+        <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <label htmlFor="tx-status" className="text-sm font-medium text-gray-700">
               Status
@@ -166,8 +166,8 @@ export function TransactionsSection() {
             </select>
           </div>
 
-          <Input id="tx-date-from" label="From" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          <Input id="tx-date-to" label="To" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          <Input id="tx-date-from" label="From" type="date" className="w-full" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <Input id="tx-date-to" label="To" type="date" className="w-full" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
 
           <CustomerSearchFilter
             selectedCustomer={selectedCustomer}
@@ -175,26 +175,40 @@ export function TransactionsSection() {
             onClear={() => setSelectedCustomer(null)}
           />
         </div>
-      </Card>
+      </div>
 
-      <Card>
-        {isLoading && <p className="text-gray-500 text-sm">Loading...</p>}
-        {!isLoading && (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200">
-                  <th className="px-3 py-2">Order #</th>
-                  <th className="px-3 py-2">Customer</th>
-                  <th className="px-3 py-2">Type</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2 text-right">Total Due</th>
-                  <th className="px-3 py-2">Created</th>
-                  <th className="px-3 py-2"></th>
+      <div className="flex-1 h-full min-h-0 flex flex-col">
+        <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Transaction History Table</span>
+        <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
+          <table className="table-auto w-full border-collapse">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-gray-50 border-b border-gray-300 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <th className="px-3 py-2">Order #</th>
+                <th className="px-3 py-2">Customer</th>
+                <th className="px-3 py-2">Type</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2 text-right">Total Due</th>
+                <th className="px-3 py-2">Created</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-4 text-sm text-gray-500">
+                    Loading...
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {data?.items.map((transaction) => (
+              )}
+              {!isLoading && data?.items.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-4 text-sm text-gray-500">
+                    No transactions match these filters.
+                  </td>
+                </tr>
+              )}
+              {!isLoading &&
+                data?.items.map((transaction) => (
                   <TransactionRow
                     key={transaction.id}
                     transaction={transaction}
@@ -202,14 +216,12 @@ export function TransactionsSection() {
                     onToggle={handleToggle}
                   />
                 ))}
-              </tbody>
-            </table>
-            {data?.items.length === 0 && <p className="text-gray-500 text-sm py-4">No transactions match these filters.</p>}
-          </div>
-        )}
+            </tbody>
+          </table>
+        </div>
 
         {data && data.total > 20 && (
-          <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-200">
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200 shrink-0">
             <span className="text-sm text-gray-500">
               Page {page} of {totalPages} ({data.total} total)
             </span>
@@ -223,7 +235,7 @@ export function TransactionsSection() {
             </div>
           </div>
         )}
-      </Card>
+      </div>
     </div>
   )
 }
