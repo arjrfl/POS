@@ -5,7 +5,7 @@ import { get } from '../services/api'
 // transactions table, and a customer's transaction history all just need
 // different slices of GET /transactions, so they all go through here.
 export function useTransactions(filters = {}) {
-  const { status, customerType, customerId, dateFrom, dateTo, page = 1, pageSize = 20 } = filters
+  const { status, customerType, customerId, dateFrom, dateTo, page = 1, pageSize = 20, enabled = true } = filters
 
   const params = new URLSearchParams()
   if (status) params.set('status', status)
@@ -25,6 +25,7 @@ export function useTransactions(filters = {}) {
     // this view refreshes on live events too without any new WS wiring.
     queryKey: ['transactions', 'list', { status, customerType, customerId, dateFrom, dateTo, page, pageSize }],
     queryFn: () => get(`/transactions?${queryString}`),
+    enabled,
     staleTime: 30 * 1000,
   })
 }

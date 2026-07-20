@@ -25,6 +25,11 @@ const ENTRY_SIGN = {
   credit_auto_used: { bucket: 'credit', sign: -1 },
 }
 
+function formatTransactionType(type) {
+  const spaced = type.replace(/_/g, ' ')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
 function computeLedgerTotals(ledgerEntries) {
   let totalBalance = 0
   let totalCredit = 0
@@ -44,6 +49,14 @@ export function CustomerDetailPanel({ customerId }) {
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [ledgerTab, setLedgerTab] = useState('balance')
   const { data: ledgerEntries, isLoading: loadingLedger } = useCustomerLedger(customerId, ledgerTab, detailsOpen)
+  // Same GET /transactions?customer_id= query as the standing panel's own card above
+  // (and the Admin Transaction History tab it's modeled on) — just a bigger page size
+  // and gated on the modal being open, since this table isn't paginated.
+  const { data: allTransactions, isLoading: loadingAllTransactions } = useTransactions({
+    customerId,
+    pageSize: 100,
+    enabled: detailsOpen,
+  })
 
   if (isLoading) return <Card>Loading customer...</Card>
   if (!customer) return null
@@ -222,30 +235,46 @@ export function CustomerDetailPanel({ customerId }) {
           {/* Row 2 — Transaction History, full width */}
           <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col">
             <h3 className="font-bold text-gray-900 mb-3 shrink-0">Transaction History</h3>
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <table className="w-full">
-                <thead className="sticky top-0 z-10 bg-gray-100">
-                  <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-300">
-                    <th className="px-3 py-2">Order #</th>
-                    <th className="px-3 py-2">Type</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Date</th>
-                    <th className="px-3 py-2 text-right">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[1, 2, 3, 4].map((row) => (
-                    <tr key={row} className="border-b border-gray-200 last:border-b-0">
-                      <td className="px-3 py-2 text-sm text-gray-600">—</td>
-                      <td className="px-3 py-2 text-sm text-gray-600">—</td>
-                      <td className="px-3 py-2 text-sm text-gray-600">—</td>
-                      <td className="px-3 py-2 text-sm text-gray-600">—</td>
-                      <td className="px-3 py-2 text-sm text-right text-gray-600">—</td>
+            {loadingAllTransactions && (
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-sm text-gray-500">Loading...</p>
+              </div>
+            )}
+            {!loadingAllTransactions && allTransactions?.items.length === 0 && (
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-sm text-gray-500">No transactions found</p>
+              </div>
+            )}
+            {!loadingAllTransactions && allTransactions?.items.length > 0 && (
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                <table className="w-full table-fixed">
+                  <thead className="sticky top-0 z-10 bg-gray-100">
+                    <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-300">
+                      <th className="w-1/5 px-3 py-2">Order #</th>
+                      <th className="w-1/5 px-3 py-2">Type</th>
+                      <th className="w-1/5 px-3 py-2">Date</th>
+                      <th className="w-1/5 px-3 py-2 text-right">Total</th>
+                      <th className="w-1/5 px-3 py-2 text-right">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {allTransactions.items.map((t) => (
+                      <tr key={t.id} className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50">
+                        <td className="px-3 py-2 text-sm font-medium text-gray-900 truncate">{t.order_number}</td>
+                        <td className="px-3 py-2 text-sm text-gray-600">{formatTransactionType(t.transaction_type)}</td>
+                        <td className="px-3 py-2 text-sm text-gray-500">{new Date(t.created_at).toLocaleString()}</td>
+                        <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(t.total_due)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <Button type="button" variant="outline" className="px-3 py-1 text-xs">
+                            View
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       </FullScreenModal>
