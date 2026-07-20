@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import engine, get_db
 from app.core.security import create_access_token, decode_access_token_soft
-from app.routers import auth, customers, payment_methods, products, transactions, ws
+from app.routers import admin, auth, customers, payment_methods, products, transactions, ws
 
 
 @asynccontextmanager
@@ -61,6 +61,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     )
 
 
+app.include_router(admin.router)
 app.include_router(auth.router)
 app.include_router(customers.router)
 app.include_router(payment_methods.router)
