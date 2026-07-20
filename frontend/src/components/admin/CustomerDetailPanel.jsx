@@ -46,7 +46,10 @@ export function CustomerDetailPanel({ customerId }) {
       <Card className="shrink-0">
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">{customer.full_name}</h2>
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              {customer.full_name}
+              <Badge status={customer.customer_status} />
+            </h2>
             <p className="text-sm text-gray-500">{customer.contact_number ?? 'No contact number'}</p>
             <p className="text-sm text-gray-500">{customer.address ?? 'No address on file'}</p>
           </div>
