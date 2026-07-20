@@ -13,6 +13,12 @@ const STATUS_STYLES = {
 
   active: 'bg-green-100 text-green-800',
   inactive: 'bg-gray-200 text-gray-600',
+
+  // payment_status — UI-derived (not its own DB enum), computed per-transaction
+  // from get_outstanding_balance_entries. voided reuses the transaction_status
+  // style above since the value is literally "voided" in both cases.
+  full: 'bg-green-100 text-green-800',
+  partial: 'bg-yellow-100 text-yellow-800',
 }
 
 export function Badge({ status, children, className = '' }) {

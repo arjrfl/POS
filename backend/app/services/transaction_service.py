@@ -400,6 +400,7 @@ async def list_transactions(
     processing_by_user_id: int | None = None,
     walkin_at_from: datetime | None = None,
     walkin_at_to: datetime | None = None,
+    include_payment_status: bool = False,
 ) -> TransactionListResponse:
     filters = []
     if transaction_status is not None:
@@ -446,7 +447,25 @@ async def list_transactions(
         .execution_options(populate_existing=True)
     )
     items = result.scalars().all()
-    return TransactionListResponse(total=total, items=[_build_transaction_response(t) for t in items])
+    responses = [_build_transaction_response(t) for t in items]
+
+    if include_payment_status and customer_id is not None:
+        # One customer-scoped call, reusing the exact same outstanding-amount logic
+        # as the Balance tab (get_outstanding_balance_entries) — not new remaining-
+        # amount math. Each outstanding entry already carries the transaction_id it
+        # came from, so per-transaction status falls out of a single query rather
+        # than a query per transaction.
+        outstanding_entries = await customer_service.get_outstanding_balance_entries(db, customer_id)
+        transactions_with_outstanding_balance = {entry.transaction_id for entry in outstanding_entries}
+        for response in responses:
+            if response.transaction_status == TransactionStatusEnum.voided:
+                response.payment_status = "voided"
+            elif response.id in transactions_with_outstanding_balance:
+                response.payment_status = "partial"
+            else:
+                response.payment_status = "full"
+
+    return TransactionListResponse(total=total, items=responses)
 
 
 def _build_history_item(transaction: SalesTransaction) -> TransactionHistoryItem:

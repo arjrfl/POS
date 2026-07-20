@@ -196,6 +196,11 @@ class TransactionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Only computed when the caller asks for it (GET /transactions?...&include_payment_status=true,
+    # customer_id required) — see list_transactions. None for every other list_transactions caller
+    # (queue views etc.), since it costs an extra outstanding-balance lookup per customer.
+    payment_status: Literal["full", "partial", "voided"] | None = None
+
     items: list[TransactionItemResponse]
     payment_details: list[PaymentDetailResponse]
     # is_draft=TRUE entries — separate from payment_details (confirmed, is_draft=FALSE only).

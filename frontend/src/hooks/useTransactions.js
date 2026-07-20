@@ -5,7 +5,17 @@ import { get } from '../services/api'
 // transactions table, and a customer's transaction history all just need
 // different slices of GET /transactions, so they all go through here.
 export function useTransactions(filters = {}) {
-  const { status, customerType, customerId, dateFrom, dateTo, page = 1, pageSize = 20, enabled = true } = filters
+  const {
+    status,
+    customerType,
+    customerId,
+    dateFrom,
+    dateTo,
+    page = 1,
+    pageSize = 20,
+    enabled = true,
+    includePaymentStatus = false,
+  } = filters
 
   const params = new URLSearchParams()
   if (status) params.set('status', status)
@@ -13,6 +23,7 @@ export function useTransactions(filters = {}) {
   if (customerId) params.set('customer_id', customerId)
   if (dateFrom) params.set('date_from', dateFrom)
   if (dateTo) params.set('date_to', dateTo)
+  if (includePaymentStatus) params.set('include_payment_status', 'true')
   params.set('page', String(page))
   params.set('page_size', String(pageSize))
 
@@ -23,7 +34,11 @@ export function useTransactions(filters = {}) {
     // invalidate on relevant WebSocket events (see useQueue.js) — react-query
     // matches invalidateQueries({queryKey: ['transactions']}) by prefix, so
     // this view refreshes on live events too without any new WS wiring.
-    queryKey: ['transactions', 'list', { status, customerType, customerId, dateFrom, dateTo, page, pageSize }],
+    queryKey: [
+      'transactions',
+      'list',
+      { status, customerType, customerId, dateFrom, dateTo, page, pageSize, includePaymentStatus },
+    ],
     queryFn: () => get(`/transactions?${queryString}`),
     enabled,
     staleTime: 30 * 1000,

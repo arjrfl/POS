@@ -30,6 +30,12 @@ function formatTransactionType(type) {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
+const PAYMENT_STATUS_LABELS = {
+  full: 'Fully paid',
+  partial: 'Partially paid',
+  voided: 'Voided',
+}
+
 function computeLedgerTotals(ledgerEntries) {
   let totalBalance = 0
   let totalCredit = 0
@@ -56,6 +62,7 @@ export function CustomerDetailPanel({ customerId }) {
     customerId,
     pageSize: 100,
     enabled: detailsOpen,
+    includePaymentStatus: true,
   })
 
   if (isLoading) return <Card>Loading customer...</Card>
@@ -250,11 +257,12 @@ export function CustomerDetailPanel({ customerId }) {
                 <table className="w-full table-fixed">
                   <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-300">
-                      <th className="w-1/5 px-3 py-2">Order #</th>
-                      <th className="w-1/5 px-3 py-2">Type</th>
-                      <th className="w-1/5 px-3 py-2">Date</th>
-                      <th className="w-1/5 px-3 py-2 text-right">Total</th>
-                      <th className="w-1/5 px-3 py-2 text-right">Action</th>
+                      <th className="w-1/6 px-3 py-2">Order #</th>
+                      <th className="w-1/6 px-3 py-2">Type</th>
+                      <th className="w-1/6 px-3 py-2">Date</th>
+                      <th className="w-1/6 px-3 py-2 text-right">Total</th>
+                      <th className="w-1/6 px-3 py-2">Status</th>
+                      <th className="w-1/6 px-3 py-2 text-right">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -264,6 +272,9 @@ export function CustomerDetailPanel({ customerId }) {
                         <td className="px-3 py-2 text-sm text-gray-600">{formatTransactionType(t.transaction_type)}</td>
                         <td className="px-3 py-2 text-sm text-gray-500">{new Date(t.created_at).toLocaleString()}</td>
                         <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(t.total_due)}</td>
+                        <td className="px-3 py-2">
+                          <Badge status={t.payment_status}>{PAYMENT_STATUS_LABELS[t.payment_status]}</Badge>
+                        </td>
                         <td className="px-3 py-2 text-right">
                           <Button type="button" variant="outline" className="px-3 py-1 text-xs">
                             View

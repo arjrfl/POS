@@ -60,6 +60,7 @@ async def list_transactions(
     date_to_filter: date | None = Query(default=None, alias="date_to"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
+    include_payment_status: bool = Query(default=False),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -113,6 +114,7 @@ async def list_transactions(
         processing_by_user_id=processing_by_user_id,
         walkin_at_from=walkin_at_from,
         walkin_at_to=walkin_at_to,
+        include_payment_status=include_payment_status,
     )
     return {"data": result, "error": None}
 
