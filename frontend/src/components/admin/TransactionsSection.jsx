@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useTransactions } from '../../hooks/useTransactions'
 import { get } from '../../services/api'
-import { TransactionChainDetails } from './TransactionChainDetails'
 import { Badge } from '../ui/Badge'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
@@ -71,33 +70,30 @@ function CustomerSearchFilter({ selectedCustomer, onSelect, onClear }) {
   )
 }
 
-function TransactionRow({ transaction, isExpanded, onToggle }) {
+function formatTransactionType(type) {
+  const spaced = type.replace(/_/g, ' ')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+function TransactionRow({ transaction }) {
   const { data: customer } = useCustomer(transaction.customer_id)
 
   return (
-    <>
-      <tr
-        className="border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50"
-        onClick={() => onToggle(transaction.id)}
-      >
-        <td className="px-3 py-2 text-sm font-medium text-gray-900">{transaction.order_number}</td>
-        <td className="px-3 py-2 text-sm text-gray-700">{customer?.full_name ?? '...'}</td>
-        <td className="px-3 py-2 text-sm text-gray-600 capitalize">{transaction.customer_type.replace('_', ' ')}</td>
-        <td className="px-3 py-2">
-          <Badge status={transaction.transaction_status} />
-        </td>
-        <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(transaction.total_due)}</td>
-        <td className="px-3 py-2 text-sm text-gray-500">{new Date(transaction.created_at).toLocaleString()}</td>
-        <td className="px-3 py-2 text-gray-400 text-xs">{isExpanded ? '▲' : '▼'}</td>
-      </tr>
-      {isExpanded && (
-        <tr>
-          <td colSpan={7} className="p-0">
-            <TransactionChainDetails transactionId={transaction.id} />
-          </td>
-        </tr>
-      )}
-    </>
+    <tr className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50">
+      <td className="px-3 py-2 text-sm font-medium text-gray-900">{transaction.order_number}</td>
+      <td className="px-3 py-2 text-sm text-gray-700">{customer?.full_name ?? '...'}</td>
+      <td className="px-3 py-2 text-sm text-gray-600">{formatTransactionType(transaction.transaction_type)}</td>
+      <td className="px-3 py-2">
+        <Badge status={transaction.transaction_status} />
+      </td>
+      <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(transaction.total_due)}</td>
+      <td className="px-3 py-2 text-sm text-gray-500 text-center">{new Date(transaction.created_at).toLocaleString()}</td>
+      <td className="px-3 py-2 text-center">
+        <Button type="button" variant="outline" className="px-3 py-1 text-xs">
+          View Details
+        </Button>
+      </td>
+    </tr>
   )
 }
 
@@ -107,7 +103,6 @@ export function TransactionsSection() {
   const [draftFilters, setDraftFilters] = useState(DEFAULT_FILTERS)
   const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS)
   const [page, setPage] = useState(1)
-  const [expandedId, setExpandedId] = useState(null)
 
   const setDraftField = (field, value) => setDraftFilters((prev) => ({ ...prev, [field]: value }))
 
@@ -127,10 +122,6 @@ export function TransactionsSection() {
   })
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / 20)) : 1
-
-  const handleToggle = (id) => {
-    setExpandedId((current) => (current === id ? null : id))
-  }
 
   return (
     <div className="h-full flex gap-6 min-h-0">
@@ -202,7 +193,7 @@ export function TransactionsSection() {
       </div>
 
       <div className="flex-1 h-full min-h-0 flex flex-col">
-        <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Transaction History Table</span>
+        <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Transaction History</span>
         <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
           <table className="table-auto w-full border-collapse">
             <thead className="sticky top-0 z-10">
@@ -212,8 +203,8 @@ export function TransactionsSection() {
                 <th className="px-3 py-2">Type</th>
                 <th className="px-3 py-2">Status</th>
                 <th className="px-3 py-2 text-right">Total Due</th>
-                <th className="px-3 py-2">Created</th>
-                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2 text-center">Created</th>
+                <th className="px-3 py-2 text-center">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -231,15 +222,7 @@ export function TransactionsSection() {
                   </td>
                 </tr>
               )}
-              {!isLoading &&
-                data?.items.map((transaction) => (
-                  <TransactionRow
-                    key={transaction.id}
-                    transaction={transaction}
-                    isExpanded={expandedId === transaction.id}
-                    onToggle={handleToggle}
-                  />
-                ))}
+              {!isLoading && data?.items.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} />)}
             </tbody>
           </table>
         </div>
