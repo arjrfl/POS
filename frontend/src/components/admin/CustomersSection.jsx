@@ -4,6 +4,7 @@ import { CustomerDetailPanel } from './CustomerDetailPanel'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Input } from '../ui/Input'
+import { Button } from '../ui/Button'
 import { formatCurrency } from '../../utils/format'
 
 function NetBalanceCell({ netBalance }) {
@@ -14,27 +15,40 @@ function NetBalanceCell({ netBalance }) {
 }
 
 export function CustomersSection() {
+  const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState(null)
 
   const { data: customers, isLoading } = useCustomers(search)
 
+  const runSearch = () => setSearch(searchInput)
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full min-h-0">
       <Card className="flex flex-col gap-3 min-h-0">
-        <Input
-          id="customer-list-search"
-          label="Search customers"
-          placeholder="Search by name..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <Input
+              id="customer-list-search"
+              label="Search customers"
+              placeholder="Search by name..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') runSearch()
+              }}
+            />
+          </div>
+          <Button type="button" variant="primary" onClick={runSearch}>
+            Search
+          </Button>
+        </div>
 
         {isLoading && <p className="text-sm text-gray-500">Loading...</p>}
         {!isLoading && (
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto">
             <table className="w-full">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-white">
                 <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200">
                   <th className="px-3 py-2">Name</th>
                   <th className="px-3 py-2">Contact</th>
