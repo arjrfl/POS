@@ -49,6 +49,10 @@ export function CustomerDetailPanel({ customerId }) {
 
   const { totalBalance, totalCredit } = computeLedgerTotals(customer.ledger_entries)
 
+  const netBalanceValue = Number(customer.net_balance)
+  const netBalanceDisplay = formatCurrency(netBalanceValue < 0 ? Math.abs(netBalanceValue) : 0)
+  const netCreditDisplay = formatCurrency(netBalanceValue > 0 ? netBalanceValue : 0)
+
   return (
     <div className="flex flex-col gap-4 h-full min-h-0">
       <Card className="shrink-0">
@@ -128,11 +132,17 @@ export function CustomerDetailPanel({ customerId }) {
             <div className="flex-[3] min-w-0 bg-gray-100 border border-gray-400 rounded-lg p-4 overflow-y-auto">
               <h3 className="font-bold text-gray-900 mb-3">Customer Details</h3>
               <div className="space-y-2 text-sm text-gray-700">
-                <p>Name: —</p>
-                <p>Contact: —</p>
-                <p>Address: —</p>
-                <p>Status: —</p>
-                <p>Net Balance: —</p>
+                <p>Name: {customer.full_name}</p>
+                <p>Contact: {customer.contact_number ?? '—'}</p>
+                <p>Address: {customer.address ?? '—'}</p>
+                <p className="flex items-center gap-2">
+                  <span>Status:</span>
+                  <Badge status={customer.customer_status} />
+                </p>
+                <p>Net Balance: {netBalanceDisplay}</p>
+                <p>Net Credit: {netCreditDisplay}</p>
+                <p>Date Listed: {new Date(customer.created_at).toLocaleString()}</p>
+                <p>Listed By: {customer.listed_by_name ?? '—'}</p>
               </div>
             </div>
 

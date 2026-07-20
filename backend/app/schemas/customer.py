@@ -50,6 +50,12 @@ class CustomerLedgerEntryResponse(BaseModel):
 
 class CustomerDetailResponse(CustomerResponse):
     ledger_entries: list[CustomerLedgerEntryResponse]
+    created_by_user_id: int | None = None
+
+    # not on the Customer row itself — no matching ORM attribute for
+    # from_attributes to pick up, so this always needs the default here and
+    # is filled in by the router from the (already eager-loaded) created_by relationship
+    listed_by_name: str | None = None
 
 
 class CustomerBalanceEntryResponse(BaseModel):

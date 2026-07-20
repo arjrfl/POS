@@ -151,6 +151,11 @@ CREATE TABLE customer (
     -- negative = customer has BALANCE/utang (customer owes store)
     net_balance     DECIMAL(10,2)        NOT NULL DEFAULT 0.00,
 
+    created_by_user_id INT NULL REFERENCES "user"(id) ON DELETE RESTRICT,
+    -- which user created this customer record
+    -- NULL for customers created before this column existed (no backfill)
+    -- set at insert time going forward from the "Add Customer" flow
+
     created_at      TIMESTAMPTZ          NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ          NOT NULL DEFAULT NOW()
 );

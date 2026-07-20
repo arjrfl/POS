@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, Enum, Numeric, String, func, text
+from sqlalchemy import DateTime, Enum, ForeignKey, Numeric, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -11,6 +11,7 @@ from app.core.database import Base
 if TYPE_CHECKING:
     from app.models.ledger import CustomerLedger
     from app.models.transaction import SalesTransaction
+    from app.models.user import User
 
 
 class CustomerStatusEnum(str, enum.Enum):
@@ -35,8 +36,13 @@ class Customer(Base):
     # negative = customer has BALANCE/utang (customer owes store)
     net_balance: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, server_default=text("0.00"))
 
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"))
+    # which user created this customer record (via the "Add Customer" flow)
+    # NULL for customers created before this column existed — not backfilled
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     transactions: Mapped[list["SalesTransaction"]] = relationship(back_populates="customer", lazy="selectin")
     ledger_entries: Mapped[list["CustomerLedger"]] = relationship(back_populates="customer", lazy="selectin")
+    created_by: Mapped[Optional["User"]] = relationship(foreign_keys=[created_by_user_id], lazy="selectin")
