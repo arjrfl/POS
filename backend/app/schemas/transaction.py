@@ -230,6 +230,7 @@ class TransactionHistoryItem(BaseModel):
     transaction_status: TransactionStatusEnum
     customer_name: str
     customer_type: CustomerTypeEnum
+    cashier_name: str | None
     total_due: Decimal
     payment_methods: list[str]
     parent_order_number: str | None

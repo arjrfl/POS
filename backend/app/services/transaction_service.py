@@ -465,6 +465,7 @@ def _build_history_item(transaction: SalesTransaction) -> TransactionHistoryItem
         transaction_status=transaction.transaction_status,
         customer_name=transaction.customer.full_name,
         customer_type=transaction.customer_type,
+        cashier_name=transaction.payment_user.full_name if transaction.payment_user else None,
         total_due=transaction.total_due,
         payment_methods=payment_methods,
         parent_order_number=transaction.parent.order_number if transaction.parent else None,

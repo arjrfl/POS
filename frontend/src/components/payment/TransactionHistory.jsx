@@ -22,6 +22,7 @@ function HistoryRow({ transaction }) {
     <tr className="border-b border-gray-200 hover:bg-gray-50">
       <td className="px-4 py-2 text-sm text-left font-mono text-gray-900">{transaction.order_number}</td>
       <td className="px-4 py-2 text-sm text-left text-gray-800">{transaction.customer_name}</td>
+      <td className="px-4 py-2 text-sm text-left text-gray-800">{transaction.cashier_name ?? '—'}</td>
       <td className="px-4 py-2 text-center">
         {typeBadge && (
           <span
@@ -100,6 +101,9 @@ export function TransactionHistory() {
               <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
                 Customer
               </th>
+              <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
+                Cashier
+              </th>
               <th className="px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-600">
                 Type
               </th>
@@ -117,19 +121,19 @@ export function TransactionHistory() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400 italic">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400 italic">
                   Loading history...
                 </td>
               </tr>
             ) : !data || data.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400 italic">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400 italic">
                   No completed transactions yet
                 </td>
               </tr>
             ) : filteredData.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400 italic">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400 italic">
                   No matching transactions
                 </td>
               </tr>
