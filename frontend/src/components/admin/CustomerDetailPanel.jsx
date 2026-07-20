@@ -261,8 +261,8 @@ export function CustomerDetailPanel({ customerId }) {
                       <th className="w-1/6 px-3 py-2">Type</th>
                       <th className="w-1/6 px-3 py-2">Date</th>
                       <th className="w-1/6 px-3 py-2 text-right">Total</th>
-                      <th className="w-1/6 px-3 py-2">Status</th>
-                      <th className="w-1/6 px-3 py-2 text-right">Action</th>
+                      <th className="w-1/6 px-3 py-2 text-center">Status</th>
+                      <th className="w-1/6 px-3 py-2 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -272,10 +272,10 @@ export function CustomerDetailPanel({ customerId }) {
                         <td className="px-3 py-2 text-sm text-gray-600">{formatTransactionType(t.transaction_type)}</td>
                         <td className="px-3 py-2 text-sm text-gray-500">{new Date(t.created_at).toLocaleString()}</td>
                         <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(t.total_due)}</td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 text-center">
                           <Badge status={t.payment_status}>{PAYMENT_STATUS_LABELS[t.payment_status]}</Badge>
                         </td>
-                        <td className="px-3 py-2 text-right">
+                        <td className="px-3 py-2 text-center">
                           <Button type="button" variant="outline" className="px-3 py-1 text-xs">
                             View
                           </Button>
