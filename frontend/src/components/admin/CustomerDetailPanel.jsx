@@ -127,26 +127,47 @@ export function CustomerDetailPanel({ customerId }) {
             </Button>
           </div>
 
-          {/* Row 1 — Customer Details (60%) + Balance & Credit (40%), fixed height */}
+          {/* Row 1 — Customer Details (50%) + Balance & Credit (50%), fixed height */}
           <div className="flex gap-4 h-72 shrink-0">
-            <div className="flex-[3] min-w-0 bg-gray-100 border border-gray-400 rounded-lg p-4 overflow-y-auto">
+            <div className="flex-1 min-w-0 bg-gray-100 border border-gray-400 rounded-lg p-4 overflow-y-auto">
               <h3 className="font-bold text-gray-900 mb-3">Customer Details</h3>
-              <div className="space-y-2 text-sm text-gray-700">
-                <p>Name: {customer.full_name}</p>
-                <p>Contact: {customer.contact_number ?? '—'}</p>
-                <p>Address: {customer.address ?? '—'}</p>
+              <div className="space-y-2 text-sm">
+                <p>
+                  <span className="text-gray-500 font-normal">Name: </span>
+                  <span className="text-gray-900 font-semibold">{customer.full_name}</span>
+                </p>
+                <p>
+                  <span className="text-gray-500 font-normal">Contact: </span>
+                  <span className="text-gray-900 font-semibold">{customer.contact_number ?? '—'}</span>
+                </p>
+                <p>
+                  <span className="text-gray-500 font-normal">Address: </span>
+                  <span className="text-gray-900 font-semibold">{customer.address ?? '—'}</span>
+                </p>
                 <p className="flex items-center gap-2">
-                  <span>Status:</span>
+                  <span className="text-gray-500 font-normal">Status:</span>
                   <Badge status={customer.customer_status} />
                 </p>
-                <p>Net Balance: {netBalanceDisplay}</p>
-                <p>Net Credit: {netCreditDisplay}</p>
-                <p>Date Listed: {new Date(customer.created_at).toLocaleString()}</p>
-                <p>Listed By: {customer.listed_by_name ?? '—'}</p>
+                <p>
+                  <span className="text-gray-500 font-normal">Net Balance: </span>
+                  <span className="text-gray-900 font-semibold">{netBalanceDisplay}</span>
+                </p>
+                <p>
+                  <span className="text-gray-500 font-normal">Net Credit: </span>
+                  <span className="text-gray-900 font-semibold">{netCreditDisplay}</span>
+                </p>
+                <p>
+                  <span className="text-gray-500 font-normal">Date Listed: </span>
+                  <span className="text-gray-900 font-semibold">{new Date(customer.created_at).toLocaleString()}</span>
+                </p>
+                <p>
+                  <span className="text-gray-500 font-normal">Listed By: </span>
+                  <span className="text-gray-900 font-semibold">{customer.listed_by_name ?? '—'}</span>
+                </p>
               </div>
             </div>
 
-            <div className="flex-[2] min-w-0 bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col min-h-0">
+            <div className="flex-1 min-w-0 bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col min-h-0">
               <h3 className="font-bold text-gray-900 mb-2 shrink-0">Balance & Credit</h3>
               <div className="flex gap-1 border-b border-gray-300 shrink-0">
                 <button type="button" className={LEDGER_TAB_CLASS(ledgerTab === 'balance')} onClick={() => setLedgerTab('balance')}>
