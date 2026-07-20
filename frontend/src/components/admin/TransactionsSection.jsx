@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useTransactions } from '../../hooks/useTransactions'
@@ -101,26 +101,27 @@ function TransactionRow({ transaction, isExpanded, onToggle }) {
   )
 }
 
+const DEFAULT_FILTERS = { status: '', customerType: '', selectedCustomer: null, dateFrom: '', dateTo: '' }
+
 export function TransactionsSection() {
-  const [status, setStatus] = useState('')
-  const [customerType, setCustomerType] = useState('')
-  const [selectedCustomer, setSelectedCustomer] = useState(null)
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [draftFilters, setDraftFilters] = useState(DEFAULT_FILTERS)
+  const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS)
   const [page, setPage] = useState(1)
   const [expandedId, setExpandedId] = useState(null)
 
-  // Any filter change invalidates the current page number.
-  useEffect(() => {
+  const setDraftField = (field, value) => setDraftFilters((prev) => ({ ...prev, [field]: value }))
+
+  const handleRun = () => {
+    setAppliedFilters(draftFilters)
     setPage(1)
-  }, [status, customerType, selectedCustomer, dateFrom, dateTo])
+  }
 
   const { data, isLoading } = useTransactions({
-    status: status || undefined,
-    customerType: customerType || undefined,
-    customerId: selectedCustomer?.id,
-    dateFrom: dateFrom || undefined,
-    dateTo: dateTo || undefined,
+    status: appliedFilters.status || undefined,
+    customerType: appliedFilters.customerType || undefined,
+    customerId: appliedFilters.selectedCustomer?.id,
+    dateFrom: appliedFilters.dateFrom || undefined,
+    dateTo: appliedFilters.dateTo || undefined,
     page,
     pageSize: 20,
   })
@@ -140,7 +141,12 @@ export function TransactionsSection() {
             <label htmlFor="tx-status" className="text-sm font-medium text-gray-700">
               Status
             </label>
-            <select id="tx-status" className={SELECT_CLASSES} value={status} onChange={(e) => setStatus(e.target.value)}>
+            <select
+              id="tx-status"
+              className={SELECT_CLASSES}
+              value={draftFilters.status}
+              onChange={(e) => setDraftField('status', e.target.value)}
+            >
               <option value="">All statuses</option>
               {STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -157,8 +163,8 @@ export function TransactionsSection() {
             <select
               id="tx-customer-type"
               className={SELECT_CLASSES}
-              value={customerType}
-              onChange={(e) => setCustomerType(e.target.value)}
+              value={draftFilters.customerType}
+              onChange={(e) => setDraftField('customerType', e.target.value)}
             >
               <option value="">All types</option>
               <option value="walk_in">Walk-In</option>
@@ -166,14 +172,32 @@ export function TransactionsSection() {
             </select>
           </div>
 
-          <Input id="tx-date-from" label="From" type="date" className="w-full" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          <Input id="tx-date-to" label="To" type="date" className="w-full" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          <Input
+            id="tx-date-from"
+            label="From"
+            type="date"
+            className="w-full"
+            value={draftFilters.dateFrom}
+            onChange={(e) => setDraftField('dateFrom', e.target.value)}
+          />
+          <Input
+            id="tx-date-to"
+            label="To"
+            type="date"
+            className="w-full"
+            value={draftFilters.dateTo}
+            onChange={(e) => setDraftField('dateTo', e.target.value)}
+          />
 
           <CustomerSearchFilter
-            selectedCustomer={selectedCustomer}
-            onSelect={setSelectedCustomer}
-            onClear={() => setSelectedCustomer(null)}
+            selectedCustomer={draftFilters.selectedCustomer}
+            onSelect={(customer) => setDraftField('selectedCustomer', customer)}
+            onClear={() => setDraftField('selectedCustomer', null)}
           />
+
+          <Button type="button" variant="primary" className="w-full mt-1" onClick={handleRun}>
+            Run
+          </Button>
         </div>
       </div>
 
