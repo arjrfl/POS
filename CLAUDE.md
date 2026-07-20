@@ -25,7 +25,11 @@ No internet at runtime. No cloud. No external services.
 
 - Backend: fully built and tested (all 7 flows passing)
 - Frontend: Receiver, Payment, Releasing screens built and refined
-- Admin screen: NOT YET BUILT
+- Admin screen: Dashboard, Customers, Products, and Transaction History tabs
+  built and wired into the TabBar. Users tab is present in the TabBar but
+  disabled (no content built). A `QueueMonitorSection` component exists in
+  `frontend/src/components/admin/` but is not wired into `Admin.jsx`/`TabBar`
+  — not reachable from the UI yet.
 - Batch 5 (production readiness): NOT YET DONE
 - Known deferred issue: multiple WebSocket connections per user (fix in Batch 5)
 - All 27 client terminals must use Google Chrome (fixed version, auto-update disabled)
@@ -192,6 +196,9 @@ dependency not listed above without explicit instruction.
 - `payment_detail.is_draft` = TRUE for draft entries, FALSE for confirmed entries
 - `payment_detail.draft_balance_settled`, `draft_credit_applied`, `draft_balances_json`
   are only meaningful on is_draft=TRUE rows
+- `customer.created_by_user_id` — which user created the customer record
+  (set at insert from the "Add Customer" flow); NULL for rows created
+  before this column existed (no backfill)
 
 ---
 
@@ -222,6 +229,14 @@ dependency not listed above without explicit instruction.
     customer credit (payment only, `pending_payment` only, no payment method involved)
   - `PUT /api/transactions/{id}/payment-drafts` — save draft payment entries
   - `GET /api/customers/{id}/balance-entries` — get per-transaction balance entries
+  - `GET /api/customers/{id}/ledger?category=balance|credit` — outstanding
+    balance/credit ledger entries for a customer (Admin Customers tab)
+  - `GET /api/transactions?customer_id={id}&include_payment_status=true` —
+    a customer's transaction history with derived `payment_status`
+    (full/partial/voided); same list endpoint as the Transaction History
+    tab, not a separate `/customers/{id}/transactions` route
+  - `GET /api/admin/dashboard/top-products` — top 10 products by revenue
+    for the current month (admin only)
 
 ---
 
@@ -231,7 +246,26 @@ dependency not listed above without explicit instruction.
 - Receiver screen (`/walkin`): queue of `pending_edit` + create modal + edit modal
 - Payment screen (`/payment`): queue of `pending_payment`, payment modal with drafts
 - Releasing screen (`/releasing`): queue of `pending_settlement` + `pending_adjustment`
-- Admin screen (`/admin`): NOT YET BUILT
+- Admin screen (`/admin`): TabBar navigation — Dashboard, Customers, Products,
+  and Transaction History tabs built and wired; Users tab present in the
+  TabBar but disabled (no content). `QueueMonitorSection.jsx` exists under
+  `components/admin/` but is not wired into the TabBar/page.
+  - Dashboard tab: summary cards (Transactions Today, Total Sales Today,
+    Pending in Payment, Pending in Releasing) + `TopProductsChart`
+  - Customers tab: searchable list (Name/Contact/Net Balance/Status,
+    sticky header, scoped scroll, Search-button triggered) + "View Details"
+    modal with 3 sections:
+    - Customer Details (50%): Name, Contact, Address, Status pill,
+      Total Balance, Total Credit, Date Listed, Listed By
+    - Balance & Credit (50%): tab toggle, Order #/Date/Amount, shows only
+      outstanding/unused items, tab-colored (red/green)
+    - Transaction History (full width): Order #/Type/Date/Total/Status/
+      Action — Status is derived `payment_status` (full/partial/voided),
+      Action is an inert "View" button (reserved for future)
+  - Products tab: CRUD list (search, add/edit modal, deactivate)
+  - Transaction History tab: filtered/paginated list (status, customer type,
+    date range, customer search) with expandable rows showing the full
+    parent+child transaction chain
 - No page scroll on any screen — panels scroll internally only
 - All screens: 60% left (queue) / 40% right (order details) split
 - Queue panels: `bg-gray-100 border border-gray-400 rounded-lg`
@@ -291,7 +325,7 @@ lash-meatshop-pos/
     │   │   ├── WalkIn.jsx     ← Receiver screen
     │   │   ├── Payment.jsx
     │   │   ├── Releasing.jsx
-    │   │   └── Admin.jsx      ← NOT YET BUILT
+    │   │   └── Admin.jsx      ← Admin screen (Dashboard/Customers/Products/Transaction History)
     │   ├── components/
     │   │   ├── layout/
     │   │   ├── ui/

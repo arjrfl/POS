@@ -384,14 +384,22 @@ volumes:
 
 ## 14. What Remains to Build
 
-### Admin Screen (`/admin`) — NOT YET STARTED
-Sidebar navigation with sections:
-1. **Dashboard** — transactions today count, total sales today, pending queue counts
-2. **Transactions** — full list with filters (date, status, customer type, customer search)
+### Admin Screen (`/admin`) — IN PROGRESS
+TabBar navigation with tabs:
+1. **Dashboard** — ✅ DONE — transactions today count, total sales today,
+   pending queue counts, top products chart
+2. **Transaction History** — ✅ DONE — full list with filters (date, status,
+   customer type, customer search), paginated
    - Click row → expand full transaction chain (parent + children)
-3. **Customers** — list with search, click → customer detail + full ledger history
-4. **Products** — CRUD (admin only)
-5. **Queue Monitor** — live view of all queues, parked alerts (flag >30 mins), all roles
+3. **Customers** — ✅ DONE — list with search, click → customer detail +
+   "View Details" modal (customer info, balance/credit ledger, full
+   transaction history)
+4. **Products** — ✅ DONE — CRUD (admin only)
+5. **Users** — NOT YET BUILT — tab exists in the TabBar but is disabled
+6. **Queue Monitor** — NOT WIRED IN — `QueueMonitorSection.jsx` exists
+   (live view of Payment/Releasing queues, parked >30min alerts) but is not
+   wired into the Admin page/TabBar. Explicitly deprioritized/skipped per
+   discussion, not forgotten.
 
 ### Batch 5 — Production Readiness
 See Open Items above.
