@@ -52,10 +52,14 @@ class CustomerDetailResponse(CustomerResponse):
     ledger_entries: list[CustomerLedgerEntryResponse]
     created_by_user_id: int | None = None
 
-    # not on the Customer row itself — no matching ORM attribute for
-    # from_attributes to pick up, so this always needs the default here and
-    # is filled in by the router from the (already eager-loaded) created_by relationship
+    # None of the fields below are on the Customer row itself — no matching
+    # ORM attribute for from_attributes to pick up, so they always need the
+    # default here and are filled in by the router.
     listed_by_name: str | None = None
+
+    # independently computed gross totals — see customer_service.compute_ledger_totals
+    total_balance: Decimal = Decimal("0")
+    total_credit: Decimal = Decimal("0")
 
 
 class CustomerBalanceEntryResponse(BaseModel):

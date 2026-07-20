@@ -49,10 +49,6 @@ export function CustomerDetailPanel({ customerId }) {
 
   const { totalBalance, totalCredit } = computeLedgerTotals(customer.ledger_entries)
 
-  const netBalanceValue = Number(customer.net_balance)
-  const netBalanceDisplay = formatCurrency(netBalanceValue < 0 ? Math.abs(netBalanceValue) : 0)
-  const netCreditDisplay = formatCurrency(netBalanceValue > 0 ? netBalanceValue : 0)
-
   return (
     <div className="flex flex-col gap-4 h-full min-h-0">
       <Card className="shrink-0">
@@ -149,12 +145,12 @@ export function CustomerDetailPanel({ customerId }) {
                   <Badge status={customer.customer_status} />
                 </p>
                 <p>
-                  <span className="text-gray-500 font-normal">Net Balance: </span>
-                  <span className="text-gray-900 font-semibold">{netBalanceDisplay}</span>
+                  <span className="text-gray-500 font-normal">Total Balance: </span>
+                  <span className="text-gray-900 font-semibold">{formatCurrency(customer.total_balance)}</span>
                 </p>
                 <p>
-                  <span className="text-gray-500 font-normal">Net Credit: </span>
-                  <span className="text-gray-900 font-semibold">{netCreditDisplay}</span>
+                  <span className="text-gray-500 font-normal">Total Credit: </span>
+                  <span className="text-gray-900 font-semibold">{formatCurrency(customer.total_credit)}</span>
                 </p>
                 <p>
                   <span className="text-gray-500 font-normal">Date Listed: </span>

@@ -50,6 +50,7 @@ async def get_customer(customer_id: int, db: AsyncSession = Depends(get_db)):
         entry.order_number = ledger_row.transaction.order_number
     detail.ledger_entries.sort(key=lambda entry: entry.created_at)
     detail.listed_by_name = customer.created_by.full_name if customer.created_by else None
+    detail.total_balance, detail.total_credit = customer_service.compute_ledger_totals(customer.ledger_entries)
     return {"data": detail, "error": None}
 
 

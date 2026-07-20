@@ -7,6 +7,37 @@ from app.models.ledger import CustomerLedger, LedgerEntryTypeEnum
 from app.models.transaction import SalesTransaction
 from app.schemas.customer import CustomerBalanceEntryResponse
 
+# balance_added/credit_added increase what's outstanding; balance_settled and
+# credit_used/credit_auto_used pay it back down — same bucket/sign convention
+# as computeLedgerTotals in CustomerDetailPanel.jsx (the existing correct
+# source for these totals), just computed backend-side.
+_LEDGER_ENTRY_SIGN: dict[LedgerEntryTypeEnum, tuple[str, int]] = {
+    LedgerEntryTypeEnum.balance_added: ("balance", 1),
+    LedgerEntryTypeEnum.balance_settled: ("balance", -1),
+    LedgerEntryTypeEnum.credit_added: ("credit", 1),
+    LedgerEntryTypeEnum.credit_used: ("credit", -1),
+    LedgerEntryTypeEnum.credit_auto_used: ("credit", -1),
+}
+
+
+def compute_ledger_totals(ledger_entries: list[CustomerLedger]) -> tuple[Decimal, Decimal]:
+    """Independently computed gross totals (not derived from customer.net_balance),
+    so a customer can show nonzero balance AND credit at the same time. Floored at
+    0 — total_credit - total_balance equals customer.net_balance before flooring."""
+    total_balance = Decimal("0")
+    total_credit = Decimal("0")
+    for entry in ledger_entries:
+        rule = _LEDGER_ENTRY_SIGN.get(entry.entry_type)
+        if rule is None:
+            continue
+        bucket, sign = rule
+        signed_amount = entry.amount * sign
+        if bucket == "balance":
+            total_balance += signed_amount
+        else:
+            total_credit += signed_amount
+    return max(total_balance, Decimal("0")), max(total_credit, Decimal("0"))
+
 
 async def _get_outstanding_entries(
     db: AsyncSession,
