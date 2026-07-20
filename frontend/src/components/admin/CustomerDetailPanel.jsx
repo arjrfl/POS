@@ -4,8 +4,15 @@ import { useTransactions } from '../../hooks/useTransactions'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
-import { Modal } from '../ui/Modal'
+import { FullScreenModal } from '../ui/FullScreenModal'
 import { formatCurrency } from '../../utils/format'
+
+const LEDGER_TAB_CLASS = (isActive) =>
+  `px-3 py-1.5 text-sm border-b-2 transition-colors ${
+    isActive
+      ? 'font-bold text-gray-900 bg-white border-primary'
+      : 'font-medium text-gray-500 border-transparent hover:text-gray-700'
+  }`
 
 // balance_added/credit_added increase what's outstanding; balance_settled and
 // credit_used/credit_auto_used pay it back down — netting each bucket gives the
@@ -35,6 +42,7 @@ export function CustomerDetailPanel({ customerId }) {
   const { data: customer, isLoading } = useCustomer(customerId)
   const { data: transactions, isLoading: loadingTransactions } = useTransactions({ customerId, pageSize: 20 })
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const [ledgerTab, setLedgerTab] = useState('balance')
 
   if (isLoading) return <Card>Loading customer...</Card>
   if (!customer) return null
@@ -107,14 +115,101 @@ export function CustomerDetailPanel({ customerId }) {
         )}
       </Card>
 
-      <Modal open={detailsOpen} onClose={() => setDetailsOpen(false)} title="Customer Details">
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-gray-400">Details coming soon</p>
-          <Button type="button" variant="secondary" className="w-full" onClick={() => setDetailsOpen(false)}>
-            Back
-          </Button>
+      <FullScreenModal open={detailsOpen} onClose={() => setDetailsOpen(false)} title="Customer Details">
+        <div className="flex flex-col gap-4 h-full min-h-0">
+          <div className="shrink-0">
+            <Button type="button" variant="secondary" onClick={() => setDetailsOpen(false)}>
+              ‹ Back
+            </Button>
+          </div>
+
+          {/* Row 1 — Customer Details (60%) + Balance & Credit (40%), fixed height */}
+          <div className="flex gap-4 h-72 shrink-0">
+            <div className="flex-[3] min-w-0 bg-gray-100 border border-gray-400 rounded-lg p-4 overflow-y-auto">
+              <h3 className="font-bold text-gray-900 mb-3">Customer Details</h3>
+              <div className="space-y-2 text-sm text-gray-700">
+                <p>Name: —</p>
+                <p>Contact: —</p>
+                <p>Address: —</p>
+                <p>Status: —</p>
+                <p>Net Balance: —</p>
+              </div>
+            </div>
+
+            <div className="flex-[2] min-w-0 bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col min-h-0">
+              <h3 className="font-bold text-gray-900 mb-2 shrink-0">Balance & Credit</h3>
+              <div className="flex gap-1 border-b border-gray-300 shrink-0">
+                <button type="button" className={LEDGER_TAB_CLASS(ledgerTab === 'balance')} onClick={() => setLedgerTab('balance')}>
+                  Balance
+                </button>
+                <button type="button" className={LEDGER_TAB_CLASS(ledgerTab === 'credit')} onClick={() => setLedgerTab('credit')}>
+                  Credit
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto mt-2">
+                <table className="w-full">
+                  <thead className="sticky top-0 z-10 bg-gray-100">
+                    <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-300">
+                      <th className="px-2 py-1.5">Date</th>
+                      <th className="px-2 py-1.5">Type</th>
+                      <th className="px-2 py-1.5 text-right">Amount</th>
+                      <th className="px-2 py-1.5">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledgerTab === 'balance'
+                      ? [1, 2, 3].map((row) => (
+                          <tr key={row} className="border-b border-gray-200 last:border-b-0">
+                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
+                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
+                            <td className="px-2 py-1.5 text-sm text-right text-gray-600">—</td>
+                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
+                          </tr>
+                        ))
+                      : [1, 2, 3].map((row) => (
+                          <tr key={row} className="border-b border-gray-200 last:border-b-0">
+                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
+                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
+                            <td className="px-2 py-1.5 text-sm text-right text-gray-600">—</td>
+                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
+                          </tr>
+                        ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2 — Transaction History, full width */}
+          <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col">
+            <h3 className="font-bold text-gray-900 mb-3 shrink-0">Transaction History</h3>
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <table className="w-full">
+                <thead className="sticky top-0 z-10 bg-gray-100">
+                  <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-300">
+                    <th className="px-3 py-2">Order #</th>
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Date</th>
+                    <th className="px-3 py-2 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[1, 2, 3, 4].map((row) => (
+                    <tr key={row} className="border-b border-gray-200 last:border-b-0">
+                      <td className="px-3 py-2 text-sm text-gray-600">—</td>
+                      <td className="px-3 py-2 text-sm text-gray-600">—</td>
+                      <td className="px-3 py-2 text-sm text-gray-600">—</td>
+                      <td className="px-3 py-2 text-sm text-gray-600">—</td>
+                      <td className="px-3 py-2 text-sm text-right text-gray-600">—</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </Modal>
+      </FullScreenModal>
     </div>
   )
 }
