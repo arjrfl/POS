@@ -9,6 +9,27 @@ import { Badge } from '../ui/Badge'
 import { AdjustStockModal } from './AdjustStockModal'
 import { formatCurrency, formatWeight } from '../../utils/format'
 
+// Same palette as Navbar's ROLE_BADGE_STYLES — only releasing/admin can
+// write products, so those are the only two entries an audit log ever shows.
+const ROLE_TAG_STYLES = {
+  releasing: 'bg-orange-100 text-orange-800',
+  admin: 'bg-red-100 text-red-800',
+}
+
+function RoleTag({ role }) {
+  return (
+    <span
+      className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium capitalize ${ROLE_TAG_STYLES[role] || 'bg-gray-100 text-gray-700'}`}
+    >
+      {role}
+    </span>
+  )
+}
+
+function changeLabel(changeType) {
+  return changeType.replace(/_/g, ' ')
+}
+
 function emptyForm() {
   return { product_name: '', brand_name: '', unit_weight_kg: '', unit_price_php: '', stock_quantity: '0' }
 }
@@ -99,8 +120,6 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
     }
   }
 
-  const lastUpdate = history?.[0]
-
   return (
     <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -158,16 +177,6 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
           />
         )}
 
-        {editingProduct && (
-          <p className="text-xs text-gray-500">
-            {historyLoading
-              ? 'Loading history...'
-              : lastUpdate
-                ? `Last updated by ${lastUpdate.changed_by_full_name}, ${new Date(lastUpdate.changed_at).toLocaleString()}`
-                : 'No changes yet'}
-          </p>
-        )}
-
         {formError && <p className="text-sm text-red-600">{formError}</p>}
 
         <div className="flex gap-2 mt-2">
@@ -179,6 +188,28 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
           </Button>
         </div>
       </form>
+
+      {editingProduct && (
+        <div className="mt-4 pt-3 border-t border-gray-300">
+          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Change History</p>
+          {historyLoading && <p className="text-xs text-gray-500">Loading...</p>}
+          {!historyLoading && history?.length === 0 && <p className="text-xs text-gray-500">No changes yet</p>}
+          {!historyLoading && history?.length > 0 && (
+            <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto pr-1">
+              {history.map((log) => (
+                <div key={log.id} className="text-xs text-gray-700 flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-medium capitalize">{changeLabel(log.change_type)}</span>
+                    <RoleTag role={log.changed_by_role} />
+                    <span className="text-gray-500">by {log.changed_by_full_name}</span>
+                  </div>
+                  <span className="text-gray-400">{new Date(log.changed_at).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

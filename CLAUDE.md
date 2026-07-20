@@ -30,6 +30,10 @@ No internet at runtime. No cloud. No external services.
   disabled (no content built). A `QueueMonitorSection` component exists in
   `frontend/src/components/admin/` but is not wired into `Admin.jsx`/`TabBar`
   — not reachable from the UI yet.
+- Product CRUD is available in both Releasing (Inventory tab) and Admin
+  (Products tab). Both are fully functional and share the same underlying
+  components (`frontend/src/components/inventory/`); changes made in either
+  screen broadcast live to both.
 - Batch 5 (production readiness): NOT YET DONE
 - Known deferred issue: multiple WebSocket connections per user (fix in Batch 5)
 - All 27 client terminals must use Google Chrome (fixed version, auto-update disabled)
@@ -245,7 +249,8 @@ dependency not listed above without explicit instruction.
 - Role-based routing — each team sees only their screen on login
 - Receiver screen (`/walkin`): queue of `pending_edit` + create modal + edit modal
 - Payment screen (`/payment`): queue of `pending_payment`, payment modal with drafts
-- Releasing screen (`/releasing`): queue of `pending_settlement` + `pending_adjustment`
+- Releasing screen (`/releasing`): queue of `pending_settlement` + `pending_adjustment`,
+  plus an Inventory tab for product CRUD — shared components with Admin's Products tab
 - Admin screen (`/admin`): TabBar navigation — Dashboard, Customers, Products,
   and Transaction History tabs built and wired; Users tab present in the
   TabBar but disabled (no content). `QueueMonitorSection.jsx` exists under
@@ -262,7 +267,12 @@ dependency not listed above without explicit instruction.
     - Transaction History (full width): Order #/Type/Date/Total/Status/
       Action — Status is derived `payment_status` (full/partial/voided),
       Action is an inert "View" button (reserved for future)
-  - Products tab: CRUD list (search, add/edit modal, deactivate)
+  - Products tab: shares the same components as Releasing's Inventory tab
+    (`frontend/src/components/inventory/`) — add/edit, adjust stock,
+    activate/deactivate, and per-product audit history tagged with the
+    acting user's role ("Releasing" or "Admin"). Not admin-only — both
+    screens read/write the same rows and stay in sync via the
+    `product_changed` WebSocket broadcast
   - Transaction History tab: filtered/paginated list (status, customer type,
     date range, customer search) with expandable rows showing the full
     parent+child transaction chain

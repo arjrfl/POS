@@ -394,7 +394,11 @@ TabBar navigation with tabs:
 3. **Customers** — ✅ DONE — list with search, click → customer detail +
    "View Details" modal (customer info, balance/credit ledger, full
    transaction history)
-4. **Products** — ✅ DONE — CRUD (admin only)
+4. **Products** — ✅ DONE — full CRUD (add/edit, adjust stock,
+   activate/deactivate, audit history with role attribution), shared with
+   Releasing's Inventory tab via the same underlying components — dual
+   ownership, not admin-only. Changes in either screen broadcast live to
+   the other over WebSocket
 5. **Users** — NOT YET BUILT — tab exists in the TabBar but is disabled
 6. **Queue Monitor** — NOT WIRED IN — `QueueMonitorSection.jsx` exists
    (live view of Payment/Releasing queues, parked >30min alerts) but is not

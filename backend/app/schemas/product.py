@@ -47,6 +47,7 @@ class ProductAuditLogResponse(BaseModel):
     product_id: int
     changed_by_user_id: int
     changed_by_full_name: str
+    changed_by_role: str
     change_type: ProductChangeTypeEnum
     old_value: str | None
     new_value: str

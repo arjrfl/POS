@@ -109,6 +109,7 @@ async def get_product_history(product_id: int, db: AsyncSession = Depends(get_db
                 product_id=log.product_id,
                 changed_by_user_id=log.changed_by_user_id,
                 changed_by_full_name=log.changed_by_user.full_name,
+                changed_by_role=log.changed_by_user.role.role_name,
                 change_type=log.change_type,
                 old_value=log.old_value,
                 new_value=log.new_value,
@@ -227,8 +228,9 @@ async def toggle_status(
     return {"data": ProductResponse.model_validate(product), "error": None}
 
 
-# Predates the releasing-facing toggle-status endpoint above; Admin's existing
-# "Deactivate" button still calls this one-directional admin-only route.
+# Predates the toggle-status endpoint above and is no longer called by the
+# frontend (both Releasing and Admin now use toggle-status), but kept as a
+# one-directional admin-only route in case it's needed again.
 @router.delete("/{product_id}", dependencies=[Depends(require_role("admin"))])
 async def delete_product(product_id: int, db: AsyncSession = Depends(get_db)):
     product = await _get_product_or_404(product_id, db)
