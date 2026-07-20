@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,6 +54,17 @@ async def get_customer(customer_id: int, db: AsyncSession = Depends(get_db)):
     detail.listed_by_name = customer.created_by.full_name if customer.created_by else None
     detail.total_balance, detail.total_credit = customer_service.compute_ledger_totals(customer.ledger_entries)
     return {"data": detail, "error": None}
+
+
+@router.get("/{customer_id}/ledger")
+async def get_customer_ledger(
+    customer_id: int,
+    category: Literal["balance", "credit"] = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_customer_or_404(customer_id, db)
+    entries = await customer_service.get_ledger_entries_by_category(db, customer_id, category)
+    return {"data": entries, "error": None}
 
 
 @router.get("/{customer_id}/balance-entries", dependencies=[Depends(require_role("payment"))])

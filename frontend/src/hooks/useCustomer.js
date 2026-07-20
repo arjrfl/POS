@@ -17,3 +17,12 @@ export function useCustomers(search = '') {
     staleTime: 60 * 1000,
   })
 }
+
+export function useCustomerLedger(customerId, category, enabled = true) {
+  return useQuery({
+    queryKey: ['customer-ledger', customerId, category],
+    queryFn: () => get(`/customers/${customerId}/ledger?category=${category}`),
+    enabled: !!customerId && !!category && enabled,
+    staleTime: 60 * 1000,
+  })
+}

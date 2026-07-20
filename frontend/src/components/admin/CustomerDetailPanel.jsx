@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useCustomer } from '../../hooks/useCustomer'
+import { useCustomer, useCustomerLedger } from '../../hooks/useCustomer'
 import { useTransactions } from '../../hooks/useTransactions'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
@@ -25,6 +25,15 @@ const ENTRY_SIGN = {
   credit_auto_used: { bucket: 'credit', sign: -1 },
 }
 
+// Same green/red-on-sign convention as NetBalanceCell in CustomersSection.jsx
+// (the existing pattern for signed ₱ amounts elsewhere in the Admin screen).
+function SignedAmountCell({ amount }) {
+  const value = Number(amount)
+  if (value > 0) return <span className="text-green-700 font-medium">+{formatCurrency(value)}</span>
+  if (value < 0) return <span className="text-red-600 font-medium">-{formatCurrency(Math.abs(value))}</span>
+  return <span className="text-gray-500">₱0.00</span>
+}
+
 function computeLedgerTotals(ledgerEntries) {
   let totalBalance = 0
   let totalCredit = 0
@@ -43,6 +52,7 @@ export function CustomerDetailPanel({ customerId }) {
   const { data: transactions, isLoading: loadingTransactions } = useTransactions({ customerId, pageSize: 20 })
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [ledgerTab, setLedgerTab] = useState('balance')
+  const { data: ledgerEntries, isLoading: loadingLedger } = useCustomerLedger(customerId, ledgerTab, detailsOpen)
 
   if (isLoading) return <Card>Loading customer...</Card>
   if (!customer) return null
@@ -173,36 +183,43 @@ export function CustomerDetailPanel({ customerId }) {
                   Credit
                 </button>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto mt-2">
-                <table className="w-full">
-                  <thead className="sticky top-0 z-10 bg-gray-100">
-                    <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-300">
-                      <th className="px-2 py-1.5">Date</th>
-                      <th className="px-2 py-1.5">Type</th>
-                      <th className="px-2 py-1.5 text-right">Amount</th>
-                      <th className="px-2 py-1.5">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ledgerTab === 'balance'
-                      ? [1, 2, 3].map((row) => (
-                          <tr key={row} className="border-b border-gray-200 last:border-b-0">
-                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
-                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
-                            <td className="px-2 py-1.5 text-sm text-right text-gray-600">—</td>
-                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
-                          </tr>
-                        ))
-                      : [1, 2, 3].map((row) => (
-                          <tr key={row} className="border-b border-gray-200 last:border-b-0">
-                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
-                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
-                            <td className="px-2 py-1.5 text-sm text-right text-gray-600">—</td>
-                            <td className="px-2 py-1.5 text-sm text-gray-600">—</td>
+              <div className="flex-1 min-h-0 mt-2 flex flex-col">
+                {loadingLedger && (
+                  <div className="flex-1 flex items-center justify-center">
+                    <p className="text-sm text-gray-500">Loading...</p>
+                  </div>
+                )}
+                {!loadingLedger && ledgerEntries?.length === 0 && (
+                  <div className="flex-1 flex items-center justify-center">
+                    <p className="text-sm text-gray-500">
+                      {ledgerTab === 'balance' ? 'No balance entries' : 'No credit entries'}
+                    </p>
+                  </div>
+                )}
+                {!loadingLedger && ledgerEntries?.length > 0 && (
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    <table className="w-full table-fixed">
+                      <thead className="sticky top-0 z-10 bg-gray-100">
+                        <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-300">
+                          <th className="w-1/3 px-2 py-1.5">Order #</th>
+                          <th className="w-1/3 px-2 py-1.5">Date</th>
+                          <th className="w-1/3 px-2 py-1.5 text-right">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ledgerEntries.map((entry) => (
+                          <tr key={entry.id} className="border-b border-gray-200 last:border-b-0">
+                            <td className="px-2 py-1.5 text-sm text-gray-900 truncate">{entry.order_number}</td>
+                            <td className="px-2 py-1.5 text-sm text-gray-600">{new Date(entry.created_at).toLocaleString()}</td>
+                            <td className="px-2 py-1.5 text-sm text-right">
+                              <SignedAmountCell amount={entry.signed_amount} />
+                            </td>
                           </tr>
                         ))}
-                  </tbody>
-                </table>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           </div>
