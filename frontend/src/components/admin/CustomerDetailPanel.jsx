@@ -1,7 +1,10 @@
+import { useState } from 'react'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useTransactions } from '../../hooks/useTransactions'
 import { Card } from '../ui/Card'
 import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
+import { Modal } from '../ui/Modal'
 import { formatCurrency } from '../../utils/format'
 
 // balance_added/credit_added increase what's outstanding; balance_settled and
@@ -31,6 +34,7 @@ function computeLedgerTotals(ledgerEntries) {
 export function CustomerDetailPanel({ customerId }) {
   const { data: customer, isLoading } = useCustomer(customerId)
   const { data: transactions, isLoading: loadingTransactions } = useTransactions({ customerId, pageSize: 20 })
+  const [detailsOpen, setDetailsOpen] = useState(false)
 
   if (isLoading) return <Card>Loading customer...</Card>
   if (!customer) return null
@@ -46,7 +50,9 @@ export function CustomerDetailPanel({ customerId }) {
             <p className="text-sm text-gray-500">{customer.contact_number ?? 'No contact number'}</p>
             <p className="text-sm text-gray-500">{customer.address ?? 'No address on file'}</p>
           </div>
-          <Badge status={customer.customer_status} />
+          <Button type="button" variant="outline" onClick={() => setDetailsOpen(true)}>
+            View Details
+          </Button>
         </div>
         <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-8">
           <div>
@@ -97,6 +103,15 @@ export function CustomerDetailPanel({ customerId }) {
           </div>
         )}
       </Card>
+
+      <Modal open={detailsOpen} onClose={() => setDetailsOpen(false)} title="Customer Details">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-gray-400">Details coming soon</p>
+          <Button type="button" variant="secondary" className="w-full" onClick={() => setDetailsOpen(false)}>
+            Back
+          </Button>
+        </div>
+      </Modal>
     </div>
   )
 }
