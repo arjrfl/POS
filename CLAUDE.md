@@ -203,6 +203,12 @@ dependency not listed above without explicit instruction.
 - `customer.created_by_user_id` — which user created the customer record
   (set at insert from the "Add Customer" flow); NULL for rows created
   before this column existed (no backfill)
+- `product_audit_log` only records manual product-management actions
+  (create/update/adjust-stock/activate/deactivate from the Inventory/Products
+  UI) — a transaction fulfilling normally (Releasing confirm-weight,
+  complete-exact, confirm-handover, online confirm-ready) decrements
+  `product.stock_quantity` directly and does NOT write an audit log row;
+  that's routine inventory movement, not a product-management event
 
 ---
 
