@@ -76,21 +76,27 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
 
         {!loading && !error && (
           <div className="flex-1 min-h-0 flex gap-[10px] p-[10px]">
-            <div className={`${hasLinkedAdjustment ? 'w-[380px]' : 'w-[520px]'} shrink-0 flex flex-col gap-2 min-h-0`}>
-              <span className="text-sm font-medium">
-                {hasLinkedAdjustment ? `Original - ${originalTxn.order_number}` : 'Original'}
-              </span>
-              <ArticleTable />
+            <div className="w-[520px] shrink-0 flex flex-col gap-[10px] min-h-0">
+              {hasLinkedAdjustment ? (
+                <>
+                  <div className="flex-1 min-h-0 flex flex-col gap-2">
+                    <span className="text-sm font-medium">Original - {originalTxn.order_number}</span>
+                    <ArticleTable />
+                  </div>
+                  <div className="flex-1 min-h-0 flex flex-col gap-2">
+                    <span className="text-sm font-medium">
+                      {capitalize(linkedChildTxn.transaction_type)} - {linkedChildTxn.order_number}
+                    </span>
+                    <ArticleTable />
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 min-h-0 flex flex-col gap-2">
+                  <span className="text-sm font-medium">Original</span>
+                  <ArticleTable />
+                </div>
+              )}
             </div>
-
-            {hasLinkedAdjustment && (
-              <div className="w-[380px] shrink-0 flex flex-col gap-2 min-h-0">
-                <span className="text-sm font-medium">
-                  {capitalize(linkedChildTxn.transaction_type)} - {linkedChildTxn.order_number}
-                </span>
-                <ArticleTable />
-              </div>
-            )}
 
             <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0">
               <span className="text-sm font-medium">Details</span>
