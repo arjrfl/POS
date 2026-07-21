@@ -368,6 +368,22 @@ async def get_transaction(db: AsyncSession, transaction_id: int) -> TransactionR
     return _build_transaction_response(transaction)
 
 
+def _enrich_items_with_product_info(response: TransactionResponse, transaction: SalesTransaction) -> None:
+    # TransactionItemResponse.product_name/brand_name default to None (see the
+    # schema) — filled in here from the already-eager-loaded item.product
+    # relationship (TransactionItem.product is lazy="selectin"), so /chain nodes'
+    # own items carry the same product info the parent-items path already exposes,
+    # letting the admin Transaction History modal feed them into ArticleRows.
+    items_by_id = {item.id: item for item in transaction.items}
+    for item_response in response.items:
+        item = items_by_id.get(item_response.id)
+        if item is not None and item.product is not None:
+            item_response.product_name = item.product.product_name
+            item_response.brand_name = item.product.brand_name
+    for child_response, child_transaction in zip(response.children, transaction.children):
+        _enrich_items_with_product_info(child_response, child_transaction)
+
+
 async def get_transaction_chain(db: AsyncSession, transaction_id: int) -> list[TransactionResponse]:
     transaction = await db.get(SalesTransaction, transaction_id)
     if transaction is None:
@@ -383,7 +399,10 @@ async def get_transaction_chain(db: AsyncSession, transaction_id: int) -> list[T
         .execution_options(populate_existing=True)
     )
     chain = result.scalars().all()
-    return [_build_transaction_response(t) for t in chain]
+    responses = [_build_transaction_response(t) for t in chain]
+    for response, t in zip(responses, chain):
+        _enrich_items_with_product_info(response, t)
+    return responses
 
 
 async def list_transactions(

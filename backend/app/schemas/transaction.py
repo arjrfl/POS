@@ -81,6 +81,13 @@ class TransactionItemResponse(BaseModel):
     transaction_id: int
     item_type: ItemTypeEnum
     product_id: int | None
+    # No matching ORM attribute (would require joining Product) — always defaults
+    # to None here; populated afterward only by the /chain endpoint's response
+    # builder (see _enrich_items_with_product_info), so the admin Transaction
+    # History modal can feed these items into the same ArticleRows/useArticleRows
+    # pipeline the parent-items path (TransactionParentItemResponse) already uses.
+    product_name: str | None = None
+    brand_name: str | None = None
     unit_count: int | None
     estimated_weight_kg: Decimal | None
     quantity_kg: Decimal | None

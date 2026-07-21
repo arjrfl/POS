@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { get } from '../../services/api'
+import { ArticleRows } from '../payment/ArticleRows'
 
 function capitalize(text) {
   return text.charAt(0).toUpperCase() + text.slice(1)
@@ -8,16 +9,27 @@ function capitalize(text) {
 
 const ARTICLE_TABLE_COLUMNS = ['QTY', 'UNIT', 'ARTICLES', 'UNIT PRICE', 'AMOUNT']
 
-function ArticleTable() {
+// ArticleRows renders <tr> rows meant for a real <table><tbody> (see its own
+// comment) — a header-only div/grid can't host them, so the header lives in a
+// <thead> here instead, keeping the same sticky/label styling as before.
+function ArticleTable({ children }) {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
-      <div className="grid grid-cols-5 sticky top-0 bg-gray-100 border-b border-gray-400 px-3 py-2">
-        {ARTICLE_TABLE_COLUMNS.map((column) => (
-          <span key={column} className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-            {column}
-          </span>
-        ))}
-      </div>
+      <table className="w-full text-sm">
+        <thead className="sticky top-0 bg-gray-100 border-b border-gray-400">
+          <tr>
+            {ARTICLE_TABLE_COLUMNS.map((column) => (
+              <th
+                key={column}
+                className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"
+              >
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
     </div>
   )
 }
@@ -59,6 +71,17 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
     : null
   const hasLinkedAdjustment = Boolean(linkedChildTxn)
 
+  // ArticleRows/useArticleRows always read transaction.parent.items (built for
+  // an adjustment/refund child, which carries no items of its own — see
+  // resolve_substandard) — an original has no parent, so this wraps it the
+  // same shape to reuse that exact pipeline unchanged for the Original box.
+  // Filtered to product-type items only, matching _build_parent_summary's own
+  // filter for the real parent-items path.
+  const originalAsParent = useMemo(() => {
+    if (!originalTxn) return null
+    return { parent: { ...originalTxn, items: originalTxn.items.filter((item) => item.item_type === 'product') } }
+  }, [originalTxn])
+
   return (
     <FullScreenModal open={true} onClose={onClose} title="Transaction History" closeLabel="‹ Back">
       <div className="flex flex-col h-full min-h-0">
@@ -81,19 +104,25 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
                 <>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
                     <span className="text-sm font-medium">Original - {originalTxn.order_number}</span>
-                    <ArticleTable />
+                    <ArticleTable>
+                      <ArticleRows transaction={originalAsParent} />
+                    </ArticleTable>
                   </div>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
                     <span className="text-sm font-medium">
                       {capitalize(linkedChildTxn.transaction_type)} - {linkedChildTxn.order_number}
                     </span>
-                    <ArticleTable />
+                    <ArticleTable>
+                      <ArticleRows transaction={linkedChildTxn} />
+                    </ArticleTable>
                   </div>
                 </>
               ) : (
                 <div className="flex-1 min-h-0 flex flex-col gap-2">
                   <span className="text-sm font-medium">Original</span>
-                  <ArticleTable />
+                  <ArticleTable>
+                    <ArticleRows transaction={originalAsParent} />
+                  </ArticleTable>
                 </div>
               )}
             </div>
