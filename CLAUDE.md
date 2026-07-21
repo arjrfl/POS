@@ -78,7 +78,7 @@ dependency not listed above without explicit instruction.
 
 ### Two Customer Flows — Different Pipeline Order
 - `walk_in`: Receiver → Payment → Releasing
-- `online`: Receiver → Releasing (confirm-ready) → Payment (pay) → Releasing (confirm-handover,
+- `online`: Receiver → Releasing (confirm-ready) → Payment (pay) → Releasing (complete-online,
   `pending_handover` status) — a real second Releasing touch, not just an auto-complete
 - `customer_type` on `sales_transaction` determines which flow applies
 

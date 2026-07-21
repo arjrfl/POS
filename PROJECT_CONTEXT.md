@@ -52,7 +52,7 @@ Receiver → Payment → Releasing
 ### Online Customer Flow
 
 ```
-Receiver → Releasing (confirm-ready) → Payment (pay) → Releasing (confirm-handover)
+Receiver → Releasing (confirm-ready) → Payment (pay) → Releasing (complete-online)
 ```
 
 Online orders are per unit/box, not per weight — there's no substandard-kilo variance
