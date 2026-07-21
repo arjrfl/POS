@@ -7,6 +7,22 @@ function capitalize(text) {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }
 
+const ARTICLE_TABLE_COLUMNS = ['QTY', 'UNIT', 'ARTICLES', 'UNIT PRICE', 'AMOUNT']
+
+function ArticleTable() {
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
+      <div className="grid grid-cols-5 sticky top-0 bg-gray-100 border-b border-gray-400 px-3 py-2">
+        {ARTICLE_TABLE_COLUMNS.map((column) => (
+          <span key={column} className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            {column}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function TransactionDetailsModal({ transactionId, onClose }) {
   const [chain, setChain] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -67,23 +83,19 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
 
         {!loading && !error && (
           <div className="flex-1 min-h-0 flex gap-[10px] p-[10px]">
-            <div className="w-[220px] shrink-0 flex flex-col gap-2 min-h-0">
+            <div className={`${hasLinkedAdjustment ? 'w-[280px]' : 'w-[380px]'} shrink-0 flex flex-col gap-2 min-h-0`}>
               <span className="text-sm font-medium">
                 {hasLinkedAdjustment ? `Original - ${originalTxn.order_number}` : 'Original'}
               </span>
-              <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4">
-                Article Table (scrollable)
-              </div>
+              <ArticleTable />
             </div>
 
             {hasLinkedAdjustment && (
-              <div className="w-[220px] shrink-0 flex flex-col gap-2 min-h-0">
+              <div className="w-[280px] shrink-0 flex flex-col gap-2 min-h-0">
                 <span className="text-sm font-medium">
                   {capitalize(linkedChildTxn.transaction_type)} - {linkedChildTxn.order_number}
                 </span>
-                <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4">
-                  Article Table (scrollable)
-                </div>
+                <ArticleTable />
               </div>
             )}
 
