@@ -7,6 +7,7 @@ import { Badge } from '../ui/Badge'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { formatCurrency } from '../../utils/format'
+import { getDisplayStatus } from '../../utils/transactionStatus'
 
 const STATUSES = ['pending_payment', 'pending_settlement', 'settled', 'completed', 'voided']
 const SELECT_CLASSES =
@@ -82,9 +83,9 @@ function TransactionRow({ transaction }) {
     <tr className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50">
       <td className="px-3 py-2 text-sm font-medium text-gray-900">{transaction.order_number}</td>
       <td className="px-3 py-2 text-sm text-gray-700">{customer?.full_name ?? '...'}</td>
-      <td className="px-3 py-2 text-sm text-gray-600">{formatTransactionType(transaction.transaction_type)}</td>
-      <td className="px-3 py-2">
-        <Badge status={transaction.transaction_status} />
+      <td className="px-3 py-2 text-sm text-gray-600 text-center">{formatTransactionType(transaction.transaction_type)}</td>
+      <td className="px-3 py-2 text-center">
+        <Badge status={getDisplayStatus(transaction).status}>{getDisplayStatus(transaction).label}</Badge>
       </td>
       <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(transaction.total_due)}</td>
       <td className="px-3 py-2 text-sm text-gray-500 text-center">{new Date(transaction.created_at).toLocaleString()}</td>
@@ -119,6 +120,7 @@ export function TransactionsSection() {
     dateTo: appliedFilters.dateTo || undefined,
     page,
     pageSize: 20,
+    includePaymentStatus: true,
   })
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / 20)) : 1
@@ -200,8 +202,8 @@ export function TransactionsSection() {
               <tr className="bg-gray-50 border-b border-gray-300 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 <th className="px-3 py-2">Order #</th>
                 <th className="px-3 py-2">Customer</th>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2 text-center">Type</th>
+                <th className="px-3 py-2 text-center">Status</th>
                 <th className="px-3 py-2 text-right">Total Due</th>
                 <th className="px-3 py-2 text-center">Created</th>
                 <th className="px-3 py-2 text-center">Action</th>

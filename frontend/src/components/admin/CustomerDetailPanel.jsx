@@ -6,6 +6,7 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { formatCurrency } from '../../utils/format'
+import { getDisplayStatus } from '../../utils/transactionStatus'
 
 const LEDGER_TAB_CLASS = (isActive) =>
   `px-3 py-1.5 text-sm border-b-2 transition-colors ${
@@ -28,12 +29,6 @@ const ENTRY_SIGN = {
 function formatTransactionType(type) {
   const spaced = type.replace(/_/g, ' ')
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
-}
-
-const PAYMENT_STATUS_LABELS = {
-  full: 'Fully paid',
-  partial: 'Partially paid',
-  voided: 'Voided',
 }
 
 function computeLedgerTotals(ledgerEntries) {
@@ -273,7 +268,7 @@ export function CustomerDetailPanel({ customerId }) {
                         <td className="px-3 py-2 text-sm text-gray-500">{new Date(t.created_at).toLocaleString()}</td>
                         <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(t.total_due)}</td>
                         <td className="px-3 py-2 text-center">
-                          <Badge status={t.payment_status}>{PAYMENT_STATUS_LABELS[t.payment_status]}</Badge>
+                          <Badge status={getDisplayStatus(t).status}>{getDisplayStatus(t).label}</Badge>
                         </td>
                         <td className="px-3 py-2 text-center">
                           <Button type="button" variant="outline" className="px-3 py-1 text-xs">

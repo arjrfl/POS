@@ -449,14 +449,18 @@ async def list_transactions(
     items = result.scalars().all()
     responses = [_build_transaction_response(t) for t in items]
 
-    if include_payment_status and customer_id is not None:
-        # One customer-scoped call, reusing the exact same outstanding-amount logic
-        # as the Balance tab (get_outstanding_balance_entries) — not new remaining-
-        # amount math. Each outstanding entry already carries the transaction_id it
-        # came from, so per-transaction status falls out of a single query rather
-        # than a query per transaction.
-        outstanding_entries = await customer_service.get_outstanding_balance_entries(db, customer_id)
-        transactions_with_outstanding_balance = {entry.transaction_id for entry in outstanding_entries}
+    if include_payment_status:
+        # Reuses the exact same outstanding-amount logic as the Balance tab
+        # (get_outstanding_balance_entries) — not new remaining-amount math. One
+        # call per unique customer on this page (usually just the one customer_id
+        # filter, or a handful when listing across customers unfiltered) rather
+        # than a query per transaction. Each outstanding entry already carries the
+        # transaction_id it came from, so per-transaction status falls out directly.
+        unique_customer_ids = {response.customer_id for response in responses}
+        transactions_with_outstanding_balance: set[int] = set()
+        for cid in unique_customer_ids:
+            outstanding_entries = await customer_service.get_outstanding_balance_entries(db, cid)
+            transactions_with_outstanding_balance.update(entry.transaction_id for entry in outstanding_entries)
         for response in responses:
             if response.transaction_status == TransactionStatusEnum.voided:
                 response.payment_status = "voided"
