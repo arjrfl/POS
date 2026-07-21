@@ -105,7 +105,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
                     <span className="text-sm font-medium">Original - {originalTxn.order_number}</span>
                     <ArticleTable>
-                      <ArticleRows transaction={originalAsParent} />
+                      <ArticleRows transaction={originalAsParent} variant="plain" />
                     </ArticleTable>
                   </div>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
@@ -113,7 +113,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
                       {capitalize(linkedChildTxn.transaction_type)} - {linkedChildTxn.order_number}
                     </span>
                     <ArticleTable>
-                      <ArticleRows transaction={linkedChildTxn} />
+                      <ArticleRows transaction={linkedChildTxn} variant="adjusted" />
                     </ArticleTable>
                   </div>
                 </>
@@ -121,7 +121,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
                 <div className="flex-1 min-h-0 flex flex-col gap-2">
                   <span className="text-sm font-medium">Original</span>
                   <ArticleTable>
-                    <ArticleRows transaction={originalAsParent} />
+                    <ArticleRows transaction={originalAsParent} variant="plain" />
                   </ArticleTable>
                 </div>
               )}

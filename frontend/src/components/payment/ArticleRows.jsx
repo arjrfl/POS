@@ -52,8 +52,27 @@ function AdjustedRow({ row }) {
 // queue's Order Details panel and the Confirm Payment modal so they can't
 // render this differently. Meant to be placed inside a <tbody>, with the
 // standard QTY | UNIT | ARTICLES | UNIT PRICE | AMOUNT header above it.
-export function ArticleRows({ transaction }) {
-  const { unadjusted, adjusted, hasAdjustments } = useArticleRows(transaction)
+//
+// variant controls whether variance is marked at all — it's a context choice
+// (which box/transaction this is being rendered for), not something the data
+// itself should decide per item:
+//   'adjusted' (default, existing behavior) — items whose quantity_kg differs
+//     from actual_quantity_kg get an "Adjusted Items" heading + before/after
+//     arrows + delta; unchanged items render plainly above that heading.
+//   'plain' — every item renders with its actual value only, regardless of
+//     whether a variance exists underneath (no heading, no arrows, no delta).
+export function ArticleRows({ transaction, variant = 'adjusted' }) {
+  const { rows, unadjusted, adjusted, hasAdjustments } = useArticleRows(transaction)
+
+  if (variant === 'plain') {
+    return (
+      <>
+        {rows.map((row) => (
+          <UnadjustedRow key={row.id} row={row} />
+        ))}
+      </>
+    )
+  }
 
   return (
     <>

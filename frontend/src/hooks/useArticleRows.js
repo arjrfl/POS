@@ -33,6 +33,6 @@ export function useArticleRows(transaction) {
     const unadjusted = rows.filter((row) => !row.isAdjusted)
     const adjusted = rows.filter((row) => row.isAdjusted)
 
-    return { unadjusted, adjusted, hasAdjustments: adjusted.length > 0 }
+    return { rows, unadjusted, adjusted, hasAdjustments: adjusted.length > 0 }
   }, [transaction])
 }
