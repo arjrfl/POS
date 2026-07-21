@@ -8,6 +8,7 @@ import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { formatCurrency } from '../../utils/format'
 import { getDisplayStatus } from '../../utils/transactionStatus'
+import { TransactionDetailsModal } from './TransactionDetailsModal'
 
 const STATUSES = ['pending_payment', 'pending_settlement', 'settled', 'completed', 'voided']
 const SELECT_CLASSES =
@@ -76,7 +77,7 @@ function formatTransactionType(type) {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
-function TransactionRow({ transaction }) {
+function TransactionRow({ transaction, onViewDetails }) {
   const { data: customer } = useCustomer(transaction.customer_id)
 
   return (
@@ -90,7 +91,7 @@ function TransactionRow({ transaction }) {
       <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(transaction.total_due)}</td>
       <td className="px-3 py-2 text-sm text-gray-500 text-center">{new Date(transaction.created_at).toLocaleString()}</td>
       <td className="px-3 py-2 text-center">
-        <Button type="button" variant="outline" className="px-3 py-1 text-xs">
+        <Button type="button" variant="outline" className="px-3 py-1 text-xs" onClick={() => onViewDetails(transaction.id)}>
           View Details
         </Button>
       </td>
@@ -104,6 +105,7 @@ export function TransactionsSection() {
   const [draftFilters, setDraftFilters] = useState(DEFAULT_FILTERS)
   const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS)
   const [page, setPage] = useState(1)
+  const [viewingTransactionId, setViewingTransactionId] = useState(null)
 
   const setDraftField = (field, value) => setDraftFilters((prev) => ({ ...prev, [field]: value }))
 
@@ -224,7 +226,10 @@ export function TransactionsSection() {
                   </td>
                 </tr>
               )}
-              {!isLoading && data?.items.map((transaction) => <TransactionRow key={transaction.id} transaction={transaction} />)}
+              {!isLoading &&
+                data?.items.map((transaction) => (
+                  <TransactionRow key={transaction.id} transaction={transaction} onViewDetails={setViewingTransactionId} />
+                ))}
             </tbody>
           </table>
         </div>
@@ -245,6 +250,10 @@ export function TransactionsSection() {
           </div>
         )}
       </div>
+
+      {viewingTransactionId && (
+        <TransactionDetailsModal transactionId={viewingTransactionId} onClose={() => setViewingTransactionId(null)} />
+      )}
     </div>
   )
 }
