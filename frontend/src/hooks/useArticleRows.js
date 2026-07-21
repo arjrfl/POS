@@ -17,6 +17,7 @@ export function useArticleRows(transaction) {
 
       return {
         id: item.id,
+        product_id: item.product_id,
         product_name: item.product_name ?? `Product #${item.product_id}`,
         brand_name: item.brand_name,
         unit_count: item.unit_count,

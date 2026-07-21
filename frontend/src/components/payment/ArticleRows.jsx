@@ -10,11 +10,17 @@ import { useArticleRows } from '../../hooks/useArticleRows'
 // pushing columns wider).
 export const ARTICLE_ROW_COLUMN_WIDTHS = ['w-[15%]', 'w-[18%]', 'w-[21%]', 'w-[28%]', 'w-[18%]']
 
-function UnadjustedRow({ row, align }) {
+// Same light tint convention AdjustedRow already uses below for
+// amber (customer owes more) / blue (store owes customer) — reused here so
+// a highlighted row in the Original box reads consistently with that.
+const HIGHLIGHT_BG = { amber: 'bg-amber-50', blue: 'bg-blue-50' }
+
+function UnadjustedRow({ row, align, highlightedProductIds, highlightColor }) {
   const alignClass = align === 'center' ? 'text-center' : ''
   const articleAlignClass = align === 'center' ? 'text-left' : ''
+  const highlightClass = highlightedProductIds?.has(row.product_id) ? HIGHLIGHT_BG[highlightColor] ?? '' : ''
   return (
-    <tr className="border-b border-gray-100 last:border-b-0 align-top">
+    <tr className={`border-b border-gray-100 last:border-b-0 align-top ${highlightClass}`}>
       <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[0]} ${alignClass}`}>
         {(row.actual_quantity_kg ?? row.quantity_kg).toFixed(3)}
       </td>
@@ -84,14 +90,33 @@ function AdjustedRow({ row, align }) {
 //     arrows + delta; unchanged items render plainly above that heading.
 //   'plain' — every item renders with its actual value only, regardless of
 //     whether a variance exists underneath (no heading, no arrows, no delta).
-export function ArticleRows({ transaction, variant = 'adjusted', align = 'left' }) {
+//
+// highlightedProductIds (optional Set) + highlightColor ('amber' | 'blue') —
+// a light row-background tint for plain rows whose product_id is in the
+// set, with no heading/arrows/delta of its own. Used by the Original box
+// in TransactionDetailsModal.jsx to flag which items a linked adjustment/
+// refund child touched, without duplicating that child's before→after
+// presentation.
+export function ArticleRows({
+  transaction,
+  variant = 'adjusted',
+  align = 'left',
+  highlightedProductIds,
+  highlightColor,
+}) {
   const { rows, unadjusted, adjusted, hasAdjustments } = useArticleRows(transaction)
 
   if (variant === 'plain') {
     return (
       <>
         {rows.map((row) => (
-          <UnadjustedRow key={row.id} row={row} align={align} />
+          <UnadjustedRow
+            key={row.id}
+            row={row}
+            align={align}
+            highlightedProductIds={highlightedProductIds}
+            highlightColor={highlightColor}
+          />
         ))}
       </>
     )
@@ -100,7 +125,13 @@ export function ArticleRows({ transaction, variant = 'adjusted', align = 'left' 
   return (
     <>
       {unadjusted.map((row) => (
-        <UnadjustedRow key={row.id} row={row} align={align} />
+        <UnadjustedRow
+          key={row.id}
+          row={row}
+          align={align}
+          highlightedProductIds={highlightedProductIds}
+          highlightColor={highlightColor}
+        />
       ))}
       {hasAdjustments && (
         <>

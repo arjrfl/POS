@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { get } from '../../services/api'
 import { ArticleRows, ARTICLE_ROW_COLUMN_WIDTHS } from '../payment/ArticleRows'
+import { useArticleRows } from '../../hooks/useArticleRows'
 
 function capitalize(text) {
   return text.charAt(0).toUpperCase() + text.slice(1)
@@ -85,6 +86,18 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
     return { parent: { ...originalTxn, items: originalTxn.items.filter((item) => item.item_type === 'product') } }
   }, [originalTxn])
 
+  // Reuses the exact same before→after pairing the Adjustment box itself
+  // derives (useArticleRows(linkedChildTxn) reads linkedChildTxn.parent.items,
+  // i.e. these are the same underlying items as originalAsParent above) — no
+  // separate matching mechanism, just borrowing its `adjusted` result to know
+  // which product_ids to flag in the Original box.
+  const { adjusted: linkedAdjustedRows } = useArticleRows(linkedChildTxn)
+  const highlightedProductIds = useMemo(
+    () => new Set(linkedAdjustedRows.map((row) => row.product_id)),
+    [linkedAdjustedRows]
+  )
+  const highlightColor = linkedChildTxn?.transaction_type === 'refund' ? 'blue' : 'amber'
+
   return (
     <FullScreenModal open={true} onClose={onClose} title="Transaction History" closeLabel="‹ Back">
       <div className="flex flex-col h-full min-h-0">
@@ -108,7 +121,13 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
                     <span className="text-sm font-medium">Original - {originalTxn.order_number}</span>
                     <ArticleTable>
-                      <ArticleRows transaction={originalAsParent} variant="plain" align="center" />
+                      <ArticleRows
+                        transaction={originalAsParent}
+                        variant="plain"
+                        align="center"
+                        highlightedProductIds={highlightedProductIds}
+                        highlightColor={highlightColor}
+                      />
                     </ArticleTable>
                   </div>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
