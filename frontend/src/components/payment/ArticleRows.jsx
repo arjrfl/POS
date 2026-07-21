@@ -12,6 +12,7 @@ export const ARTICLE_ROW_COLUMN_WIDTHS = ['w-[15%]', 'w-[18%]', 'w-[21%]', 'w-[2
 
 function UnadjustedRow({ row, align }) {
   const alignClass = align === 'center' ? 'text-center' : ''
+  const articleAlignClass = align === 'center' ? 'text-left' : ''
   return (
     <tr className="border-b border-gray-100 last:border-b-0 align-top">
       <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[0]} ${alignClass}`}>
@@ -20,7 +21,7 @@ function UnadjustedRow({ row, align }) {
       <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[1]} ${alignClass}`}>
         {row.actual_unit_count ?? row.unit_count}
       </td>
-      <td className={`py-2 pr-2 ${ARTICLE_ROW_COLUMN_WIDTHS[2]} ${alignClass}`}>
+      <td className={`py-2 pr-2 ${ARTICLE_ROW_COLUMN_WIDTHS[2]} ${articleAlignClass}`}>
         <div className="font-medium text-gray-900">{row.product_name}</div>
         {row.brand_name && <div className="text-xs text-gray-500">{row.brand_name}</div>}
       </td>
@@ -36,6 +37,7 @@ function UnadjustedRow({ row, align }) {
 
 function AdjustedRow({ row, align }) {
   const alignClass = align === 'center' ? 'text-center' : ''
+  const articleAlignClass = align === 'center' ? 'text-left' : ''
   const variance = row.actual_subtotal - row.subtotal
   const tint = variance > 0 ? 'bg-amber-50' : variance < 0 ? 'bg-blue-50' : ''
   const varianceClass = variance > 0 ? 'text-amber-700' : variance < 0 ? 'text-blue-700' : 'text-gray-700'
@@ -49,7 +51,7 @@ function AdjustedRow({ row, align }) {
       <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[1]} ${alignClass}`}>
         {row.unit_count} &rarr; {row.actual_unit_count}
       </td>
-      <td className={`py-2 pr-2 ${ARTICLE_ROW_COLUMN_WIDTHS[2]} ${alignClass}`}>
+      <td className={`py-2 pr-2 ${ARTICLE_ROW_COLUMN_WIDTHS[2]} ${articleAlignClass}`}>
         <div className="font-medium text-gray-900">{row.product_name}</div>
         {row.brand_name && <div className="text-xs text-gray-500">{row.brand_name}</div>}
       </td>
