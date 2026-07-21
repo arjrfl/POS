@@ -52,14 +52,22 @@ Receiver → Payment → Releasing
 ### Online Customer Flow
 
 ```
-Receiver → Releasing → Payment → completed
+Receiver → Releasing (confirm-ready) → Payment (pay) → Releasing (confirm-handover)
 ```
+
+Online orders are per unit/box, not per weight — there's no substandard-kilo variance
+to confirm, so Releasing's first touch is just "items ready" (stock leaves the shelf
+here). Payment still has to collect payment before Releasing gives a final handover
+confirmation — that confirmation is a real second Releasing step in the DB
+(`pending_handover` status, `POST /confirm-handover` is NOT used here — see
+`POST /complete-online` in `transaction_service.py`), not an automatic complete.
 
 | Step | Actor | Action | transaction_status |
 |---|---|---|---|
-| 1 | Receiver | Creates transaction | `pending_settlement` |
-| 2 | Releasing | Confirms items ready | `pending_settlement` → `pending_payment` |
-| 3 | Payment | Processes payment (online ref number) | `pending_payment` → `completed` |
+| 1 | Receiver | Creates transaction | `pending_settlement` (skips Payment first) |
+| 2 | Releasing | Confirms items ready, stock decremented | `pending_settlement` → `pending_payment` |
+| 3 | Payment | Processes payment (online ref number) | `pending_payment` → `pending_handover` |
+| 4 | Releasing | Confirms handover (`POST /complete-online`) | `pending_handover` → `completed` |
 
 ### Balance Settlement Only Flow
 
@@ -89,11 +97,12 @@ Payment → Receiver (edit) → Payment → Releasing
 
 | Status | Meaning |
 |---|---|
-| `pending_payment` | Waiting for Payment team |
-| `pending_settlement` | Payment done, waiting for Releasing to confirm weight |
+| `pending_payment` | walk_in: Walk-In done, waiting for Team Payment. online: Releasing done, waiting for Team Payment |
+| `pending_settlement` | walk_in: Payment done, waiting for Team Releasing to confirm weight. online: Walk-In done, goes DIRECTLY to Releasing (skips Payment first) |
 | `pending_edit` | Returned from Payment to Receiver for item editing (walk_in only) |
-| `pending_adjustment` | Releasing found variance, child sent to Payment, waiting for resolution |
-| `settled` | Releasing confirmed with variance, outcome recorded |
+| `pending_adjustment` | Releasing found variance, child adjustment/refund sent to Payment queue, waiting for resolution |
+| `settled` | Payment has resolved the adjustment/refund child (paid, partially paid, or saved as credit). Parent is waiting for Releasing's final handover confirmation (`POST /confirm-handover`) before moving to `completed` |
+| `pending_handover` | online only, no substandard variance: Payment has confirmed payment for the order. Waiting on Releasing's final confirmation (`POST /complete-online`) before moving to `completed`. Distinct from `settled`, which is reserved for substandard adjustment/refund resolution |
 | `completed` | Fully done |
 | `voided` | Cancelled |
 
@@ -116,11 +125,12 @@ WHERE transaction_status = 'pending_payment'
 AND queue_status = 'waiting'
 ORDER BY walkin_at ASC;
 
--- Releasing queue (both settlement and adjustment waiting)
+-- Releasing queue (settlement, adjustment-pending, substandard-resolved-awaiting-
+-- handover, and plain-online-awaiting-handover cards — no queue_status restriction;
+-- processing/parked cards are included too and rendered with their own card styling)
 SELECT * FROM sales_transaction
-WHERE transaction_status IN ('pending_settlement', 'pending_adjustment')
-AND queue_status = 'waiting'
-ORDER BY payment_at ASC;
+WHERE transaction_status IN ('pending_settlement', 'pending_adjustment', 'settled', 'pending_handover')
+ORDER BY created_at DESC;
 ```
 
 ### Queue Status Values
@@ -159,7 +169,11 @@ Releasing confirms actual weight per item using a **per-item edit modal** (not b
 - Generates child transaction (type: `adjustment` if heavier, `refund` if lighter)
 - Child → Payment queue (`pending_payment`)
 - Parent → `pending_adjustment` (stays visible in Releasing queue as read-only)
-- When Payment resolves child → parent auto-completes → disappears from Releasing queue
+- When Payment resolves child → parent → `settled` (stays visible in Releasing's
+  queue as a read-only "Payment Resolved" card, not completed yet)
+- Releasing then gives a final handover confirmation (`POST /{id}/confirm-handover`)
+  — this is where stock actually leaves for this flow — which moves the parent to
+  `completed` and it disappears from the Releasing queue
 
 ### What Releasing Does NOT Do
 - Does NOT offer "Save as Balance" option

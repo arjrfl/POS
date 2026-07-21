@@ -78,13 +78,19 @@ dependency not listed above without explicit instruction.
 
 ### Two Customer Flows — Different Pipeline Order
 - `walk_in`: Receiver → Payment → Releasing
-- `online`: Receiver → Releasing → Payment (no second Releasing in DB, just marked complete)
+- `online`: Receiver → Releasing (confirm-ready) → Payment (pay) → Releasing (confirm-handover,
+  `pending_handover` status) — a real second Releasing touch, not just an auto-complete
 - `customer_type` on `sales_transaction` determines which flow applies
 
 ### Queue = Status Filter, Not a Message Broker
-- Payment queue: `transaction_status = 'pending_payment' AND queue_status = 'waiting'`
-- Releasing queue: `transaction_status IN ('pending_settlement', 'pending_adjustment') AND queue_status = 'waiting'`
-- Receiver queue: `transaction_status = 'pending_edit'` (returned from Payment for editing)
+- Payment queue: `transaction_status = 'pending_payment'`
+- Releasing queue: `transaction_status IN ('pending_settlement', 'pending_adjustment', 'settled', 'pending_handover')`
+  — `settled` and `pending_handover` cards are read-only/awaiting-handover, not grabbable
+- Receiver queue: `transaction_status = 'pending_edit' AND queue_status = 'waiting'` (returned from Payment for editing)
+- Payment/Releasing queues are NOT additionally filtered by `queue_status = 'waiting'` at the API
+  level — processing/parked transactions still come back in the list (rendered with the
+  processing/parked card styling) so teammates can see who's working on what; only the Receiver
+  queue enforces `queue_status = 'waiting'` server-side
 - No RabbitMQ, no Redis — just PostgreSQL status column + WebSocket broadcast
 
 ### Queue Locking
@@ -150,7 +156,10 @@ dependency not listed above without explicit instruction.
   - The old code path that lets a `refund` transaction flow through the normal
     `/pay` endpoint is still in the codebase (see comment above that route) but
     is intentionally not surfaced in the UI — may be re-enabled later
-- After Payment resolves child → parent auto-completes → disappears from releasing queue
+- After Payment resolves child → parent → `settled` (stays in Releasing's queue,
+  read-only, as a "Payment Resolved" card) → Releasing confirms handover
+  (`POST /{id}/confirm-handover`, this is where stock actually leaves) → `completed`
+  → disappears from Releasing queue
 
 ### Payment Draft Entries
 - Payment entries are saved as drafts (`is_draft = TRUE` in `payment_detail`)
@@ -223,30 +232,76 @@ dependency not listed above without explicit instruction.
   { "data": null, "error": "message" }
   ```
 - Auth via JWT — role embedded in token, enforced at every endpoint
-- Key transaction endpoints:
-  - `POST /api/transactions` — create (receiver)
-  - `POST /api/transactions/{id}/grab` — lock transaction
-  - `POST /api/transactions/{id}/park` — park transaction
-  - `POST /api/transactions/{id}/unpark` — unpark transaction
-  - `POST /api/transactions/{id}/pay` — process payment
-  - `POST /api/transactions/{id}/return-to-receiver` — send back for editing (payment only, walk_in only)
-  - `PATCH /api/transactions/{id}/items` — edit items (receiver only, pending_edit only)
-  - `POST /api/transactions/{id}/resubmit` — resubmit to payment after editing
-  - `POST /api/transactions/{id}/confirm-weight` — confirm actual weights (releasing)
-  - `POST /api/transactions/{id}/confirm-ready` — online orders ready (releasing)
-  - `POST /api/transactions/{id}/resolve` — resolve substandard, outcome: "send_to_payment" only
-  - `POST /api/transactions/{id}/resolve-as-credit` — resolve a `refund`-type child as
-    customer credit (payment only, `pending_payment` only, no payment method involved)
-  - `PUT /api/transactions/{id}/payment-drafts` — save draft payment entries
-  - `GET /api/customers/{id}/balance-entries` — get per-transaction balance entries
-  - `GET /api/customers/{id}/ledger?category=balance|credit` — outstanding
-    balance/credit ledger entries for a customer (Admin Customers tab)
+- Full endpoint list, grouped by router file (`backend/app/routers/`):
+
+  **Transactions** (`transactions.py`, prefix `/api/transactions`)
+  - `POST /` — create (receiver)
+  - `GET /` — list/queue (role-filtered — see Queue = Status Filter above)
+  - `GET /history` — completed + voided transactions
+  - `GET /{id}` — get one (full parent+child chain)
+  - `GET /{id}/chain` — just the parent+child chain
+  - `POST /{id}/grab` — lock transaction (payment, releasing, receiver)
+  - `POST /{id}/park` — park transaction (payment, releasing)
+  - `POST /{id}/unpark` — unpark transaction (payment, releasing)
+  - `POST /{id}/release` — release a grabbed transaction back to waiting (payment, releasing, receiver)
+  - `PUT /{id}/payment-drafts` — save draft payment entries (payment)
+  - `POST /{id}/pay` — process payment (payment); still fully supports `refund`-type
+    transactions server-side, but Payment's UI no longer opens the payment modal
+    for those — see `/resolve-as-credit`
+  - `POST /{id}/confirm-weight` — confirm actual weights, walk_in (releasing)
+  - `POST /{id}/confirm-ready` — mark online order items ready, no weight variance (releasing)
+  - `POST /{id}/resolve` — resolve substandard variance, outcome: "send_to_payment" only (releasing)
+  - `POST /{id}/complete-exact` — auto-complete when confirmed weight is exact, `balance_due = 0` (releasing)
+  - `GET /{id}/handover-outcome` — how a `settled` transaction's adjustment/refund
+    child was resolved, for display before handover (releasing)
+  - `POST /{id}/confirm-handover` — final handover confirmation for a `settled`
+    transaction (substandard adjustment/refund flow) → `completed` (releasing)
+  - `POST /{id}/complete-online` — final handover confirmation for a `pending_handover`
+    transaction (plain online flow, no variance) → `completed` (releasing)
+  - `POST /{id}/resolve-as-credit` — resolve a `refund`-type child as customer
+    credit (payment only, `pending_payment` only, no payment method involved)
+  - `POST /{id}/return-to-receiver` — send back for editing (payment only, walk_in only)
+  - `PATCH /{id}/items` — edit items (receiver only, `pending_edit` only)
+  - `POST /{id}/resubmit` — resubmit to payment after editing (receiver)
+
+  **Products** (`products.py`, prefix `/api/products`)
+  - `GET /` — list (active-only unless caller is releasing/admin)
+  - `GET /{id}` — get one
+  - `GET /{id}/history` — product_audit_log entries (releasing, admin)
+  - `POST /` — create (releasing, admin)
+  - `PATCH /{id}` — update (releasing, admin)
+  - `POST /{id}/adjust-stock` — manual stock adjustment, logged (releasing, admin)
+  - `POST /{id}/toggle-status` — activate/deactivate, logged (releasing, admin)
+  - `DELETE /{id}` — legacy one-directional deactivate; superseded by
+    toggle-status and no longer called by the frontend (admin only)
+
+  **Customers** (`customers.py`, prefix `/api/customers`)
+  - `GET /` — list (search by name, active only)
+  - `GET /{id}` — get one, with ledger entries + totals (Admin Customers tab)
+  - `GET /{id}/ledger?category=balance|credit` — outstanding balance/credit
+    ledger entries for a customer (Admin Customers tab)
+  - `GET /{id}/balance-entries` — outstanding balance entries (payment only)
+  - `GET /{id}/credit-entries` — outstanding credit entries (payment only)
+  - `POST /` — create (admin, receiver)
+  - `PATCH /{id}` — update (admin, receiver)
+  - `DELETE /{id}` — soft-delete, sets `customer_status = inactive` (admin, receiver)
+
+  **Payment Methods** (`payment_methods.py`, prefix `/api/payment-methods`)
+  - `GET /` — list
+
+  **Admin** (`admin.py`, prefix `/api/admin`)
+  - `GET /dashboard/top-products` — top 10 products by revenue for the
+    current month (admin only)
+
+  **Auth** (`auth.py`, prefix `/api/auth`)
+  - `POST /login`
+
+  Notes:
   - `GET /api/transactions?customer_id={id}&include_payment_status=true` —
     a customer's transaction history with derived `payment_status`
     (full/partial/voided); same list endpoint as the Transaction History
     tab, not a separate `/customers/{id}/transactions` route
-  - `GET /api/admin/dashboard/top-products` — top 10 products by revenue
-    for the current month (admin only)
+  - WebSocket connections are under `/ws/{room}` — see `ws.py`, not a REST router
 
 ---
 
@@ -255,8 +310,9 @@ dependency not listed above without explicit instruction.
 - Role-based routing — each team sees only their screen on login
 - Receiver screen (`/walkin`): queue of `pending_edit` + create modal + edit modal
 - Payment screen (`/payment`): queue of `pending_payment`, payment modal with drafts
-- Releasing screen (`/releasing`): queue of `pending_settlement` + `pending_adjustment`,
-  plus an Inventory tab for product CRUD — shared components with Admin's Products tab
+- Releasing screen (`/releasing`): queue of `pending_settlement` + `pending_adjustment`
+  + `settled` + `pending_handover` (see Queue = Status Filter above), plus an Inventory
+  tab for product CRUD — shared components with Admin's Products tab
 - Admin screen (`/admin`): TabBar navigation — Dashboard, Customers, Products,
   and Transaction History tabs built and wired; Users tab present in the
   TabBar but disabled (no content). `QueueMonitorSection.jsx` exists under
@@ -279,9 +335,6 @@ dependency not listed above without explicit instruction.
     acting user's role ("Releasing" or "Admin"). Not admin-only — both
     screens read/write the same rows and stay in sync via the
     `product_changed` WebSocket broadcast
-  - Transaction History tab: filtered/paginated list (status, customer type,
-    date range, customer search) with expandable rows showing the full
-    parent+child transaction chain
 - No page scroll on any screen — panels scroll internally only
 - All screens: 60% left (queue) / 40% right (order details) split
 - Queue panels: `bg-gray-100 border border-gray-400 rounded-lg`
@@ -336,20 +389,42 @@ lash-meatshop-pos/
 │   └── tests/
 └── frontend/
     ├── src/
-    │   ├── assets/logo.png
+    │   ├── assets/meatshop-logo.png
     │   ├── pages/
+    │   │   ├── Login.jsx
     │   │   ├── WalkIn.jsx     ← Receiver screen
     │   │   ├── Payment.jsx
     │   │   ├── Releasing.jsx
     │   │   └── Admin.jsx      ← Admin screen (Dashboard/Customers/Products/Transaction History)
     │   ├── components/
-    │   │   ├── layout/
-    │   │   ├── ui/
-    │   │   └── ErrorBoundary.jsx
+    │   │   ├── admin/         ← DashboardSection, TopProductsChart, CustomersSection,
+    │   │   │                     CustomerDetailPanel, ProductsSection, TransactionsSection,
+    │   │   │                     TransactionChainDetails, TabBar, QueueMonitorSection (unwired)
+    │   │   ├── inventory/     ← AdjustStockModal, ChangeHistoryModal, InventoryView
+    │   │   │                     (shared by Releasing's Inventory tab and Admin's Products tab)
+    │   │   ├── layout/        ← Navbar, PageLayout
+    │   │   ├── payment/       ← QueuePanel, QueueTransactionRow, PaymentModal,
+    │   │   │                     PaymentConfirmationModal, TransactionDetailPanel,
+    │   │   │                     TransactionHistory, ArticleRows, OriginalTransactionLink
+    │   │   ├── queue/         ← TransactionCard
+    │   │   ├── releasing/     ← QueuePanel, QueueTransactionRow, ReleaseProcessor,
+    │   │   │                     ItemEditModal, SubstandardResolution, HandoverOutcomeModal,
+    │   │   │                     PaymentConfirmedModal
+    │   │   ├── ui/            ← Badge, Button, Card, FullScreenModal, Input, Modal, Toast
+    │   │   ├── walkin/        ← QueuePanel, ReceiverQueueRow, CreateTransactionModal,
+    │   │   │                     EditOrderModal, CustomerSelector, AddCustomerModal,
+    │   │   │                     ProductSelector, OrderSummaryPanel
+    │   │   ├── ErrorBoundary.jsx
+    │   │   └── ProtectedRoute.jsx
     │   ├── hooks/
     │   │   ├── useWebSocket.js
     │   │   ├── useQueue.js
-    │   │   └── useAuth.js
+    │   │   ├── useAuth.js
+    │   │   ├── useArticleRows.js
+    │   │   ├── useCustomer.js
+    │   │   ├── usePaymentMethods.js
+    │   │   ├── useProducts.js
+    │   │   └── useTransactions.js
     │   ├── store/
     │   │   ├── authStore.js
     │   │   └── notificationStore.js
@@ -357,6 +432,12 @@ lash-meatshop-pos/
     │   │   └── api.js          ← relative URLs only, never localhost
     │   └── utils/
     │       ├── format.js       ← formatCurrency
-    │       └── id.js           ← generateId (HTTP-safe, no crypto.randomUUID)
+    │       ├── id.js           ← generateId (HTTP-safe, no crypto.randomUUID)
+    │       ├── customerType.js
+    │       ├── paymentMethod.js
+    │       ├── paymentDraft.js
+    │       ├── receiverDraft.js
+    │       ├── transactionStatus.js
+    │       └── time.js
     └── dist/
 ```
