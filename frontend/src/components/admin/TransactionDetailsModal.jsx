@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { Button } from '../ui/Button'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { get } from '../../services/api'
 
@@ -61,14 +60,8 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
   const hasLinkedAdjustment = Boolean(linkedChildTxn)
 
   return (
-    <FullScreenModal open={true} onClose={onClose} title="Transaction History">
-      <div className="flex flex-col gap-4 h-full min-h-0">
-        <div className="shrink-0">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            ‹ Back
-          </Button>
-        </div>
-
+    <FullScreenModal open={true} onClose={onClose} title="Transaction History" closeLabel="‹ Back">
+      <div className="flex flex-col h-full min-h-0">
         {loading && (
           <div className="flex-1 min-h-0 flex items-center justify-center">
             <p className="text-sm text-gray-500">Loading...</p>
