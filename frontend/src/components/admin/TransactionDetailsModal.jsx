@@ -76,7 +76,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
 
         {!loading && !error && (
           <div className="flex-1 min-h-0 flex gap-[10px] p-[10px]">
-            <div className="w-[520px] shrink-0 flex flex-col gap-[10px] min-h-0">
+            <div className="flex-[55] min-w-0 flex flex-col gap-[10px] min-h-0">
               {hasLinkedAdjustment ? (
                 <>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
@@ -98,7 +98,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
               )}
             </div>
 
-            <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0">
+            <div className="flex-[45] min-w-0 flex flex-col gap-2 min-h-0">
               <span className="text-sm font-medium">Details</span>
               <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg" />
             </div>
