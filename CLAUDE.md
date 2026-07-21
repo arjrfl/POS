@@ -97,6 +97,12 @@ dependency not listed above without explicit instruction.
 - When a team member grabs: `queue_status → 'processing'`, `processing_by_user_id` set
 - When parked: `queue_status → 'parked'`, `processing_by_user_id → NULL`
 - On WebSocket disconnect: auto-release any transactions the user was processing back to 'waiting'
+- Grab is race-safe: `_get_transaction_for_update()` (`transaction_service.py:545`) uses
+  `SELECT ... FOR UPDATE` to row-lock the transaction before `grab_transaction()`
+  (`transaction_service.py:609`) checks `queue_status`, so two concurrent grabs on the
+  same transaction can't both succeed. The losing request gets a `QueueConflictError`
+  → HTTP 409 (`transactions.py:160`), and the frontend shows a toast without marking
+  the transaction as open on that terminal
 
 ### WebSocket Must Broadcast on Two Events
 1. `transaction_status` change → broadcast to **next team's** room

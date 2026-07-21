@@ -380,7 +380,6 @@ volumes:
 
 ## 13. Open Items (Batch 5 — Production Readiness)
 
-- [ ] Fix multiple WebSocket connections per user (structural issue in useWebSocket hook)
 - [ ] End-of-day auto-void for incomplete transactions (TODO comment in transaction_service.py)
 - [ ] Plain HTTP vs self-signed HTTPS across the LAN
 - [ ] Backup destination: USB drive vs NAS vs second PC
