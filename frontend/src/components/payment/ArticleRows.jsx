@@ -1,22 +1,41 @@
 import { formatCurrency } from '../../utils/format'
 import { useArticleRows } from '../../hooks/useArticleRows'
 
-function UnadjustedRow({ row }) {
+// Proportional column widths — kept in one place so every consumer's header
+// (each wraps ArticleRows in its own <table>/<thead>, see ArticleRows'
+// top-of-file comment) can mirror them exactly on its <th> cells. Paired with
+// table-fixed on the consumer's <table>, this guarantees the header and every
+// row below land on identical pixel-aligned columns regardless of content
+// length (e.g. long product/brand names wrap within ARTICLE instead of
+// pushing columns wider).
+export const ARTICLE_ROW_COLUMN_WIDTHS = ['w-[15%]', 'w-[18%]', 'w-[21%]', 'w-[28%]', 'w-[18%]']
+
+function UnadjustedRow({ row, align }) {
+  const alignClass = align === 'center' ? 'text-center' : ''
   return (
     <tr className="border-b border-gray-100 last:border-b-0 align-top">
-      <td className="py-2 pr-2 text-gray-700">{(row.actual_quantity_kg ?? row.quantity_kg).toFixed(3)}</td>
-      <td className="py-2 pr-2 text-gray-700">{row.actual_unit_count ?? row.unit_count}</td>
-      <td className="py-2 pr-2">
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[0]} ${alignClass}`}>
+        {(row.actual_quantity_kg ?? row.quantity_kg).toFixed(3)}
+      </td>
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[1]} ${alignClass}`}>
+        {row.actual_unit_count ?? row.unit_count}
+      </td>
+      <td className={`py-2 pr-2 ${ARTICLE_ROW_COLUMN_WIDTHS[2]} ${alignClass}`}>
         <div className="font-medium text-gray-900">{row.product_name}</div>
         {row.brand_name && <div className="text-xs text-gray-500">{row.brand_name}</div>}
       </td>
-      <td className="py-2 pr-2 text-gray-700">{formatCurrency(row.unit_price)}</td>
-      <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(row.actual_subtotal ?? row.subtotal)}</td>
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[3]} ${alignClass}`}>
+        {formatCurrency(row.unit_price)}
+      </td>
+      <td className={`py-2 pr-2 font-medium text-gray-900 ${ARTICLE_ROW_COLUMN_WIDTHS[4]} ${alignClass}`}>
+        {formatCurrency(row.actual_subtotal ?? row.subtotal)}
+      </td>
     </tr>
   )
 }
 
-function AdjustedRow({ row }) {
+function AdjustedRow({ row, align }) {
+  const alignClass = align === 'center' ? 'text-center' : ''
   const variance = row.actual_subtotal - row.subtotal
   const tint = variance > 0 ? 'bg-amber-50' : variance < 0 ? 'bg-blue-50' : ''
   const varianceClass = variance > 0 ? 'text-amber-700' : variance < 0 ? 'text-blue-700' : 'text-gray-700'
@@ -24,18 +43,20 @@ function AdjustedRow({ row }) {
 
   return (
     <tr className={`border-b border-gray-100 last:border-b-0 align-top ${tint}`}>
-      <td className="py-2 pr-2 text-gray-700">
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[0]} ${alignClass}`}>
         {row.quantity_kg.toFixed(3)} &rarr; {row.actual_quantity_kg.toFixed(3)}
       </td>
-      <td className="py-2 pr-2 text-gray-700">
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[1]} ${alignClass}`}>
         {row.unit_count} &rarr; {row.actual_unit_count}
       </td>
-      <td className="py-2 pr-2">
+      <td className={`py-2 pr-2 ${ARTICLE_ROW_COLUMN_WIDTHS[2]} ${alignClass}`}>
         <div className="font-medium text-gray-900">{row.product_name}</div>
         {row.brand_name && <div className="text-xs text-gray-500">{row.brand_name}</div>}
       </td>
-      <td className="py-2 pr-2 text-gray-700">{formatCurrency(row.unit_price)}</td>
-      <td className={`py-2 pr-2 font-medium ${varianceClass}`}>
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[3]} ${alignClass}`}>
+        {formatCurrency(row.unit_price)}
+      </td>
+      <td className={`py-2 pr-2 font-medium ${varianceClass} ${ARTICLE_ROW_COLUMN_WIDTHS[4]} ${alignClass}`}>
         <div>
           {formatCurrency(row.subtotal)} &rarr; {formatCurrency(row.actual_subtotal)}
         </div>
@@ -61,14 +82,14 @@ function AdjustedRow({ row }) {
 //     arrows + delta; unchanged items render plainly above that heading.
 //   'plain' — every item renders with its actual value only, regardless of
 //     whether a variance exists underneath (no heading, no arrows, no delta).
-export function ArticleRows({ transaction, variant = 'adjusted' }) {
+export function ArticleRows({ transaction, variant = 'adjusted', align = 'left' }) {
   const { rows, unadjusted, adjusted, hasAdjustments } = useArticleRows(transaction)
 
   if (variant === 'plain') {
     return (
       <>
         {rows.map((row) => (
-          <UnadjustedRow key={row.id} row={row} />
+          <UnadjustedRow key={row.id} row={row} align={align} />
         ))}
       </>
     )
@@ -77,7 +98,7 @@ export function ArticleRows({ transaction, variant = 'adjusted' }) {
   return (
     <>
       {unadjusted.map((row) => (
-        <UnadjustedRow key={row.id} row={row} />
+        <UnadjustedRow key={row.id} row={row} align={align} />
       ))}
       {hasAdjustments && (
         <>
@@ -90,7 +111,7 @@ export function ArticleRows({ transaction, variant = 'adjusted' }) {
             </td>
           </tr>
           {adjusted.map((row) => (
-            <AdjustedRow key={row.id} row={row} />
+            <AdjustedRow key={row.id} row={row} align={align} />
           ))}
         </>
       )}

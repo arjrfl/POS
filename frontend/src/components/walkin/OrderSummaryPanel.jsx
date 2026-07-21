@@ -1,6 +1,7 @@
 import { Card } from '../ui/Card'
 import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
+import { ARTICLE_ROW_COLUMN_WIDTHS } from '../payment/ArticleRows'
 
 function TrashIcon() {
   return (
@@ -101,14 +102,14 @@ export function OrderSummaryPanel({
             </tbody>
           </table>
         ) : itemsTable ? (
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
             <thead className="sticky top-0 bg-white">
               <tr className="text-left text-gray-500 border-b border-gray-200">
-                <th className="py-2 pr-2 font-medium">QTY</th>
-                <th className="py-2 pr-2 font-medium">UNIT</th>
-                <th className="py-2 pr-2 font-medium">ARTICLES</th>
-                <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
-                <th className="py-2 pr-2 font-medium">AMOUNT</th>
+                <th className={`py-2 pr-2 font-medium ${ARTICLE_ROW_COLUMN_WIDTHS[0]}`}>QTY</th>
+                <th className={`py-2 pr-2 font-medium ${ARTICLE_ROW_COLUMN_WIDTHS[1]}`}>UNIT</th>
+                <th className={`py-2 pr-2 font-medium ${ARTICLE_ROW_COLUMN_WIDTHS[2]}`}>ARTICLES</th>
+                <th className={`py-2 pr-2 font-medium ${ARTICLE_ROW_COLUMN_WIDTHS[3]}`}>UNIT PRICE</th>
+                <th className={`py-2 pr-2 font-medium ${ARTICLE_ROW_COLUMN_WIDTHS[4]}`}>AMOUNT</th>
               </tr>
             </thead>
             <tbody>{itemsTable}</tbody>

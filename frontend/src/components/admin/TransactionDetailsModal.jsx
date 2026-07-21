@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { get } from '../../services/api'
-import { ArticleRows } from '../payment/ArticleRows'
+import { ArticleRows, ARTICLE_ROW_COLUMN_WIDTHS } from '../payment/ArticleRows'
 
 function capitalize(text) {
   return text.charAt(0).toUpperCase() + text.slice(1)
@@ -12,16 +12,19 @@ const ARTICLE_TABLE_COLUMNS = ['QTY', 'UNIT', 'ARTICLES', 'UNIT PRICE', 'AMOUNT'
 // ArticleRows renders <tr> rows meant for a real <table><tbody> (see its own
 // comment) — a header-only div/grid can't host them, so the header lives in a
 // <thead> here instead, keeping the same sticky/label styling as before.
+// table-fixed + ARTICLE_ROW_COLUMN_WIDTHS on the header cells (matching the
+// widths ArticleRows itself sets on its <td>s) keeps the header and every row
+// pixel-aligned on the same 5 proportional columns.
 function ArticleTable({ children }) {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
-      <table className="w-full text-sm">
+      <table className="w-full table-fixed text-sm">
         <thead className="sticky top-0 bg-gray-100 border-b border-gray-400">
           <tr>
-            {ARTICLE_TABLE_COLUMNS.map((column) => (
+            {ARTICLE_TABLE_COLUMNS.map((column, index) => (
               <th
                 key={column}
-                className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-500"
+                className={`px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 ${ARTICLE_ROW_COLUMN_WIDTHS[index]}`}
               >
                 {column}
               </th>
@@ -105,7 +108,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
                     <span className="text-sm font-medium">Original - {originalTxn.order_number}</span>
                     <ArticleTable>
-                      <ArticleRows transaction={originalAsParent} variant="plain" />
+                      <ArticleRows transaction={originalAsParent} variant="plain" align="center" />
                     </ArticleTable>
                   </div>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
@@ -113,7 +116,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
                       {capitalize(linkedChildTxn.transaction_type)} - {linkedChildTxn.order_number}
                     </span>
                     <ArticleTable>
-                      <ArticleRows transaction={linkedChildTxn} variant="adjusted" />
+                      <ArticleRows transaction={linkedChildTxn} variant="adjusted" align="center" />
                     </ArticleTable>
                   </div>
                 </>
@@ -121,7 +124,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
                 <div className="flex-1 min-h-0 flex flex-col gap-2">
                   <span className="text-sm font-medium">Original</span>
                   <ArticleTable>
-                    <ArticleRows transaction={originalAsParent} variant="plain" />
+                    <ArticleRows transaction={originalAsParent} variant="plain" align="center" />
                   </ArticleTable>
                 </div>
               )}

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
-import { ArticleRows } from './ArticleRows'
+import { ArticleRows, ARTICLE_ROW_COLUMN_WIDTHS } from './ArticleRows'
 import { OriginalTransactionLink } from './OriginalTransactionLink'
 import { post } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
@@ -167,14 +167,14 @@ export function PaymentConfirmationModal({
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto border border-gray-300 rounded-md bg-white">
-            <table className="w-full text-sm">
+            <table className="w-full table-fixed text-sm">
               <thead className="sticky top-0 bg-white">
                 <tr className="text-left text-gray-500 border-b border-gray-200">
-                  <th className="py-2 pl-2 pr-2 font-medium">QTY</th>
-                  <th className="py-2 pr-2 font-medium">UNIT</th>
-                  <th className="py-2 pr-2 font-medium">ARTICLES</th>
-                  <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
-                  <th className="py-2 pr-2 font-medium">AMOUNT</th>
+                  <th className={`py-2 pl-2 pr-2 font-medium ${ARTICLE_ROW_COLUMN_WIDTHS[0]}`}>QTY</th>
+                  <th className={`py-2 pr-2 font-medium ${ARTICLE_ROW_COLUMN_WIDTHS[1]}`}>UNIT</th>
+                  <th className={`py-2 pr-2 font-medium ${ARTICLE_ROW_COLUMN_WIDTHS[2]}`}>ARTICLES</th>
+                  <th className={`py-2 pr-2 font-medium ${ARTICLE_ROW_COLUMN_WIDTHS[3]}`}>UNIT PRICE</th>
+                  <th className={`py-2 pr-2 font-medium ${ARTICLE_ROW_COLUMN_WIDTHS[4]}`}>AMOUNT</th>
                 </tr>
               </thead>
               <tbody>
