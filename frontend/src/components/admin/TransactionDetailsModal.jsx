@@ -33,6 +33,13 @@ function SectionHeading({ children }) {
   return <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{children}</h4>
 }
 
+// Same subtle line already used above "Total Due" (border-t border-gray-300)
+// and by Section B's own top border — reused here rather than a new style, so
+// every section boundary in the Details column reads consistently.
+function Divider() {
+  return <div className="border-t border-gray-300" />
+}
+
 function VoidInfoBlock({ voidInfo }) {
   if (!voidInfo) return null
   return (
@@ -47,6 +54,7 @@ function VoidInfoBlock({ voidInfo }) {
 function PaymentEntriesBlock({ entries, cashTendered, changeGiven, changeClaimed }) {
   if (!entries?.length) return null
   const hasCash = entries.some((entry) => entry.payment_method_name === 'cash')
+  const totalPaymentEntries = entries.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0)
 
   return (
     <div className="flex flex-col gap-2">
@@ -61,13 +69,19 @@ function PaymentEntriesBlock({ entries, cashTendered, changeGiven, changeClaimed
           <span className="text-gray-900 shrink-0">{formatCurrency(entry.amount)}</span>
         </div>
       ))}
+      <div className="flex justify-between text-sm font-bold pt-1.5 mt-1 border-t border-gray-300">
+        <span>Total Payment Entries</span>
+        <span>{formatCurrency(totalPaymentEntries)}</span>
+      </div>
       {hasCash && <InfoRow label="Cash Tendered" value={formatCurrency(cashTendered)} />}
       {Number(changeGiven) > 0 && (
-        <p className="text-xs text-gray-500">
-          {changeClaimed
-            ? `Change Given: ${formatCurrency(changeGiven)} — taken by customer`
-            : `Change Given: ${formatCurrency(changeGiven)} — added to customer credit`}
-        </p>
+        <>
+          <InfoRow label="Change" value={formatCurrency(changeGiven)} />
+          <InfoRow label="Change Taken by Customer?" value={changeClaimed ? 'Yes' : 'No'} />
+          {!changeClaimed && (
+            <InfoRow label="Added to Customer Credit Record" value={formatCurrency(changeGiven)} />
+          )}
+        </>
       )}
     </div>
   )
@@ -143,6 +157,37 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
   const customerTypeBadge = CUSTOMER_TYPE_BADGE[originalTxn.customer_type]
   const isRefundChild = linkedChildTxn?.transaction_type === 'refund'
 
+  // Built as a list (rather than inline JSX) so a divider can be placed before
+  // each section without ever landing before one that didn't render (e.g. Void
+  // Info on a non-voided transaction) — filter(Boolean) drops those first.
+  const sectionsA = [
+    originalTxn.void_info && <VoidInfoBlock key="void" voidInfo={originalTxn.void_info} />,
+    <div key="handled-by">
+      <SectionHeading>Handled By</SectionHeading>
+      <HandledByBlock t={originalTxn} />
+    </div>,
+    <div key="customer">
+      <SectionHeading>Customer</SectionHeading>
+      <InfoRow label="Name" value={customer?.full_name ?? '...'} />
+      <InfoRow label="Address" value={originalTxn.customer_address ?? 'No address on file'} />
+    </div>,
+    originalTxn.payment_entries?.length > 0 && (
+      <div key="payment-entries">
+        <SectionHeading>Payment Entries</SectionHeading>
+        <PaymentEntriesBlock
+          entries={originalTxn.payment_entries}
+          cashTendered={originalTxn.cash_tendered}
+          changeGiven={originalTxn.change_given}
+          changeClaimed={originalTxn.change_claimed}
+        />
+      </div>
+    ),
+    <div key="amount-summary">
+      <SectionHeading>Amount Summary</SectionHeading>
+      <OriginalAmountSummary t={originalTxn} />
+    </div>,
+  ].filter(Boolean)
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col gap-4">
       <div className="flex flex-col gap-3">
@@ -156,35 +201,7 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
           )}
         </div>
 
-        <VoidInfoBlock voidInfo={originalTxn.void_info} />
-
-        <div>
-          <SectionHeading>Handled By</SectionHeading>
-          <HandledByBlock t={originalTxn} />
-        </div>
-
-        <div>
-          <SectionHeading>Customer</SectionHeading>
-          <InfoRow label="Name" value={customer?.full_name ?? '...'} />
-          <InfoRow label="Address" value={originalTxn.customer_address ?? 'No address on file'} />
-        </div>
-
-        <div>
-          <SectionHeading>Amount Summary</SectionHeading>
-          <OriginalAmountSummary t={originalTxn} />
-        </div>
-
-        {originalTxn.payment_entries?.length > 0 && (
-          <div>
-            <SectionHeading>Payment Entries</SectionHeading>
-            <PaymentEntriesBlock
-              entries={originalTxn.payment_entries}
-              cashTendered={originalTxn.cash_tendered}
-              changeGiven={originalTxn.change_given}
-              changeClaimed={originalTxn.change_claimed}
-            />
-          </div>
-        )}
+        {sectionsA.flatMap((section, index) => [<Divider key={`divider-${index}`} />, section])}
       </div>
 
       {linkedChildTxn && (
@@ -211,6 +228,18 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
 
           <VoidInfoBlock voidInfo={linkedChildTxn.void_info} />
 
+          {!isRefundChild && linkedChildTxn.payment_entries?.length > 0 && (
+            <div>
+              <SectionHeading>Payment Entries</SectionHeading>
+              <PaymentEntriesBlock
+                entries={linkedChildTxn.payment_entries}
+                cashTendered={linkedChildTxn.cash_tendered}
+                changeGiven={linkedChildTxn.change_given}
+                changeClaimed={linkedChildTxn.change_claimed}
+              />
+            </div>
+          )}
+
           <div>
             <SectionHeading>Amount Summary</SectionHeading>
             {isRefundChild ? (
@@ -233,18 +262,6 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
               </div>
             )}
           </div>
-
-          {!isRefundChild && linkedChildTxn.payment_entries?.length > 0 && (
-            <div>
-              <SectionHeading>Payment Entries</SectionHeading>
-              <PaymentEntriesBlock
-                entries={linkedChildTxn.payment_entries}
-                cashTendered={linkedChildTxn.cash_tendered}
-                changeGiven={linkedChildTxn.change_given}
-                changeClaimed={linkedChildTxn.change_claimed}
-              />
-            </div>
-          )}
         </div>
       )}
     </div>
