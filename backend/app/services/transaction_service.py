@@ -402,6 +402,19 @@ async def get_transaction_chain(db: AsyncSession, transaction_id: int) -> list[T
     responses = [_build_transaction_response(t) for t in chain]
     for response, t in zip(responses, chain):
         _enrich_items_with_product_info(response, t)
+
+    # payment_status per node — same derivation as list_transactions'
+    # include_payment_status path, needed so the admin Transaction Details
+    # modal can show a status badge for a linked adjustment/refund child
+    # without a second round-trip. Every node in a chain shares one customer.
+    if chain:
+        outstanding_entries = await customer_service.get_outstanding_balance_entries(db, chain[0].customer_id)
+        transactions_with_outstanding_balance = {entry.transaction_id for entry in outstanding_entries}
+        for response, t in zip(responses, chain):
+            response.payment_status = _compute_payment_status(
+                t.transaction_status, t.customer_type, t.id, transactions_with_outstanding_balance
+            )
+
     return responses
 
 
