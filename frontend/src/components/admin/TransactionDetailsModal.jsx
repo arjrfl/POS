@@ -73,15 +73,19 @@ function PaymentEntriesBlock({ entries, cashTendered, changeGiven, changeClaimed
         <span>Total Payment Entries</span>
         <span>{formatCurrency(totalPaymentEntries)}</span>
       </div>
-      {hasCash && <InfoRow label="Cash Tendered" value={formatCurrency(cashTendered)} />}
-      {Number(changeGiven) > 0 && (
-        <>
-          <InfoRow label="Change" value={formatCurrency(changeGiven)} />
-          <InfoRow label="Change Taken by Customer?" value={changeClaimed ? 'Yes' : 'No'} />
-          {!changeClaimed && (
-            <InfoRow label="Added to Customer Credit Record" value={formatCurrency(changeGiven)} />
+      {(hasCash || Number(changeGiven) > 0) && (
+        <div className="flex flex-col">
+          {hasCash && <InfoRow label="Cash Tendered" value={formatCurrency(cashTendered)} />}
+          {Number(changeGiven) > 0 && (
+            <>
+              <InfoRow label="Change" value={formatCurrency(changeGiven)} />
+              <InfoRow label="Change Taken by Customer?" value={changeClaimed ? 'Yes' : 'No'} />
+              {!changeClaimed && (
+                <InfoRow label="Added to Customer Credit Record" value={formatCurrency(changeGiven)} />
+              )}
+            </>
           )}
-        </>
+        </div>
       )}
     </div>
   )
