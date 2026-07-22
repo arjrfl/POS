@@ -3,7 +3,7 @@ const TABS = [
   { id: 'users', label: 'Users', disabled: true },
   { id: 'customers', label: 'Customers' },
   { id: 'products', label: 'Products' },
-  { id: 'transactions', label: 'Transaction History' },
+  { id: 'history', label: 'Transaction History' },
 ]
 
 export function TabBar({ active, onSelect }) {
