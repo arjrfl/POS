@@ -1,10 +1,15 @@
-export function FullScreenModal({ open, onClose, title, children, closeLabel }) {
+export function FullScreenModal({ open, onClose, title, children, closeLabel, centerLabel }) {
   if (!open) return null
 
   return (
     <div className="fixed inset-0 z-40 bg-white flex flex-col">
-      <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-gray-200">
+      <div className="flex-shrink-0 relative flex items-center justify-between px-6 py-4 border-b border-gray-200">
         <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+        {centerLabel && (
+          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-lg font-semibold text-gray-900">
+            {centerLabel}
+          </span>
+        )}
         {closeLabel ? (
           <button
             type="button"

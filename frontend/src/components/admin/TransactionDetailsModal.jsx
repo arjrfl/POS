@@ -2,11 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { get } from '../../services/api'
 import { ArticleRows, ARTICLE_ROW_COLUMN_WIDTHS } from '../payment/ArticleRows'
-import { Badge } from '../ui/Badge'
 import { useArticleRows } from '../../hooks/useArticleRows'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
-import { formatCurrency } from '../../utils/format'
-import { getDisplayStatus } from '../../utils/transactionStatus'
 
 const ARTICLE_TABLE_COLUMNS = ['QTY', 'UNIT', 'ARTICLES', 'UNIT PRICE', 'AMOUNT']
 
@@ -35,33 +32,6 @@ function ArticleTable({ children }) {
         <tbody>{children}</tbody>
       </table>
     </div>
-  )
-}
-
-// Compact static line for the Details column when the chain is exactly one
-// original + one adjustment child (see isUnifiedLinkedCase) — no
-// payment-method breakdown, no expand affordance, per design decision.
-function AdjustmentStatusBadge({ transaction }) {
-  const { status, label } = getDisplayStatus(transaction)
-  return (
-    <Badge status={status} className={status === 'voided' ? 'line-through' : ''}>
-      {`ADJUSTMENT ${formatCurrency(transaction.total_due)} · ${label ?? 'Pending'}`}
-    </Badge>
-  )
-}
-
-// Refund/credit children are always resolved via /resolve-as-credit — there's
-// no reachable path leaving one unresolved-and-visible here, so this badge is
-// fixed-content (no payment_status derivation, unlike the adjustment badge
-// above — a refund child has no payment_detail-based status to derive from).
-// Standalone span (not the Badge component) so its color can't collide with
-// Badge's status-keyed style map — teal keeps it visually distinct from the
-// adjustment badge's green/amber/gray/red palette.
-function CreditBadge({ transaction }) {
-  return (
-    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
-      {`CREDIT ${formatCurrency(transaction.total_due)}`}
-    </span>
   )
 }
 
@@ -105,10 +75,9 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
   // Scope guard for the unified single-card layout: exactly one parent
   // (original) + exactly one child, and that child must be an adjustment
   // ("customer owes more") or a refund ("store owes customer", always
-  // resolved to credit — see CreditBadge above) — both are pure total_due
-  // rows with no items of their own. Any other chain shape (no children,
-  // multiple children, etc.) falls through to the existing stacked
-  // rendering below, untouched.
+  // resolved to credit) — both are pure total_due rows with no items of
+  // their own. Any other chain shape (no children, multiple children,
+  // etc.) falls through to the existing stacked rendering below, untouched.
   const childTransactions = originalTxn ? chain.filter((t) => t.parent_transaction_id === originalTxn.id) : []
   const isUnifiedLinkedCase =
     Boolean(originalTxn) &&
@@ -140,7 +109,13 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
   const highlightColor = linkedChildTxn?.transaction_type === 'refund' ? 'blue' : 'amber'
 
   return (
-    <FullScreenModal open={true} onClose={onClose} title="Transaction History" closeLabel="‹ Back">
+    <FullScreenModal
+      open={true}
+      onClose={onClose}
+      title="Transaction History"
+      closeLabel="‹ Back"
+      centerLabel={originalTxn?.order_number}
+    >
       <div className="flex flex-col h-full min-h-0">
         {loading && (
           <div className="flex-1 min-h-0 flex items-center justify-center">
@@ -159,7 +134,6 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
             <div className="flex-1 min-w-0 flex flex-col gap-[10px] min-h-0">
               {isUnifiedLinkedCase ? (
                 <div className="flex-1 min-h-0 flex flex-col gap-2">
-                  <span className="text-sm font-medium">Original - {originalTxn.order_number}</span>
                   <ArticleTable>
                     <ArticleRows
                       transaction={originalAsParent}
@@ -195,7 +169,6 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
                 </>
               ) : (
                 <div className="flex-1 min-h-0 flex flex-col gap-2">
-                  <span className="text-sm font-medium">Original</span>
                   <ArticleTable>
                     <ArticleRows transaction={originalAsParent} variant="plain" align="center" />
                   </ArticleTable>
@@ -204,15 +177,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
             </div>
 
             <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0">
-              <span className="text-sm font-medium">Details</span>
-              <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg flex flex-col justify-end p-3">
-                {isUnifiedLinkedCase &&
-                  (childTransactions[0].transaction_type === 'refund' ? (
-                    <CreditBadge transaction={childTransactions[0]} />
-                  ) : (
-                    <AdjustmentStatusBadge transaction={childTransactions[0]} />
-                  ))}
-              </div>
+              <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg" />
             </div>
           </div>
         )}
