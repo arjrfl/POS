@@ -7,6 +7,7 @@ import { Button } from '../ui/Button'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { formatCurrency } from '../../utils/format'
 import { getDisplayStatus } from '../../utils/transactionStatus'
+import { getTransactionTypeLabel } from '../../utils/transactionType'
 
 const LEDGER_TAB_CLASS = (isActive) =>
   `px-3 py-1.5 text-sm border-b-2 transition-colors ${
@@ -24,11 +25,6 @@ const ENTRY_SIGN = {
   credit_added: { bucket: 'credit', sign: 1 },
   credit_used: { bucket: 'credit', sign: -1 },
   credit_auto_used: { bucket: 'credit', sign: -1 },
-}
-
-function formatTransactionType(type) {
-  const spaced = type.replace(/_/g, ' ')
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
 }
 
 function computeLedgerTotals(ledgerEntries) {
@@ -263,7 +259,7 @@ export function CustomerDetailPanel({ customerId }) {
                     {allTransactions.items.map((t) => (
                       <tr key={t.id} className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50">
                         <td className="px-3 py-2 text-sm font-medium text-gray-900 truncate">{t.order_number}</td>
-                        <td className="px-3 py-2 text-sm text-gray-600">{formatTransactionType(t.transaction_type)}</td>
+                        <td className="px-3 py-2 text-sm text-gray-600">{getTransactionTypeLabel(t.transaction_type)}</td>
                         <td className="px-3 py-2 text-sm text-gray-500">{new Date(t.created_at).toLocaleString()}</td>
                         <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(t.total_due)}</td>
                         <td className="px-3 py-2 text-center">

@@ -207,7 +207,7 @@ Payment handles ALL financial decisions:
 - Transaction still goes to Releasing after partial payment
 
 ### Substandard Resolution — Refund Children (store owes customer)
-- Order Details shows a REFUND badge, "Linked to: {parent_order_number}", and
+- Order Details shows a CREDIT ADJUSTMENT badge, "Linked to: {parent_order_number}", and
   "Store owes customer ₱X for weight variance" — no payment method fields at all
 - Single button: **[ Save as Credit ]** → `POST /api/transactions/{id}/resolve-as-credit`
   - Adds `total_due` to `customer.net_balance`, logs a `credit_added` ledger entry

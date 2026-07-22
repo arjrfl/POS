@@ -8,6 +8,7 @@ import { OriginalTransactionLink } from './OriginalTransactionLink'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useProducts } from '../../hooks/useProducts'
 import { formatCurrency } from '../../utils/format'
+import { getTransactionTypeLabel } from '../../utils/transactionType'
 
 export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToReceiver, onSaveAsCredit }) {
   const { data: customer } = useCustomer(transaction?.customer_id)
@@ -61,12 +62,12 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
         headingLabel={null}
         headerBadge={
           isAdjustment ? (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700">
-              ADJUSTMENT
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold uppercase bg-red-100 text-red-700">
+              {getTransactionTypeLabel('adjustment')}
             </span>
           ) : isRefund ? (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
-              REFUND
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold uppercase bg-blue-100 text-blue-700">
+              {getTransactionTypeLabel('refund')}
             </span>
           ) : null
         }

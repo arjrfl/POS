@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { Badge } from '../ui/Badge'
 import { formatCurrency } from '../../utils/format'
+import { getTransactionTypeLabel } from '../../utils/transactionType'
 
 export function TransactionChainDetails({ transactionId }) {
   const { data: chain, isLoading } = useQuery({
@@ -28,7 +29,7 @@ export function TransactionChainDetails({ transactionId }) {
           {chain.map((t) => (
             <tr key={t.id} className="border-t border-gray-200">
               <td className="px-2 py-1.5 text-sm font-medium text-gray-900">{t.order_number}</td>
-              <td className="px-2 py-1.5 text-sm text-gray-600 capitalize">{t.transaction_type}</td>
+              <td className="px-2 py-1.5 text-sm text-gray-600">{getTransactionTypeLabel(t.transaction_type)}</td>
               <td className="px-2 py-1.5">
                 <Badge status={t.transaction_status} />
               </td>

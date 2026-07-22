@@ -1,9 +1,10 @@
-// "Original Transaction: X" / "Adjustment|Refund Transaction: Y" pair — shared
-// by the Payment queue's Order Details panel and the Confirm Payment modal so
-// the two order numbers can't drift or get swapped between the two views.
+import { getTransactionTypeLabel } from '../../utils/transactionType'
+
+// "Original Transaction: X" / "Adjustment|Credit Adjustment Transaction: Y" pair —
+// shared by the Payment queue's Order Details panel and the Confirm Payment modal
+// so the two order numbers can't drift or get swapped between the two views.
 export function OriginalTransactionLink({ transaction }) {
-  const isRefund = transaction.transaction_type === 'refund'
-  const linkLabel = isRefund ? 'Refund Transaction' : 'Adjustment Transaction'
+  const linkLabel = `${getTransactionTypeLabel(transaction.transaction_type)} Transaction`
 
   return (
     <span className="flex flex-col gap-0.5">

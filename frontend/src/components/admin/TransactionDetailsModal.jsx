@@ -3,10 +3,7 @@ import { FullScreenModal } from '../ui/FullScreenModal'
 import { get } from '../../services/api'
 import { ArticleRows, ARTICLE_ROW_COLUMN_WIDTHS } from '../payment/ArticleRows'
 import { useArticleRows } from '../../hooks/useArticleRows'
-
-function capitalize(text) {
-  return text.charAt(0).toUpperCase() + text.slice(1)
-}
+import { getTransactionTypeLabel } from '../../utils/transactionType'
 
 const ARTICLE_TABLE_COLUMNS = ['QTY', 'UNIT', 'ARTICLES', 'UNIT PRICE', 'AMOUNT']
 
@@ -132,7 +129,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
                   </div>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
                     <span className="text-sm font-medium">
-                      {capitalize(linkedChildTxn.transaction_type)} - {linkedChildTxn.order_number}
+                      {getTransactionTypeLabel(linkedChildTxn.transaction_type)} - {linkedChildTxn.order_number}
                     </span>
                     <ArticleTable>
                       <ArticleRows transaction={linkedChildTxn} variant="adjusted" align="center" />

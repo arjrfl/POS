@@ -8,6 +8,7 @@ import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { formatCurrency } from '../../utils/format'
 import { getDisplayStatus } from '../../utils/transactionStatus'
+import { getTransactionTypeLabel } from '../../utils/transactionType'
 import { TransactionDetailsModal } from './TransactionDetailsModal'
 
 const STATUSES = ['pending_payment', 'pending_settlement', 'settled', 'completed', 'voided']
@@ -72,11 +73,6 @@ function CustomerSearchFilter({ selectedCustomer, onSelect, onClear }) {
   )
 }
 
-function formatTransactionType(type) {
-  const spaced = type.replace(/_/g, ' ')
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
-}
-
 function TransactionRow({ transaction, onViewDetails }) {
   const { data: customer } = useCustomer(transaction.customer_id)
 
@@ -84,7 +80,7 @@ function TransactionRow({ transaction, onViewDetails }) {
     <tr className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50">
       <td className="px-3 py-2 text-sm font-medium text-gray-900">{transaction.order_number}</td>
       <td className="px-3 py-2 text-sm text-gray-700">{customer?.full_name ?? '...'}</td>
-      <td className="px-3 py-2 text-sm text-gray-600 text-center">{formatTransactionType(transaction.transaction_type)}</td>
+      <td className="px-3 py-2 text-sm text-gray-600 text-center">{getTransactionTypeLabel(transaction.transaction_type)}</td>
       <td className="px-3 py-2 text-center">
         <Badge status={getDisplayStatus(transaction).status}>{getDisplayStatus(transaction).label}</Badge>
       </td>

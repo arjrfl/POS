@@ -8,6 +8,7 @@ import { post } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
+import { getTransactionTypeLabel } from '../../utils/transactionType'
 
 const EPS = 0.005
 
@@ -147,11 +148,11 @@ export function PaymentConfirmationModal({
             {isAdjustmentChild && (
               <div className="flex flex-col gap-1 pb-2 mb-2 border-b border-gray-200">
                 <span
-                  className={`inline-flex items-center self-start px-2 py-0.5 rounded-full text-xs font-bold ${
+                  className={`inline-flex items-center self-start px-2 py-0.5 rounded-full text-xs font-bold uppercase ${
                     isRefund ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
                   }`}
                 >
-                  {isRefund ? 'REFUND' : 'ADJUSTMENT'}
+                  {getTransactionTypeLabel(transaction.transaction_type)}
                 </span>
                 <div className="text-xs text-gray-500">
                   <OriginalTransactionLink transaction={transaction} />
