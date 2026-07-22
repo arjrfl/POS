@@ -278,8 +278,11 @@ dependency not listed above without explicit instruction.
   - `PATCH /{id}` — update (releasing, admin)
   - `POST /{id}/adjust-stock` — manual stock adjustment, logged (releasing, admin)
   - `POST /{id}/toggle-status` — activate/deactivate, logged (releasing, admin)
-  - `DELETE /{id}` — legacy one-directional deactivate; superseded by
-    toggle-status and no longer called by the frontend (admin only)
+  - `DELETE /{id}` — hard delete (releasing, admin); 409 if the product has
+    any `transaction_item` rows (`transaction_item.product_id` is
+    `ON DELETE RESTRICT`) — deactivate via toggle-status instead in that case.
+    `product_audit_log` rows for the product cascade-delete. Broadcasts
+    `product_changed` with change_type `"deleted"` to releasing-queue + admin
 
   **Customers** (`customers.py`, prefix `/api/customers`)
   - `GET /` — list (search by name, active only)

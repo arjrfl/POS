@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Pencil, ArrowUpDown, Power } from 'lucide-react'
+import { Pencil, ArrowUpDown, Power, Trash2 } from 'lucide-react'
 import { useProducts } from '../../hooks/useProducts'
-import { get, post, patch } from '../../services/api'
+import { get, post, patch, del } from '../../services/api'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { Badge } from '../ui/Badge'
 import { AdjustStockModal } from './AdjustStockModal'
 import { ChangeHistoryModal } from './ChangeHistoryModal'
+import { DeleteProductModal } from './DeleteProductModal'
 import { formatCurrency, formatWeight } from '../../utils/format'
 
 function emptyForm() {
@@ -195,7 +196,7 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
   )
 }
 
-function ProductRow({ product, onEdit, onAdjustStock, confirmingToggle, togglingId, onToggleStatus, onConfirmToggle, onCancelToggle }) {
+function ProductRow({ product, onEdit, onAdjustStock, onDelete, confirmingToggle, togglingId, onToggleStatus, onConfirmToggle, onCancelToggle }) {
   if (confirmingToggle) {
     const willDeactivate = product.product_status === 'active'
     return (
@@ -277,6 +278,15 @@ function ProductRow({ product, onEdit, onAdjustStock, confirmingToggle, toggling
           >
             <Power size={16} />
           </button>
+          <button
+            type="button"
+            onClick={() => onDelete(product)}
+            className="p-1.5 rounded-md text-red-500 hover:text-red-700 hover:bg-red-50"
+            aria-label={`Delete ${product.product_name}`}
+            title="Delete"
+          >
+            <Trash2 size={16} />
+          </button>
         </div>
       </td>
     </tr>
@@ -286,6 +296,7 @@ function ProductRow({ product, onEdit, onAdjustStock, confirmingToggle, toggling
 export function InventoryView({ showToast }) {
   const [editingProduct, setEditingProduct] = useState(null)
   const [adjustingProduct, setAdjustingProduct] = useState(null)
+  const [deletingProduct, setDeletingProduct] = useState(null)
   const [confirmingToggleId, setConfirmingToggleId] = useState(null)
   const [togglingId, setTogglingId] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -322,6 +333,13 @@ export function InventoryView({ showToast }) {
     } finally {
       setTogglingId(null)
     }
+  }
+
+  const handleDeleteConfirm = async (id) => {
+    await del(`/products/${id}`)
+    if (editingProduct?.id === id) setEditingProduct(null)
+    showToast?.('Product deleted', 'success')
+    refreshProducts()
   }
 
   return (
@@ -401,6 +419,7 @@ export function InventoryView({ showToast }) {
                   product={product}
                   onEdit={setEditingProduct}
                   onAdjustStock={setAdjustingProduct}
+                  onDelete={setDeletingProduct}
                   confirmingToggle={confirmingToggleId === product.id}
                   togglingId={togglingId}
                   onToggleStatus={(p) => setConfirmingToggleId(p.id)}
@@ -418,6 +437,13 @@ export function InventoryView({ showToast }) {
         product={adjustingProduct}
         onClose={() => setAdjustingProduct(null)}
         onConfirm={handleAdjustStockConfirm}
+      />
+
+      <DeleteProductModal
+        open={!!deletingProduct}
+        product={deletingProduct}
+        onClose={() => setDeletingProduct(null)}
+        onConfirm={handleDeleteConfirm}
       />
     </div>
   )

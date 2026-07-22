@@ -2,12 +2,13 @@ import json
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_role
 from app.models.product import Product, ProductAuditLog, ProductChangeTypeEnum, ProductStatusEnum
+from app.models.transaction import TransactionItem
 from app.schemas.product import (
     ProductAuditLogResponse,
     ProductCreate,
@@ -228,14 +229,23 @@ async def toggle_status(
     return {"data": ProductResponse.model_validate(product), "error": None}
 
 
-# Predates the toggle-status endpoint above and is no longer called by the
-# frontend (both Releasing and Admin now use toggle-status), but kept as a
-# one-directional admin-only route in case it's needed again.
-@router.delete("/{product_id}", dependencies=[Depends(require_role("admin"))])
+@router.delete("/{product_id}", dependencies=[Depends(require_role(*PRODUCT_WRITE_ROLES))])
 async def delete_product(product_id: int, db: AsyncSession = Depends(get_db)):
     product = await _get_product_or_404(product_id, db)
 
-    product.product_status = ProductStatusEnum.inactive
+    result = await db.execute(
+        select(func.count()).select_from(TransactionItem).where(TransactionItem.product_id == product_id)
+    )
+    if result.scalar_one() > 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete — this product has existing transaction history. Deactivate it instead.",
+        )
+
+    await db.delete(product)
     await db.commit()
-    await db.refresh(product)
-    return {"data": ProductResponse.model_validate(product), "error": None}
+
+    rooms, event = product_changed(product_id, "deleted")
+    await manager.broadcast_multi(rooms, event)
+
+    return {"data": {"id": product_id, "deleted": True}, "error": None}
