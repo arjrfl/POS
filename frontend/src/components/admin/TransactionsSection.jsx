@@ -77,6 +77,8 @@ function CustomerSearchFilter({ selectedCustomer, onSelect, onClear }) {
 
 function TransactionRow({ transaction, onViewDetails }) {
   const { data: customer } = useCustomer(transaction.customer_id)
+  const { status: paymentStatus, label: paymentStatusLabel } = getDisplayStatus(transaction)
+  const isViewable = paymentStatus === 'full' || paymentStatus === 'partial' || paymentStatus === 'voided'
 
   return (
     <tr className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50">
@@ -84,12 +86,19 @@ function TransactionRow({ transaction, onViewDetails }) {
       <td className="px-3 py-2 text-sm text-gray-700">{customer?.full_name ?? '...'}</td>
       <td className="px-3 py-2 text-sm text-gray-600 text-center">{getTransactionTypeLabel(transaction.transaction_type)}</td>
       <td className="px-3 py-2 text-center">
-        <Badge status={getDisplayStatus(transaction).status}>{getDisplayStatus(transaction).label}</Badge>
+        <Badge status={paymentStatus}>{paymentStatusLabel}</Badge>
       </td>
       <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(transaction.total_due)}</td>
       <td className="px-3 py-2 text-sm text-gray-500 text-center">{new Date(transaction.created_at).toLocaleString()}</td>
       <td className="px-3 py-2 text-center">
-        <Button type="button" variant="outline" className="px-3 py-1 text-xs" onClick={() => onViewDetails(transaction.id)}>
+        <Button
+          type="button"
+          variant="outline"
+          className="px-3 py-1 text-xs"
+          disabled={!isViewable}
+          title={isViewable ? undefined : 'Available once payment is processed'}
+          onClick={() => onViewDetails(transaction.id)}
+        >
           View Details
         </Button>
       </td>

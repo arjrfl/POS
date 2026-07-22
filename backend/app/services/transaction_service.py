@@ -25,6 +25,7 @@ from app.schemas.transaction import (
     DraftPaymentEntry,
     HandoverOutcomeResponse,
     PaymentDetailResponse,
+    PaymentEntryResponse,
     PaymentProcessRequest,
     SubstandardOutcomeRequest,
     TransactionCreate,
@@ -34,6 +35,7 @@ from app.schemas.transaction import (
     TransactionParentItemResponse,
     TransactionParentResponse,
     TransactionResponse,
+    VoidInfoResponse,
     WeightConfirmRequest,
 )
 from app.services import customer_service
@@ -109,6 +111,40 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
         response.draft_credit_sources_json = response.payment_drafts[0].draft_credit_sources_json
     response.parent_order_number = transaction.parent.order_number if transaction.parent else None
     response.parent = _build_parent_summary(transaction.parent) if transaction.parent else None
+
+    # Admin Transaction Details modal fields — joins across relationships already
+    # eager-loaded (lazy="selectin") on SalesTransaction, so no extra queries here.
+    if transaction.customer is not None:
+        response.customer_address = transaction.customer.address
+        response.customer_contact_number = transaction.customer.contact_number
+    response.walkin_user_name = transaction.walkin_user.full_name if transaction.walkin_user else None
+    response.payment_user_name = transaction.payment_user.full_name if transaction.payment_user else None
+    response.releasing_user_name = transaction.releasing_user.full_name if transaction.releasing_user else None
+
+    response.payment_entries = [
+        PaymentEntryResponse(
+            payment_method_name=pd.payment_method.payment_method_name,
+            ref_number=pd.ref_number,
+            tendered_amount=pd.tendered_amount,
+            amount=pd.amount,
+        )
+        for pd in transaction.payment_details
+        if not pd.is_draft
+    ]
+
+    if transaction.transaction_status == TransactionStatusEnum.voided and transaction.void_logs:
+        latest_void = max(transaction.void_logs, key=lambda v: v.voided_at)
+        response.void_info = VoidInfoResponse(
+            void_reason=latest_void.void_reason,
+            voided_by_user_name=latest_void.voided_by_user.full_name,
+            voided_at=latest_void.voided_at,
+        )
+
+    balance_added_entry = next(
+        (le for le in transaction.ledger_entries if le.entry_type == LedgerEntryTypeEnum.balance_added), None
+    )
+    response.remaining_balance_added = balance_added_entry.amount if balance_added_entry else None
+
     response.children = [_build_transaction_response(child) for child in transaction.children]
     return response
 
@@ -1626,6 +1662,11 @@ async def resolve_refund_as_credit(
         transaction.queue_status = QueueStatusEnum.done
         transaction.processing_by_user_id = None
         transaction.processing_started_at = None
+        # process_payment sets these for the adjustment path — mirrored here so a
+        # refund child also carries who resolved it and when (admin Transaction
+        # Details modal's Section B "Resolved"/"Resolved By (Payment)" lines).
+        transaction.payment_user_id = resolved_by_user_id
+        transaction.payment_at = datetime.now(timezone.utc)
 
         _record_status_change_audit(db, transaction, resolved_by_user_id, old_status, old_queue)
 

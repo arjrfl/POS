@@ -1,11 +1,250 @@
 import { useEffect, useMemo, useState } from 'react'
 import { FullScreenModal } from '../ui/FullScreenModal'
+import { Badge } from '../ui/Badge'
 import { get } from '../../services/api'
+import { useCustomer } from '../../hooks/useCustomer'
 import { ArticleRows, ARTICLE_ROW_COLUMN_WIDTHS } from '../payment/ArticleRows'
 import { useArticleRows } from '../../hooks/useArticleRows'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
+import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
+import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
+import { formatCurrency } from '../../utils/format'
 
 const ARTICLE_TABLE_COLUMNS = ['QTY', 'UNIT', 'ARTICLES', 'UNIT PRICE', 'AMOUNT']
+const PAYMENT_ENTRY_LABELS = { ...PAYMENT_METHOD_LABEL, credit: 'Credit' }
+
+function formatDateTime(value) {
+  return value ? new Date(value).toLocaleString() : null
+}
+
+// Label/value row for the Details column — omits itself when value is nullish,
+// which is what most of the spec's "only if" / "omit when null" fields need.
+function InfoRow({ label, value }) {
+  if (value === null || value === undefined || value === '') return null
+  return (
+    <div className="flex justify-between gap-3 text-sm py-0.5">
+      <span className="text-gray-500">{label}</span>
+      <span className="text-gray-900 text-right">{value}</span>
+    </div>
+  )
+}
+
+function SectionHeading({ children }) {
+  return <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{children}</h4>
+}
+
+function VoidInfoBlock({ voidInfo }) {
+  if (!voidInfo) return null
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-md p-3 flex flex-col">
+      <InfoRow label="Void Reason" value={voidInfo.void_reason} />
+      <InfoRow label="Voided By" value={voidInfo.voided_by_user_name} />
+      <InfoRow label="Voided At" value={formatDateTime(voidInfo.voided_at)} />
+    </div>
+  )
+}
+
+function PaymentEntriesBlock({ entries, cashTendered, changeGiven, changeClaimed }) {
+  if (!entries?.length) return null
+  const hasCash = entries.some((entry) => entry.payment_method_name === 'cash')
+
+  return (
+    <div className="flex flex-col gap-2">
+      {entries.map((entry, index) => (
+        <div key={index} className="flex items-center justify-between gap-2 text-sm">
+          <span className="inline-flex items-center gap-2 min-w-0">
+            <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700 capitalize">
+              {PAYMENT_ENTRY_LABELS[entry.payment_method_name] ?? entry.payment_method_name}
+            </span>
+            {entry.ref_number && <span className="text-gray-500 text-xs truncate">{entry.ref_number}</span>}
+          </span>
+          <span className="text-gray-900 shrink-0">{formatCurrency(entry.amount)}</span>
+        </div>
+      ))}
+      {hasCash && <InfoRow label="Cash Tendered" value={formatCurrency(cashTendered)} />}
+      {Number(changeGiven) > 0 && (
+        <p className="text-xs text-gray-500">
+          {changeClaimed
+            ? `Change Given: ${formatCurrency(changeGiven)} — taken by customer`
+            : `Change Given: ${formatCurrency(changeGiven)} — added to customer credit`}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function OriginalAmountSummary({ t }) {
+  const hasVariance = t.actual_amount != null && Number(t.actual_amount) !== Number(t.estimated_amount)
+  const balanceDue = Number(t.balance_due ?? 0)
+
+  return (
+    <div className="flex flex-col">
+      <InfoRow label="Estimated Amount" value={formatCurrency(t.estimated_amount)} />
+      {t.actual_amount != null && <InfoRow label="Actual Amount" value={formatCurrency(t.actual_amount)} />}
+      {hasVariance && (
+        <p className={`text-sm font-medium py-0.5 ${balanceDue > 0 ? 'text-amber-700' : 'text-blue-700'}`}>
+          {balanceDue > 0
+            ? `+${formatCurrency(balanceDue)} — item is heavier`
+            : `-${formatCurrency(Math.abs(balanceDue))} — item is lighter`}
+        </p>
+      )}
+      {Number(t.credit_applied) > 0 && (
+        <InfoRow label="Credit Applied" value={`-${formatCurrency(t.credit_applied)}`} />
+      )}
+      {Number(t.balance_settled) > 0 && (
+        <InfoRow label="Balance Settled" value={`+${formatCurrency(t.balance_settled)}`} />
+      )}
+      {t.remaining_balance_added != null && (
+        <InfoRow label="Remaining Balance Added" value={formatCurrency(t.remaining_balance_added)} />
+      )}
+      <div className="flex justify-between text-sm font-bold pt-1.5 mt-1 border-t border-gray-300">
+        <span>Total Due</span>
+        <span>{formatCurrency(t.total_due)}</span>
+      </div>
+    </div>
+  )
+}
+
+function HandledByBlock({ t }) {
+  if (!t.walkin_user_name && !t.payment_user_name && !t.releasing_user_name) return null
+  return (
+    <div className="flex flex-col">
+      <InfoRow label="Receiver" value={t.walkin_user_name} />
+      <InfoRow label="Payment" value={t.payment_user_name} />
+      <InfoRow label="Releasing" value={t.releasing_user_name} />
+    </div>
+  )
+}
+
+// The Details column (right side) of the modal — Section A (the original
+// transaction, always shown) plus Section B (a linked adjustment/refund
+// child, only when one exists in the chain). Separate from the left-side
+// Article Table, which keeps its own existing rendering untouched.
+function DetailsColumn({ originalTxn, linkedChildTxn }) {
+  const { data: customer } = useCustomer(originalTxn?.customer_id)
+  if (!originalTxn) return null
+
+  const customerTypeBadge = CUSTOMER_TYPE_BADGE[originalTxn.customer_type]
+  const isRefundChild = linkedChildTxn?.transaction_type === 'refund'
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-gray-900">{originalTxn.order_number}</span>
+          <Badge status={originalTxn.transaction_status} />
+          {customerTypeBadge && (
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${customerTypeBadge.className}`}>
+              {customerTypeBadge.label}
+            </span>
+          )}
+        </div>
+
+        <VoidInfoBlock voidInfo={originalTxn.void_info} />
+
+        <div className="flex flex-col">
+          <InfoRow label="Created" value={formatDateTime(originalTxn.walkin_at)} />
+          <InfoRow label="Paid" value={formatDateTime(originalTxn.payment_at)} />
+          <InfoRow label="Released" value={formatDateTime(originalTxn.releasing_at)} />
+        </div>
+
+        <div>
+          <SectionHeading>Customer</SectionHeading>
+          <p className="text-sm font-medium text-gray-900 mb-0.5">{customer?.full_name ?? '...'}</p>
+          <InfoRow label="Address" value={originalTxn.customer_address ?? 'No address on file'} />
+          <InfoRow label="Contact" value={originalTxn.customer_contact_number ?? '—'} />
+        </div>
+
+        <div>
+          <SectionHeading>Amount Summary</SectionHeading>
+          <OriginalAmountSummary t={originalTxn} />
+        </div>
+
+        {originalTxn.payment_entries?.length > 0 && (
+          <div>
+            <SectionHeading>Payment Entries</SectionHeading>
+            <PaymentEntriesBlock
+              entries={originalTxn.payment_entries}
+              cashTendered={originalTxn.cash_tendered}
+              changeGiven={originalTxn.change_given}
+              changeClaimed={originalTxn.change_claimed}
+            />
+          </div>
+        )}
+
+        <div>
+          <SectionHeading>Handled By</SectionHeading>
+          <HandledByBlock t={originalTxn} />
+        </div>
+      </div>
+
+      {linkedChildTxn && (
+        <div className="flex flex-col gap-3 pt-4 border-t border-gray-300">
+          <div>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Linked Transaction</span>
+            <p className="text-xs text-gray-500 mt-0.5">Linked to: {originalTxn.order_number}</p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                isRefundChild ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'
+              }`}
+            >
+              {isRefundChild ? 'CREDIT ADJUSTMENT' : 'ADJUSTMENT'}
+            </span>
+            <span className="text-sm font-semibold text-gray-900">{linkedChildTxn.order_number}</span>
+            <Badge status={linkedChildTxn.transaction_status} />
+          </div>
+
+          <div className="flex flex-col">
+            <InfoRow label="Created" value={formatDateTime(linkedChildTxn.walkin_at ?? linkedChildTxn.created_at)} />
+            <InfoRow label="Resolved" value={formatDateTime(linkedChildTxn.payment_at)} />
+          </div>
+
+          <VoidInfoBlock voidInfo={linkedChildTxn.void_info} />
+
+          <div>
+            <SectionHeading>Amount Summary</SectionHeading>
+            {isRefundChild ? (
+              <p className="text-sm text-gray-900">
+                Added to customer credit record: {formatCurrency(linkedChildTxn.total_due)}
+              </p>
+            ) : (
+              <div className="flex flex-col">
+                <InfoRow label="Amount Due" value={formatCurrency(linkedChildTxn.total_due)} />
+                {linkedChildTxn.remaining_balance_added != null && (
+                  <InfoRow
+                    label="Remaining Balance Added"
+                    value={formatCurrency(linkedChildTxn.remaining_balance_added)}
+                  />
+                )}
+                <div className="flex justify-between text-sm font-bold pt-1.5 mt-1 border-t border-gray-300">
+                  <span>Total Due</span>
+                  <span>{formatCurrency(linkedChildTxn.total_due)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!isRefundChild && linkedChildTxn.payment_entries?.length > 0 && (
+            <div>
+              <SectionHeading>Payment Entries</SectionHeading>
+              <PaymentEntriesBlock
+                entries={linkedChildTxn.payment_entries}
+                cashTendered={linkedChildTxn.cash_tendered}
+                changeGiven={linkedChildTxn.change_given}
+                changeClaimed={linkedChildTxn.change_claimed}
+              />
+            </div>
+          )}
+
+          <InfoRow label="Resolved By (Payment)" value={linkedChildTxn.payment_user_name} />
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ArticleRows renders <tr> rows meant for a real <table><tbody> (see its own
 // comment) — a header-only div/grid can't host them, so the header lives in a
@@ -177,7 +416,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
             </div>
 
             <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0">
-              <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg" />
+              <DetailsColumn originalTxn={originalTxn} linkedChildTxn={linkedChildTxn} />
             </div>
           </div>
         )}

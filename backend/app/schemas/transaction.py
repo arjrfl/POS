@@ -129,6 +129,24 @@ class TransactionParentResponse(BaseModel):
     items: list[TransactionParentItemResponse]
 
 
+class PaymentEntryResponse(BaseModel):
+    """A single confirmed (is_draft=FALSE) payment_detail row, with the payment
+    method's display name joined in — used by the admin Transaction Details modal's
+    Payment Entries list. Distinct from PaymentDetailResponse (which is id/keyed for
+    the Payment screen's own draft-editing flow, not this read-only display)."""
+
+    payment_method_name: str
+    ref_number: str | None
+    tendered_amount: Decimal | None
+    amount: Decimal
+
+
+class VoidInfoResponse(BaseModel):
+    void_reason: str
+    voided_by_user_name: str
+    voided_at: datetime
+
+
 class PaymentDetailResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -221,6 +239,23 @@ class TransactionResponse(BaseModel):
     draft_credit_applied: Decimal = Decimal("0")
     draft_credit_sources_json: str | None = None
     children: list["TransactionResponse"]
+
+    # Admin Transaction Details modal fields — no matching ORM attribute for any
+    # of these (joins across customer/user/payment_detail/transaction_void_log/
+    # customer_ledger), so they all need the default here and are filled in by
+    # _build_transaction_response afterward, same pattern as parent_order_number.
+    customer_address: str | None = None
+    customer_contact_number: str | None = None
+    walkin_user_name: str | None = None
+    payment_user_name: str | None = None
+    releasing_user_name: str | None = None
+    payment_entries: list[PaymentEntryResponse] = []
+    void_info: VoidInfoResponse | None = None
+    # the exact remaining-amount balance_added row created by the Partial Payment
+    # Rule for this transaction — None when it was paid in full (see
+    # _build_transaction_response, which reads this off customer_ledger directly
+    # rather than back-computing it)
+    remaining_balance_added: Decimal | None = None
 
 
 TransactionResponse.model_rebuild()
