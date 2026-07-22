@@ -5,9 +5,13 @@ import { Button } from '../ui/Button'
 export function DeleteProductModal({ open, product, onClose, onConfirm }) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [blocked, setBlocked] = useState(false)
 
   useEffect(() => {
-    if (open) setError('')
+    if (open) {
+      setError('')
+      setBlocked(false)
+    }
   }, [open, product])
 
   if (!product) return null
@@ -20,6 +24,7 @@ export function DeleteProductModal({ open, product, onClose, onConfirm }) {
       onClose()
     } catch (err) {
       setError(err.message)
+      if (err.status === 409) setBlocked(true)
     } finally {
       setSubmitting(false)
     }
@@ -36,9 +41,15 @@ export function DeleteProductModal({ open, product, onClose, onConfirm }) {
 
         <div className="flex gap-2 mt-2">
           <Button type="button" variant="secondary" className="flex-1" onClick={onClose} disabled={submitting}>
-            Cancel
+            {blocked ? 'Close' : 'Cancel'}
           </Button>
-          <Button type="button" variant="danger" className="flex-1" onClick={handleConfirm} disabled={submitting}>
+          <Button
+            type="button"
+            variant="danger"
+            className="flex-1"
+            onClick={handleConfirm}
+            disabled={submitting || blocked}
+          >
             {submitting ? 'Deleting...' : 'Delete Permanently'}
           </Button>
         </div>
