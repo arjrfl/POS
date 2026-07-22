@@ -3,10 +3,11 @@
 // not from transaction_status. Shared by the Admin Transaction History tab
 // and the Customer Details modal's Transaction History table so both render
 // identical labels/colors for the same transaction.
-const PAYMENT_STATUS_LABELS = {
+export const PAYMENT_STATUS_LABELS = {
   full: 'Fully paid',
   partial: 'Partially paid',
   voided: 'Voided',
+  pending: 'Pending',
 }
 
 export function getDisplayStatus(transaction) {

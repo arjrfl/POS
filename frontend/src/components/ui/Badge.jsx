@@ -16,9 +16,11 @@ const STATUS_STYLES = {
 
   // payment_status — UI-derived (not its own DB enum), computed per-transaction
   // from get_outstanding_balance_entries. voided reuses the transaction_status
-  // style above since the value is literally "voided" in both cases.
+  // style above since the value is literally "voided" in both cases. pending
+  // reuses the same neutral tone as queue_status "waiting" above.
   full: 'bg-green-100 text-green-800',
   partial: 'bg-yellow-100 text-yellow-800',
+  pending: 'bg-gray-100 text-gray-700',
 }
 
 export function Badge({ status, children, className = '' }) {

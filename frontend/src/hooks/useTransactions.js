@@ -7,6 +7,7 @@ import { get } from '../services/api'
 export function useTransactions(filters = {}) {
   const {
     status,
+    paymentStatus,
     customerType,
     customerId,
     dateFrom,
@@ -19,6 +20,7 @@ export function useTransactions(filters = {}) {
 
   const params = new URLSearchParams()
   if (status) params.set('status', status)
+  if (paymentStatus) params.set('payment_status', paymentStatus)
   if (customerType) params.set('customer_type', customerType)
   if (customerId) params.set('customer_id', customerId)
   if (dateFrom) params.set('date_from', dateFrom)
@@ -37,7 +39,7 @@ export function useTransactions(filters = {}) {
     queryKey: [
       'transactions',
       'list',
-      { status, customerType, customerId, dateFrom, dateTo, page, pageSize, includePaymentStatus },
+      { status, paymentStatus, customerType, customerId, dateFrom, dateTo, page, pageSize, includePaymentStatus },
     ],
     queryFn: () => get(`/transactions?${queryString}`),
     enabled,

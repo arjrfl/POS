@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timedelta, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,6 +62,9 @@ async def list_transactions(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     include_payment_status: bool = Query(default=False),
+    payment_status_filter: Literal["full", "partial", "voided", "pending"] | None = Query(
+        default=None, alias="payment_status"
+    ),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -115,6 +119,7 @@ async def list_transactions(
         walkin_at_from=walkin_at_from,
         walkin_at_to=walkin_at_to,
         include_payment_status=include_payment_status,
+        payment_status_filter=payment_status_filter,
     )
     return {"data": result, "error": None}
 

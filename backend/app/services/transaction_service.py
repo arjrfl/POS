@@ -405,6 +405,31 @@ async def get_transaction_chain(db: AsyncSession, transaction_id: int) -> list[T
     return responses
 
 
+def _compute_payment_status(
+    transaction_status: TransactionStatusEnum,
+    customer_type_value: CustomerTypeEnum,
+    transaction_id: int,
+    transactions_with_outstanding_balance: set[int],
+) -> str:
+    # Pre-payment states — no payment has been collected yet, so falling
+    # through to "full" below (as anything not "voided"/"partial" used to)
+    # was wrong for a brand new transaction. walk_in's pending_settlement
+    # means Payment already ran (Payment precedes Releasing for walk_in),
+    # so only online's own pending_settlement — which skips Payment first —
+    # counts here.
+    is_pre_payment = transaction_status in (
+        TransactionStatusEnum.pending_payment,
+        TransactionStatusEnum.pending_edit,
+    ) or (transaction_status == TransactionStatusEnum.pending_settlement and customer_type_value == CustomerTypeEnum.online)
+    if transaction_status == TransactionStatusEnum.voided:
+        return "voided"
+    if is_pre_payment:
+        return "pending"
+    if transaction_id in transactions_with_outstanding_balance:
+        return "partial"
+    return "full"
+
+
 async def list_transactions(
     db: AsyncSession,
     *,
@@ -420,6 +445,7 @@ async def list_transactions(
     walkin_at_from: datetime | None = None,
     walkin_at_to: datetime | None = None,
     include_payment_status: bool = False,
+    payment_status_filter: str | None = None,
 ) -> TransactionListResponse:
     filters = []
     if transaction_status is not None:
@@ -452,41 +478,85 @@ async def list_transactions(
     if walkin_at_to is not None:
         filters.append(SalesTransaction.walkin_at < walkin_at_to)
 
-    total = (
-        await db.execute(select(func.count()).select_from(SalesTransaction).where(*filters))
-    ).scalar_one()
+    needs_payment_status = include_payment_status or payment_status_filter is not None
+
+    if not needs_payment_status:
+        total = (
+            await db.execute(select(func.count()).select_from(SalesTransaction).where(*filters))
+        ).scalar_one()
+
+        result = await db.execute(
+            select(SalesTransaction)
+            .where(*filters)
+            .order_by(SalesTransaction.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .options(_WITH_CHILDREN, _WITH_PARENT)
+            .execution_options(populate_existing=True)
+        )
+        items = result.scalars().all()
+        responses = [_build_transaction_response(t) for t in items]
+        return TransactionListResponse(total=total, items=responses)
+
+    # payment_status is derived (not a column), so filtering/paginating by it
+    # can't happen in the same LIMIT/OFFSET query above — every matching row
+    # has to be evaluated first. Fine at this shop's scale (27 terminals, a
+    # PostgreSQL row-count in the thousands, not millions); pulls only the
+    # columns needed to compute the bucket, not full transaction + children.
+    lightweight_rows = (
+        await db.execute(
+            select(
+                SalesTransaction.id,
+                SalesTransaction.transaction_status,
+                SalesTransaction.customer_type,
+                SalesTransaction.customer_id,
+            )
+            .where(*filters)
+            .order_by(SalesTransaction.created_at.desc())
+        )
+    ).all()
+
+    # Reuses the exact same outstanding-amount logic as the Balance tab
+    # (get_outstanding_balance_entries) — not new remaining-amount math. One
+    # call per unique customer across every matching row (not just the
+    # current page — the bucket has to be known before pagination can slice
+    # it). Each outstanding entry already carries the transaction_id it came
+    # from, so per-transaction status falls out directly.
+    unique_customer_ids = {row.customer_id for row in lightweight_rows}
+    transactions_with_outstanding_balance: set[int] = set()
+    for cid in unique_customer_ids:
+        outstanding_entries = await customer_service.get_outstanding_balance_entries(db, cid)
+        transactions_with_outstanding_balance.update(entry.transaction_id for entry in outstanding_entries)
+
+    status_by_id = {
+        row.id: _compute_payment_status(
+            row.transaction_status, row.customer_type, row.id, transactions_with_outstanding_balance
+        )
+        for row in lightweight_rows
+    }
+
+    matching_ids_ordered = [row.id for row in lightweight_rows]
+    if payment_status_filter is not None:
+        matching_ids_ordered = [tid for tid in matching_ids_ordered if status_by_id[tid] == payment_status_filter]
+
+    total = len(matching_ids_ordered)
+    page_ids = matching_ids_ordered[(page - 1) * page_size : (page - 1) * page_size + page_size]
+
+    if not page_ids:
+        return TransactionListResponse(total=total, items=[])
 
     result = await db.execute(
         select(SalesTransaction)
-        .where(*filters)
-        .order_by(SalesTransaction.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+        .where(SalesTransaction.id.in_(page_ids))
         .options(_WITH_CHILDREN, _WITH_PARENT)
         .execution_options(populate_existing=True)
     )
-    items = result.scalars().all()
-    responses = [_build_transaction_response(t) for t in items]
+    items_by_id = {t.id: t for t in result.scalars().all()}
+    responses = [_build_transaction_response(items_by_id[tid]) for tid in page_ids]
 
     if include_payment_status:
-        # Reuses the exact same outstanding-amount logic as the Balance tab
-        # (get_outstanding_balance_entries) — not new remaining-amount math. One
-        # call per unique customer on this page (usually just the one customer_id
-        # filter, or a handful when listing across customers unfiltered) rather
-        # than a query per transaction. Each outstanding entry already carries the
-        # transaction_id it came from, so per-transaction status falls out directly.
-        unique_customer_ids = {response.customer_id for response in responses}
-        transactions_with_outstanding_balance: set[int] = set()
-        for cid in unique_customer_ids:
-            outstanding_entries = await customer_service.get_outstanding_balance_entries(db, cid)
-            transactions_with_outstanding_balance.update(entry.transaction_id for entry in outstanding_entries)
         for response in responses:
-            if response.transaction_status == TransactionStatusEnum.voided:
-                response.payment_status = "voided"
-            elif response.id in transactions_with_outstanding_balance:
-                response.payment_status = "partial"
-            else:
-                response.payment_status = "full"
+            response.payment_status = status_by_id[response.id]
 
     return TransactionListResponse(total=total, items=responses)
 

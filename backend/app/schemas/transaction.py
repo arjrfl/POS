@@ -206,7 +206,7 @@ class TransactionResponse(BaseModel):
     # Only computed when the caller asks for it (GET /transactions?...&include_payment_status=true)
     # — see list_transactions. None for every other list_transactions caller (queue views etc.),
     # since it costs an extra outstanding-balance lookup per unique customer on the page.
-    payment_status: Literal["full", "partial", "voided"] | None = None
+    payment_status: Literal["full", "partial", "voided", "pending"] | None = None
 
     items: list[TransactionItemResponse]
     payment_details: list[PaymentDetailResponse]

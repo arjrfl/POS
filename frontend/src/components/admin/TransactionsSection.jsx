@@ -7,11 +7,13 @@ import { Badge } from '../ui/Badge'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { formatCurrency } from '../../utils/format'
-import { getDisplayStatus } from '../../utils/transactionStatus'
+import { getDisplayStatus, PAYMENT_STATUS_LABELS } from '../../utils/transactionStatus'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
 import { TransactionDetailsModal } from './TransactionDetailsModal'
 
-const STATUSES = ['pending_payment', 'pending_settlement', 'settled', 'completed', 'voided']
+// Options mirror the same payment_status bucket the Status column itself
+// renders via getDisplayStatus — filtering and display always agree.
+const PAYMENT_STATUSES = ['pending', 'full', 'partial', 'voided']
 const SELECT_CLASSES =
   'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light text-sm'
 
@@ -111,7 +113,7 @@ export function TransactionsSection() {
   }
 
   const { data, isLoading } = useTransactions({
-    status: appliedFilters.status || undefined,
+    paymentStatus: appliedFilters.status || undefined,
     customerType: appliedFilters.customerType || undefined,
     customerId: appliedFilters.selectedCustomer?.id,
     dateFrom: appliedFilters.dateFrom || undefined,
@@ -139,9 +141,9 @@ export function TransactionsSection() {
               onChange={(e) => setDraftField('status', e.target.value)}
             >
               <option value="">All statuses</option>
-              {STATUSES.map((s) => (
+              {PAYMENT_STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s.replace(/_/g, ' ')}
+                  {PAYMENT_STATUS_LABELS[s]}
                 </option>
               ))}
             </select>
