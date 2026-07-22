@@ -105,13 +105,29 @@ function OriginalAmountSummary({ t }) {
   )
 }
 
+// Merged role/name/timestamp row — a phase only ever shows up here once it's
+// actually happened (timestamp not null), so an in-progress or voided-early
+// transaction simply has fewer rows rather than blank ones.
+function RoleRow({ role, name, timestamp }) {
+  if (!timestamp) return null
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm py-0.5">
+      <span className="text-gray-500 shrink-0">{role}</span>
+      <span className="flex items-baseline gap-2 min-w-0">
+        <span className="text-gray-900 truncate">{name ?? '—'}</span>
+        <span className="text-gray-500 text-xs shrink-0">{formatDateTime(timestamp)}</span>
+      </span>
+    </div>
+  )
+}
+
 function HandledByBlock({ t }) {
-  if (!t.walkin_user_name && !t.payment_user_name && !t.releasing_user_name) return null
+  if (!t.walkin_at && !t.payment_at && !t.releasing_at) return null
   return (
     <div className="flex flex-col">
-      <InfoRow label="Receiver" value={t.walkin_user_name} />
-      <InfoRow label="Payment" value={t.payment_user_name} />
-      <InfoRow label="Releasing" value={t.releasing_user_name} />
+      <RoleRow role="Receiver" name={t.walkin_user_name} timestamp={t.walkin_at} />
+      <RoleRow role="Payment" name={t.payment_user_name} timestamp={t.payment_at} />
+      <RoleRow role="Releasing" name={t.releasing_user_name} timestamp={t.releasing_at} />
     </div>
   )
 }
@@ -142,17 +158,15 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
 
         <VoidInfoBlock voidInfo={originalTxn.void_info} />
 
-        <div className="flex flex-col">
-          <InfoRow label="Created" value={formatDateTime(originalTxn.walkin_at)} />
-          <InfoRow label="Paid" value={formatDateTime(originalTxn.payment_at)} />
-          <InfoRow label="Released" value={formatDateTime(originalTxn.releasing_at)} />
+        <div>
+          <SectionHeading>Handled By</SectionHeading>
+          <HandledByBlock t={originalTxn} />
         </div>
 
         <div>
           <SectionHeading>Customer</SectionHeading>
-          <p className="text-sm font-medium text-gray-900 mb-0.5">{customer?.full_name ?? '...'}</p>
+          <InfoRow label="Name" value={customer?.full_name ?? '...'} />
           <InfoRow label="Address" value={originalTxn.customer_address ?? 'No address on file'} />
-          <InfoRow label="Contact" value={originalTxn.customer_contact_number ?? '—'} />
         </div>
 
         <div>
@@ -171,11 +185,6 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
             />
           </div>
         )}
-
-        <div>
-          <SectionHeading>Handled By</SectionHeading>
-          <HandledByBlock t={originalTxn} />
-        </div>
       </div>
 
       {linkedChildTxn && (
@@ -197,10 +206,8 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
             <Badge status={linkedChildTxn.transaction_status} />
           </div>
 
-          <div className="flex flex-col">
-            <InfoRow label="Created" value={formatDateTime(linkedChildTxn.walkin_at ?? linkedChildTxn.created_at)} />
-            <InfoRow label="Resolved" value={formatDateTime(linkedChildTxn.payment_at)} />
-          </div>
+          <InfoRow label="Created" value={formatDateTime(linkedChildTxn.created_at)} />
+          <RoleRow role="Payment" name={linkedChildTxn.payment_user_name} timestamp={linkedChildTxn.payment_at} />
 
           <VoidInfoBlock voidInfo={linkedChildTxn.void_info} />
 
@@ -238,8 +245,6 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
               />
             </div>
           )}
-
-          <InfoRow label="Resolved By (Payment)" value={linkedChildTxn.payment_user_name} />
         </div>
       )}
     </div>
