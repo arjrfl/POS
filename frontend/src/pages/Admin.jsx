@@ -5,6 +5,7 @@ import { DashboardSection } from '../components/admin/DashboardSection'
 import { TransactionsSection } from '../components/admin/TransactionsSection'
 import { CustomersSection } from '../components/admin/CustomersSection'
 import { ProductsSection } from '../components/admin/ProductsSection'
+import { useAdminLiveSync } from '../hooks/useAdminLiveSync'
 
 const SECTION_TITLES = {
   dashboard: 'Dashboard',
@@ -23,6 +24,10 @@ const SECTIONS = {
 export default function Admin() {
   const [active, setActive] = useState('dashboard')
   const ActiveSection = SECTIONS[active]
+
+  // Kept at page level (not inside a tab section) so live invalidation keeps
+  // working no matter which tab is currently active — see useAdminLiveSync.js.
+  useAdminLiveSync()
 
   return (
     <PageLayout title={`Admin — ${SECTION_TITLES[active]}`}>
