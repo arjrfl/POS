@@ -10,6 +10,8 @@ from app.models.customer import Customer, CustomerStatusEnum
 from app.models.product import Product, ProductStatusEnum
 from app.models.transaction import (
     ItemTypeEnum,
+    PaymentDetail,
+    PaymentMethod,
     SalesTransaction,
     TransactionItem,
     TransactionStatusEnum,
@@ -39,11 +41,28 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     )
     total_sales_today = (await db.execute(sales_stmt)).scalar_one()
 
+    # Sums actual confirmed payment amounts recorded today, excluding credit-method
+    # rows (credit application is not fresh cash — it's a redemption of previously-
+    # issued store credit, already netted into total_due). Naturally reflects partial
+    # payments correctly — only the amount actually collected counts, not the full
+    # total_due.
+    actual_sales_stmt = (
+        select(func.coalesce(func.sum(PaymentDetail.amount), 0))
+        .join(PaymentMethod, PaymentMethod.id == PaymentDetail.payment_method_id)
+        .where(
+            PaymentDetail.is_draft.is_(False),
+            PaymentMethod.payment_method_name != "credit",
+            func.date(PaymentDetail.created_at) == func.current_date(),
+        )
+    )
+    actual_sales_today = (await db.execute(actual_sales_stmt)).scalar_one()
+
     return {
         "data": DashboardSummary(
             total_unpaid_balance=Decimal(total_unpaid_balance),
             total_listed_products=total_listed_products,
             total_sales_today=Decimal(total_sales_today),
+            actual_sales_today=Decimal(actual_sales_today),
         ),
         "error": None,
     }

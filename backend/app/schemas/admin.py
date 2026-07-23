@@ -13,3 +13,4 @@ class DashboardSummary(BaseModel):
     total_unpaid_balance: Decimal
     total_listed_products: int
     total_sales_today: Decimal
+    actual_sales_today: Decimal

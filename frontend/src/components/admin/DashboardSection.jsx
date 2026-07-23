@@ -37,11 +37,15 @@ export function DashboardSection() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <SummaryCard label="Transactions Today" value={loadingCompleted ? '...' : (completedToday?.total ?? 0)} />
         <SummaryCard
           label="Total Sales Today"
           value={loadingSummary ? '...' : formatCurrency(summary?.total_sales_today ?? 0)}
+        />
+        <SummaryCard
+          label="Actual Sales Today"
+          value={loadingSummary ? '...' : formatCurrency(summary?.actual_sales_today ?? 0)}
         />
         <SummaryCard
           label="Total Unpaid Transaction"
