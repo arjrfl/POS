@@ -92,20 +92,10 @@ function PaymentEntriesBlock({ entries, cashTendered, changeGiven, changeClaimed
 }
 
 function OriginalAmountSummary({ t }) {
-  const hasVariance = t.actual_amount != null && Number(t.actual_amount) !== Number(t.estimated_amount)
-  const balanceDue = Number(t.balance_due ?? 0)
-
   return (
     <div className="flex flex-col">
       <InfoRow label="Estimated Amount" value={formatCurrency(t.estimated_amount)} />
       {t.actual_amount != null && <InfoRow label="Actual Amount" value={formatCurrency(t.actual_amount)} />}
-      {hasVariance && (
-        <p className={`text-sm font-medium py-0.5 ${balanceDue > 0 ? 'text-amber-700' : 'text-blue-700'}`}>
-          {balanceDue > 0
-            ? `+${formatCurrency(balanceDue)} — item is heavier`
-            : `-${formatCurrency(Math.abs(balanceDue))} — item is lighter`}
-        </p>
-      )}
       {Number(t.credit_applied) > 0 && (
         <InfoRow label="Credit Applied" value={`-${formatCurrency(t.credit_applied)}`} />
       )}
@@ -138,6 +128,9 @@ function RoleRow({ role, name, timestamp }) {
     </div>
   )
 }
+
+// TODO: re-enable when working on Linked Adjustment Transaction details
+const SHOW_LINKED_CHILD_SECTION = false
 
 function HandledByBlock({ t }) {
   if (!t.walkin_at && !t.payment_at && !t.releasing_at) return null
@@ -213,7 +206,7 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
         {sectionsA.flatMap((section, index) => [<Divider key={`divider-${index}`} />, section])}
       </div>
 
-      {linkedChildTxn && (
+      {SHOW_LINKED_CHILD_SECTION && linkedChildTxn && (
         <div className="flex flex-col gap-3 pt-4 border-t border-gray-300">
           <div>
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Linked Transaction</span>
