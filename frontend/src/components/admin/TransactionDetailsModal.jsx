@@ -84,11 +84,22 @@ function PaymentEntriesBlock({ entries }) {
   )
 }
 
-function OriginalAmountSummary({ t }) {
+function OriginalAmountSummary({ t, hasLinkedAdjustment }) {
   return (
     <div className="flex flex-col">
       <InfoRow label="Estimated Amount" value={formatCurrency(t.estimated_amount)} />
-      {t.actual_amount != null && <InfoRow label="Actual Amount" value={formatCurrency(t.actual_amount)} />}
+      {t.actual_amount != null && (
+        <InfoRow
+          label="Actual Amount"
+          value={
+            hasLinkedAdjustment ? (
+              <span className="text-gray-500">— see Linked Transaction</span>
+            ) : (
+              formatCurrency(t.actual_amount)
+            )
+          }
+        />
+      )}
       {t.payment_entries?.length > 0 && (
         <InfoRow label="Total Payment Entries" value={formatCurrency(sumPaymentEntries(t.payment_entries))} />
       )}
@@ -228,7 +239,7 @@ function DetailsColumn({ originalTxn, linkedChildTxn, onNavigate }) {
     ),
     <div key="amount-summary">
       <SectionHeading>Amount Summary</SectionHeading>
-      <OriginalAmountSummary t={originalTxn} />
+      <OriginalAmountSummary t={originalTxn} hasLinkedAdjustment={Boolean(linkedChildTxn)} />
     </div>,
   ].filter(Boolean)
 
