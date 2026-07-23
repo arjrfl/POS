@@ -52,7 +52,11 @@ function VoidInfoBlock({ voidInfo }) {
 
 function PaymentEntriesBlock({ entries, changeGiven, changeClaimed }) {
   if (!entries?.length) return null
-  const totalPaymentEntries = entries.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0)
+  const isCash = (entry) => entry.payment_method_name === 'cash'
+  const totalPaymentEntries = entries.reduce(
+    (sum, entry) => sum + Number((isCash(entry) ? entry.tendered_amount : entry.amount) ?? 0),
+    0
+  )
 
   return (
     <div className="flex flex-col gap-2">
@@ -65,9 +69,7 @@ function PaymentEntriesBlock({ entries, changeGiven, changeClaimed }) {
             {entry.ref_number && <span className="text-gray-500 text-xs truncate">{entry.ref_number}</span>}
           </span>
           <span className="text-gray-900 shrink-0">
-            {entry.tendered_amount != null
-              ? `${formatCurrency(entry.tendered_amount)} tendered → ${formatCurrency(entry.amount)} applied`
-              : formatCurrency(entry.amount)}
+            {formatCurrency(isCash(entry) ? entry.tendered_amount : entry.amount)}
           </span>
         </div>
       ))}
