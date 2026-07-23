@@ -203,7 +203,7 @@ export function UsersSection() {
     <Card className="h-full min-h-0 flex flex-col gap-3">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div className="flex items-end gap-2 flex-wrap">
-          <div className="w-56">
+          <div className="w-64">
             <Input
               id="user-search"
               label="Search users"
@@ -221,7 +221,7 @@ export function UsersSection() {
               id="user-role-filter"
               value={roleInput}
               onChange={(e) => setRoleInput(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light capitalize"
+              className="w-40 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light capitalize"
             >
               <option value="">All roles</option>
               {ROLE_FILTER_OPTIONS.map((r) => (
@@ -239,7 +239,7 @@ export function UsersSection() {
               id="user-status-filter"
               value={statusInput}
               onChange={(e) => setStatusInput(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light"
+              className="w-40 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light"
             >
               <option value="">All statuses</option>
               <option value="active">Active</option>
