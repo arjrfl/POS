@@ -258,14 +258,14 @@ function DetailsColumn({ originalTxn, linkedChildTxn, onNavigate }) {
   // Info on a non-voided transaction) — filter(Boolean) drops those first.
   const sectionsA = [
     originalTxn.void_info && <VoidInfoBlock key="void" voidInfo={originalTxn.void_info} />,
-    <div key="handled-by">
-      <SectionHeading>Handled By</SectionHeading>
-      <HandledByBlock t={originalTxn} />
-    </div>,
     <div key="customer">
       <SectionHeading>Customer</SectionHeading>
       <InfoRow label="Name" value={customer?.full_name ?? '...'} />
       <InfoRow label="Address" value={originalTxn.customer_address ?? 'No address on file'} />
+    </div>,
+    <div key="handled-by">
+      <SectionHeading>Handled By</SectionHeading>
+      <HandledByBlock t={originalTxn} />
     </div>,
     originalTxn.payment_entries?.length > 0 && (
       <div key="payment-entries">
@@ -398,14 +398,14 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
         )}
       </div>
     </div>,
-    <div key="handled-by">
-      <SectionHeading>Handled By</SectionHeading>
-      <AdjustmentChildHandledBy t={childTxn} />
-    </div>,
     <div key="customer">
       <SectionHeading>Customer</SectionHeading>
       <InfoRow label="Name" value={customer?.full_name ?? '...'} />
       <InfoRow label="Address" value={childTxn.customer_address ?? 'No address on file'} />
+    </div>,
+    <div key="handled-by">
+      <SectionHeading>Handled By</SectionHeading>
+      <AdjustmentChildHandledBy t={childTxn} />
     </div>,
     childTxn.payment_entries?.length > 0 && (
       <div key="payment-entries">
@@ -516,14 +516,14 @@ function CreditAdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate })
         )}
       </div>
     </div>,
-    <div key="handled-by">
-      <SectionHeading>Handled By</SectionHeading>
-      <AdjustmentChildHandledBy t={childTxn} />
-    </div>,
     <div key="customer">
       <SectionHeading>Customer</SectionHeading>
       <InfoRow label="Name" value={customer?.full_name ?? '...'} />
       <InfoRow label="Address" value={childTxn.customer_address ?? 'No address on file'} />
+    </div>,
+    <div key="handled-by">
+      <SectionHeading>Handled By</SectionHeading>
+      <AdjustmentChildHandledBy t={childTxn} />
     </div>,
     <div key="credit-resolution">
       <SectionHeading>Credit Resolution</SectionHeading>
