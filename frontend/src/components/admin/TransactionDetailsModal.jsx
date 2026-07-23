@@ -195,7 +195,7 @@ function LinkedOrderLabel({ label, targetTxn, onNavigate }) {
         <button
           type="button"
           onClick={() => onNavigate(targetTxn.id)}
-          className="text-primary hover:underline cursor-pointer"
+          className="text-primary font-bold underline cursor-pointer"
         >
           {targetTxn.order_number}
         </button>
