@@ -50,13 +50,20 @@ function VoidInfoBlock({ voidInfo }) {
   )
 }
 
-function PaymentEntriesBlock({ entries, changeGiven, changeClaimed }) {
-  if (!entries?.length) return null
-  const isCash = (entry) => entry.payment_method_name === 'cash'
-  const totalPaymentEntries = entries.reduce(
-    (sum, entry) => sum + Number((isCash(entry) ? entry.tendered_amount : entry.amount) ?? 0),
+function isCashEntry(entry) {
+  return entry.payment_method_name === 'cash'
+}
+
+function sumPaymentEntries(entries) {
+  if (!entries?.length) return 0
+  return entries.reduce(
+    (sum, entry) => sum + Number((isCashEntry(entry) ? entry.tendered_amount : entry.amount) ?? 0),
     0
   )
+}
+
+function PaymentEntriesBlock({ entries }) {
+  if (!entries?.length) return null
 
   return (
     <div className="flex flex-col gap-2">
@@ -69,23 +76,10 @@ function PaymentEntriesBlock({ entries, changeGiven, changeClaimed }) {
             {entry.ref_number && <span className="text-gray-500 text-xs truncate">{entry.ref_number}</span>}
           </span>
           <span className="text-gray-900 shrink-0">
-            {formatCurrency(isCash(entry) ? entry.tendered_amount : entry.amount)}
+            {formatCurrency(isCashEntry(entry) ? entry.tendered_amount : entry.amount)}
           </span>
         </div>
       ))}
-      <div className="flex justify-between text-sm font-bold pt-1.5 mt-1 border-t border-gray-300">
-        <span>Total Payment Entries</span>
-        <span>{formatCurrency(totalPaymentEntries)}</span>
-      </div>
-      {Number(changeGiven) > 0 && (
-        <div className="flex flex-col">
-          <InfoRow label="Change" value={formatCurrency(changeGiven)} />
-          <InfoRow label="Change Taken by Customer?" value={changeClaimed ? 'Yes' : 'No'} />
-          {!changeClaimed && (
-            <InfoRow label="Added to Customer Credit Record" value={formatCurrency(changeGiven)} />
-          )}
-        </div>
-      )}
     </div>
   )
 }
@@ -95,6 +89,18 @@ function OriginalAmountSummary({ t }) {
     <div className="flex flex-col">
       <InfoRow label="Estimated Amount" value={formatCurrency(t.estimated_amount)} />
       {t.actual_amount != null && <InfoRow label="Actual Amount" value={formatCurrency(t.actual_amount)} />}
+      {t.payment_entries?.length > 0 && (
+        <InfoRow label="Total Payment Entries" value={formatCurrency(sumPaymentEntries(t.payment_entries))} />
+      )}
+      {Number(t.change_given) > 0 && (
+        <>
+          <InfoRow label="Change" value={formatCurrency(t.change_given)} />
+          <InfoRow label="Change Taken by Customer?" value={t.change_claimed ? 'Yes' : 'No'} />
+          {!t.change_claimed && (
+            <InfoRow label="Added to Customer Credit Record" value={formatCurrency(t.change_given)} />
+          )}
+        </>
+      )}
       {Number(t.credit_applied) > 0 && (
         <InfoRow label="Credit Applied" value={`-${formatCurrency(t.credit_applied)}`} />
       )}
@@ -217,11 +223,7 @@ function DetailsColumn({ originalTxn, linkedChildTxn, onNavigate }) {
     originalTxn.payment_entries?.length > 0 && (
       <div key="payment-entries">
         <SectionHeading>Payment Entries</SectionHeading>
-        <PaymentEntriesBlock
-          entries={originalTxn.payment_entries}
-          changeGiven={originalTxn.change_given}
-          changeClaimed={originalTxn.change_claimed}
-        />
+        <PaymentEntriesBlock entries={originalTxn.payment_entries} />
       </div>
     ),
     <div key="amount-summary">
@@ -274,12 +276,7 @@ function DetailsColumn({ originalTxn, linkedChildTxn, onNavigate }) {
           {!isRefundChild && linkedChildTxn.payment_entries?.length > 0 && (
             <div>
               <SectionHeading>Payment Entries</SectionHeading>
-              <PaymentEntriesBlock
-                entries={linkedChildTxn.payment_entries}
-                cashTendered={linkedChildTxn.cash_tendered}
-                changeGiven={linkedChildTxn.change_given}
-                changeClaimed={linkedChildTxn.change_claimed}
-              />
+              <PaymentEntriesBlock entries={linkedChildTxn.payment_entries} />
             </div>
           )}
 
@@ -361,17 +358,25 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
     childTxn.payment_entries?.length > 0 && (
       <div key="payment-entries">
         <SectionHeading>Payment Entries</SectionHeading>
-        <PaymentEntriesBlock
-          entries={childTxn.payment_entries}
-          changeGiven={childTxn.change_given}
-          changeClaimed={childTxn.change_claimed}
-        />
+        <PaymentEntriesBlock entries={childTxn.payment_entries} />
       </div>
     ),
     <div key="amount-summary">
       <SectionHeading>Amount Summary</SectionHeading>
       <div className="flex flex-col">
         <InfoRow label="Amount Due" value={formatCurrency(childTxn.total_due)} />
+        {childTxn.payment_entries?.length > 0 && (
+          <InfoRow label="Total Payment Entries" value={formatCurrency(sumPaymentEntries(childTxn.payment_entries))} />
+        )}
+        {Number(childTxn.change_given) > 0 && (
+          <>
+            <InfoRow label="Change" value={formatCurrency(childTxn.change_given)} />
+            <InfoRow label="Change Taken by Customer?" value={childTxn.change_claimed ? 'Yes' : 'No'} />
+            {!childTxn.change_claimed && (
+              <InfoRow label="Added to Customer Credit Record" value={formatCurrency(childTxn.change_given)} />
+            )}
+          </>
+        )}
         {Number(childTxn.credit_applied) > 0 && (
           <InfoRow label="Credit Applied" value={`-${formatCurrency(childTxn.credit_applied)}`} />
         )}
