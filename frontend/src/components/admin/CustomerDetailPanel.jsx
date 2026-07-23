@@ -51,12 +51,12 @@ function CustomerTransactionRow({ transaction, onViewDetails }) {
   return (
     <tr className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50">
       <td className="px-3 py-2 text-sm font-medium text-gray-900 truncate">{transaction.order_number}</td>
-      <td className="px-3 py-2 text-sm text-gray-600">{getTransactionTypeLabel(transaction.transaction_type)}</td>
+      <td className="px-3 py-2 text-sm text-gray-600 text-center">{getTransactionTypeLabel(transaction.transaction_type)}</td>
       <td className="px-3 py-2 text-center">
         <Badge status={paymentStatus}>{paymentStatusLabel}</Badge>
       </td>
       <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(transaction.total_due)}</td>
-      <td className="px-3 py-2 text-sm text-gray-500">{new Date(transaction.created_at).toLocaleString()}</td>
+      <td className="px-3 py-2 text-sm text-gray-500 text-center">{new Date(transaction.created_at).toLocaleString()}</td>
       <td className="px-3 py-2 text-center">
         <Button
           type="button"
@@ -282,10 +282,10 @@ export function CustomerDetailPanel({ customerId }) {
                   <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-300">
                       <th className="w-1/6 px-3 py-2">Order #</th>
-                      <th className="w-1/6 px-3 py-2">Type</th>
+                      <th className="w-1/6 px-3 py-2 text-center">Type</th>
                       <th className="w-1/6 px-3 py-2 text-center">Status</th>
                       <th className="w-1/6 px-3 py-2 text-right">Total Due</th>
-                      <th className="w-1/6 px-3 py-2">Created</th>
+                      <th className="w-1/6 px-3 py-2 text-center">Created</th>
                       <th className="w-1/6 px-3 py-2 text-center">Action</th>
                     </tr>
                   </thead>
