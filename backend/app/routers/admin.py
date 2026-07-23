@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.dependencies import require_role
 from app.models.customer import Customer, CustomerStatusEnum
-from app.models.product import Product, ProductStatusEnum
+from app.models.product import Product
 from app.models.transaction import (
     ItemTypeEnum,
     PaymentDetail,
@@ -28,9 +28,6 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
         Customer.net_balance < 0, Customer.customer_status == CustomerStatusEnum.active
     )
     total_unpaid_balance = (await db.execute(unpaid_stmt)).scalar_one()
-
-    products_stmt = select(func.count()).select_from(Product).where(Product.product_status == ProductStatusEnum.active)
-    total_listed_products = (await db.execute(products_stmt)).scalar_one()
 
     # total_due already nets credit_applied; refund-type excluded per CLAUDE.md
     # locked rule — resolve-as-credit produces no payment_detail row.
@@ -60,7 +57,6 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     return {
         "data": DashboardSummary(
             total_unpaid_balance=Decimal(total_unpaid_balance),
-            total_listed_products=total_listed_products,
             total_sales_today=Decimal(total_sales_today),
             actual_sales_today=Decimal(actual_sales_today),
         ),
