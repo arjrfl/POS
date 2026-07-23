@@ -8,6 +8,7 @@ import { getTransactionTypeLabel } from '../../utils/transactionType'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
 import { formatCurrency } from '../../utils/format'
+import { getDisplayStatus } from '../../utils/transactionStatus'
 
 const ARTICLE_TABLE_COLUMNS = ['QTY', 'UNIT', 'ARTICLES', 'UNIT PRICE', 'AMOUNT']
 const PAYMENT_ENTRY_LABELS = { ...PAYMENT_METHOD_LABEL, credit: 'Credit' }
@@ -188,10 +189,16 @@ function AdjustmentChildHandledBy({ t }) {
 // transaction's id instead of the row that was clicked.
 function LinkedOrderLabel({ label, targetTxn, onNavigate }) {
   if (!targetTxn) return null
+  // Same "Available once payment is processed" gate the Transaction History
+  // list uses to disable its own "View Details" button (see TransactionRow's
+  // isViewable) — a pending target has nothing to navigate to yet.
+  const { status: paymentStatus } = getDisplayStatus(targetTxn)
+  const isEligible = paymentStatus === 'full' || paymentStatus === 'partial' || paymentStatus === 'voided'
+
   return (
     <span className="text-xs text-gray-500 ml-auto">
       {label}:{' '}
-      {onNavigate ? (
+      {onNavigate && isEligible ? (
         <button
           type="button"
           onClick={() => onNavigate(targetTxn.id)}
@@ -200,7 +207,10 @@ function LinkedOrderLabel({ label, targetTxn, onNavigate }) {
           {targetTxn.order_number}
         </button>
       ) : (
-        targetTxn.order_number
+        <span className="text-gray-400">
+          {targetTxn.order_number}
+          {!isEligible && ' (pending)'}
+        </span>
       )}
     </span>
   )
@@ -757,6 +767,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                       align="center"
                       highlightedProductIds={isStandaloneChild ? highlightedProductIds : undefined}
                       highlightColor={highlightColor}
+                      preferActual={isStandaloneChild}
                     />
                   </ArticleTable>
                 </div>
@@ -773,6 +784,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                         align="center"
                         highlightedProductIds={isStandaloneChild ? highlightedProductIds : undefined}
                         highlightColor={highlightColor}
+                        preferActual={isStandaloneChild}
                       />
                     </ArticleTable>
                   </div>
@@ -788,7 +800,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
               ) : (
                 <div className="flex-1 min-h-0 flex flex-col gap-2">
                   <ArticleTable>
-                    <ArticleRows transaction={originalAsParent} variant="plain" align="center" />
+                    <ArticleRows transaction={originalAsParent} variant="plain" align="center" preferActual={false} />
                   </ArticleTable>
                 </div>
               )}

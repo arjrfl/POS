@@ -15,18 +15,19 @@ export const ARTICLE_ROW_COLUMN_WIDTHS = ['w-[15%]', 'w-[18%]', 'w-[21%]', 'w-[2
 // a highlighted row in the Original box reads consistently with that.
 const HIGHLIGHT_BG = { amber: 'bg-amber-50', blue: 'bg-blue-50' }
 
-function UnadjustedRow({ row, align, highlightedProductIds, highlightColor }) {
+function UnadjustedRow({ row, align, highlightedProductIds, highlightColor, preferActual = true }) {
   const alignClass = align === 'center' ? 'text-center' : ''
   const articleAlignClass = align === 'center' ? 'text-left' : ''
   const highlightClass = highlightedProductIds?.has(row.product_id) ? HIGHLIGHT_BG[highlightColor] ?? '' : ''
+  const quantityKg = preferActual ? row.actual_quantity_kg ?? row.quantity_kg : row.quantity_kg
+  const unitCount = preferActual ? row.actual_unit_count ?? row.unit_count : row.unit_count
+  const subtotal = preferActual ? row.actual_subtotal ?? row.subtotal : row.subtotal
   return (
     <tr className={`border-b border-gray-100 last:border-b-0 align-top ${highlightClass}`}>
       <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[0]} ${alignClass}`}>
-        {(row.actual_quantity_kg ?? row.quantity_kg).toFixed(3)}
+        {quantityKg.toFixed(3)}
       </td>
-      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[1]} ${alignClass}`}>
-        {row.actual_unit_count ?? row.unit_count}
-      </td>
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[1]} ${alignClass}`}>{unitCount}</td>
       <td className={`py-2 pr-2 ${ARTICLE_ROW_COLUMN_WIDTHS[2]} ${articleAlignClass}`}>
         <div className="font-medium text-gray-900">{row.product_name}</div>
         {row.brand_name && <div className="text-xs text-gray-500">{row.brand_name}</div>}
@@ -35,7 +36,7 @@ function UnadjustedRow({ row, align, highlightedProductIds, highlightColor }) {
         {formatCurrency(row.unit_price)}
       </td>
       <td className={`py-2 pr-2 font-medium text-gray-900 ${ARTICLE_ROW_COLUMN_WIDTHS[4]} ${alignClass}`}>
-        {formatCurrency(row.actual_subtotal ?? row.subtotal)}
+        {formatCurrency(subtotal)}
       </td>
     </tr>
   )
@@ -97,12 +98,19 @@ function AdjustedRow({ row, align }) {
 // in TransactionDetailsModal.jsx to flag which items a linked adjustment/
 // refund child touched, without duplicating that child's before→after
 // presentation.
+//
+// preferActual (default true) — whether an unadjusted row's displayed
+// QTY/UNIT/AMOUNT fall back to actual_* when set. The Original transaction's
+// own historical record (viewed directly, not reused as a child's "current
+// reality" table) always wants its own input values instead — see
+// TransactionDetailsModal.jsx's isStandaloneChild-gated preferActual prop.
 export function ArticleRows({
   transaction,
   variant = 'adjusted',
   align = 'left',
   highlightedProductIds,
   highlightColor,
+  preferActual = true,
 }) {
   const { rows, unadjusted, adjusted, hasAdjustments } = useArticleRows(transaction)
 
@@ -116,6 +124,7 @@ export function ArticleRows({
             align={align}
             highlightedProductIds={highlightedProductIds}
             highlightColor={highlightColor}
+            preferActual={preferActual}
           />
         ))}
       </>
@@ -131,6 +140,7 @@ export function ArticleRows({
           align={align}
           highlightedProductIds={highlightedProductIds}
           highlightColor={highlightColor}
+          preferActual={preferActual}
         />
       ))}
       {hasAdjustments && (
