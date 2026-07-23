@@ -160,11 +160,38 @@ function AdjustmentChildHandledBy({ t }) {
   )
 }
 
+// Header row's "Linked Transaction: TXN-xxxxx" / "Original Transaction:
+// TXN-xxxxx" reference — only the order number itself is clickable, styled
+// like the existing text-primary/hover:underline links elsewhere in the app
+// (see PaymentConfirmationModal's "Back" button), not a button. Reuses the
+// same onNavigate the Transaction History table's own "View Details" click
+// already calls (see TransactionsSection) — just invoked with the OTHER
+// transaction's id instead of the row that was clicked.
+function LinkedOrderLabel({ label, targetTxn, onNavigate }) {
+  if (!targetTxn) return null
+  return (
+    <span className="text-xs text-gray-500 ml-auto">
+      {label}:{' '}
+      {onNavigate ? (
+        <button
+          type="button"
+          onClick={() => onNavigate(targetTxn.id)}
+          className="text-primary hover:underline cursor-pointer"
+        >
+          {targetTxn.order_number}
+        </button>
+      ) : (
+        targetTxn.order_number
+      )}
+    </span>
+  )
+}
+
 // The Details column (right side) of the modal — Section A (the original
 // transaction, always shown) plus Section B (a linked adjustment/refund
 // child, only when one exists in the chain). Separate from the left-side
 // Article Table, which keeps its own existing rendering untouched.
-function DetailsColumn({ originalTxn, linkedChildTxn }) {
+function DetailsColumn({ originalTxn, linkedChildTxn, onNavigate }) {
   const { data: customer } = useCustomer(originalTxn?.customer_id)
   if (!originalTxn) return null
 
@@ -212,11 +239,7 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
               {customerTypeBadge.label}
             </span>
           )}
-          {linkedChildTxn && (
-            <span className="text-xs text-gray-500 ml-auto">
-              Linked Transaction: {linkedChildTxn.order_number}
-            </span>
-          )}
+          <LinkedOrderLabel label="Linked Transaction" targetTxn={linkedChildTxn} onNavigate={onNavigate} />
         </div>
 
         {sectionsA.flatMap((section, index) => [<Divider key={`divider-${index}`} />, section])}
@@ -294,7 +317,7 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
 // standalone column with its own header. Refund/credit-adjustment standalone
 // view is a separate, not-yet-built layout — this only covers
 // transaction_type === 'adjustment'.
-function AdjustmentChildDetailsColumn({ childTxn, parentTxn }) {
+function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
   const { data: customer } = useCustomer(childTxn?.customer_id)
   if (!childTxn) return null
 
@@ -378,11 +401,7 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn }) {
           <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
             ADJUSTMENT
           </span>
-          {parentTxn && (
-            <span className="text-xs text-gray-500 ml-auto">
-              Original Transaction: {parentTxn.order_number}
-            </span>
-          )}
+          <LinkedOrderLabel label="Original Transaction" targetTxn={parentTxn} onNavigate={onNavigate} />
         </div>
 
         {sections.flatMap((section, index) => [<Divider key={`divider-${index}`} />, section])}
@@ -460,7 +479,7 @@ function AdjustedItemsSection({ items }) {
   )
 }
 
-export function TransactionDetailsModal({ transactionId, onClose }) {
+export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) {
   const [chain, setChain] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -630,9 +649,9 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
 
             <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0">
               {isStandaloneAdjustmentChild ? (
-                <AdjustmentChildDetailsColumn childTxn={viewedTxn} parentTxn={originalTxn} />
+                <AdjustmentChildDetailsColumn childTxn={viewedTxn} parentTxn={originalTxn} onNavigate={onNavigate} />
               ) : (
-                <DetailsColumn originalTxn={originalTxn} linkedChildTxn={linkedChildTxn} />
+                <DetailsColumn originalTxn={originalTxn} linkedChildTxn={linkedChildTxn} onNavigate={onNavigate} />
               )}
             </div>
           </div>

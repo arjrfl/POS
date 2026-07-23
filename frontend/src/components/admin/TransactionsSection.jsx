@@ -259,7 +259,11 @@ export function TransactionsSection() {
       </div>
 
       {viewingTransactionId && (
-        <TransactionDetailsModal transactionId={viewingTransactionId} onClose={() => setViewingTransactionId(null)} />
+        <TransactionDetailsModal
+          transactionId={viewingTransactionId}
+          onClose={() => setViewingTransactionId(null)}
+          onNavigate={setViewingTransactionId}
+        />
       )}
     </div>
   )
