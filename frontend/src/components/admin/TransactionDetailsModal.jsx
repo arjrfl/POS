@@ -51,9 +51,8 @@ function VoidInfoBlock({ voidInfo }) {
   )
 }
 
-function PaymentEntriesBlock({ entries, cashTendered, changeGiven, changeClaimed }) {
+function PaymentEntriesBlock({ entries, changeGiven, changeClaimed }) {
   if (!entries?.length) return null
-  const hasCash = entries.some((entry) => entry.payment_method_name === 'cash')
   const totalPaymentEntries = entries.reduce((sum, entry) => sum + Number(entry.amount ?? 0), 0)
 
   return (
@@ -66,24 +65,23 @@ function PaymentEntriesBlock({ entries, cashTendered, changeGiven, changeClaimed
             </span>
             {entry.ref_number && <span className="text-gray-500 text-xs truncate">{entry.ref_number}</span>}
           </span>
-          <span className="text-gray-900 shrink-0">{formatCurrency(entry.amount)}</span>
+          <span className="text-gray-900 shrink-0">
+            {entry.tendered_amount != null
+              ? `${formatCurrency(entry.tendered_amount)} tendered → ${formatCurrency(entry.amount)} applied`
+              : formatCurrency(entry.amount)}
+          </span>
         </div>
       ))}
       <div className="flex justify-between text-sm font-bold pt-1.5 mt-1 border-t border-gray-300">
         <span>Total Payment Entries</span>
         <span>{formatCurrency(totalPaymentEntries)}</span>
       </div>
-      {(hasCash || Number(changeGiven) > 0) && (
+      {Number(changeGiven) > 0 && (
         <div className="flex flex-col">
-          {hasCash && <InfoRow label="Cash Tendered" value={formatCurrency(cashTendered)} />}
-          {Number(changeGiven) > 0 && (
-            <>
-              <InfoRow label="Change" value={formatCurrency(changeGiven)} />
-              <InfoRow label="Change Taken by Customer?" value={changeClaimed ? 'Yes' : 'No'} />
-              {!changeClaimed && (
-                <InfoRow label="Added to Customer Credit Record" value={formatCurrency(changeGiven)} />
-              )}
-            </>
+          <InfoRow label="Change" value={formatCurrency(changeGiven)} />
+          <InfoRow label="Change Taken by Customer?" value={changeClaimed ? 'Yes' : 'No'} />
+          {!changeClaimed && (
+            <InfoRow label="Added to Customer Credit Record" value={formatCurrency(changeGiven)} />
           )}
         </div>
       )}
@@ -193,7 +191,6 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
         <SectionHeading>Payment Entries</SectionHeading>
         <PaymentEntriesBlock
           entries={originalTxn.payment_entries}
-          cashTendered={originalTxn.cash_tendered}
           changeGiven={originalTxn.change_given}
           changeClaimed={originalTxn.change_claimed}
         />
@@ -316,23 +313,16 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn }) {
     childTxn.void_info && <VoidInfoBlock key="void" voidInfo={childTxn.void_info} />,
     <div key="adjustment-details">
       <SectionHeading>Adjustment Details</SectionHeading>
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
-            ADJUSTMENT
-          </span>
-        </div>
-        <div className="flex flex-col">
-          <InfoRow label="Estimated Amount" value={formatCurrency(parentTxn?.estimated_amount)} />
-          <InfoRow label="Actual Amount" value={formatCurrency(parentTxn?.actual_amount)} />
-          {parentHasVariance && (
-            <p className={`text-sm font-medium py-0.5 ${parentBalanceDue > 0 ? 'text-amber-700' : 'text-blue-700'}`}>
-              {parentBalanceDue > 0
-                ? `+${formatCurrency(parentBalanceDue)} — item was heavier`
-                : `-${formatCurrency(Math.abs(parentBalanceDue))} — item was lighter`}
-            </p>
-          )}
-        </div>
+      <div className="flex flex-col">
+        <InfoRow label="Estimated Amount" value={formatCurrency(parentTxn?.estimated_amount)} />
+        <InfoRow label="Actual Amount" value={formatCurrency(parentTxn?.actual_amount)} />
+        {parentHasVariance && (
+          <p className={`text-sm font-medium py-0.5 ${parentBalanceDue > 0 ? 'text-amber-700' : 'text-blue-700'}`}>
+            {parentBalanceDue > 0
+              ? `+${formatCurrency(parentBalanceDue)} — item was heavier`
+              : `-${formatCurrency(Math.abs(parentBalanceDue))} — item was lighter`}
+          </p>
+        )}
       </div>
     </div>,
     <div key="handled-by">
@@ -349,7 +339,6 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn }) {
         <SectionHeading>Payment Entries</SectionHeading>
         <PaymentEntriesBlock
           entries={childTxn.payment_entries}
-          cashTendered={childTxn.cash_tendered}
           changeGiven={childTxn.change_given}
           changeClaimed={childTxn.change_claimed}
         />
@@ -387,6 +376,9 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn }) {
               {customerTypeBadge.label}
             </span>
           )}
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+            ADJUSTMENT
+          </span>
           {parentTxn && (
             <span className="text-xs text-gray-500 ml-auto">
               Original Transaction: {parentTxn.order_number}
