@@ -143,6 +143,26 @@ function HandledByBlock({ t }) {
   )
 }
 
+// Adjustment/refund children get a `walkin_at` timestamp stamped at creation
+// (see _create_adjustment_child) with no matching walkin_user_id — nobody at
+// Receiver actually touched this row — so unlike HandledByBlock above (where
+// an original's _at/_user_id pairs are always set together), gating here has
+// to check the user_id itself per phase, not just the timestamp.
+function AdjustmentChildHandledBy({ t }) {
+  if (!t.walkin_user_id && !t.payment_user_id && !t.releasing_user_id) return null
+  return (
+    <div className="flex flex-col">
+      <RoleRow role="Receiver" name={t.walkin_user_name} timestamp={t.walkin_user_id ? t.walkin_at : null} />
+      <RoleRow role="Payment" name={t.payment_user_name} timestamp={t.payment_user_id ? t.payment_at : null} />
+      <RoleRow
+        role="Releasing"
+        name={t.releasing_user_name}
+        timestamp={t.releasing_user_id ? t.releasing_at : null}
+      />
+    </div>
+  )
+}
+
 // The Details column (right side) of the modal — Section A (the original
 // transaction, always shown) plus Section B (a linked adjustment/refund
 // child, only when one exists in the chain). Separate from the left-side
@@ -270,6 +290,87 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
   )
 }
 
+// Standalone Details column for a "View Details" click directly on an
+// adjustment child's own row (Transaction History lists adjustment/refund
+// children as their own rows, not just nested under their parent) — reuses
+// the same field mappings as the nested Section B view above (Handled By,
+// Customer, Payment Entries, Amount Summary), restructured as a full
+// standalone column with its own header. Refund/credit-adjustment standalone
+// view is a separate, not-yet-built layout — this only covers
+// transaction_type === 'adjustment'.
+function AdjustmentChildDetailsColumn({ childTxn, parentTxn }) {
+  const { data: customer } = useCustomer(childTxn?.customer_id)
+  if (!childTxn) return null
+
+  const customerTypeBadge = CUSTOMER_TYPE_BADGE[childTxn.customer_type]
+
+  const sections = [
+    childTxn.void_info && <VoidInfoBlock key="void" voidInfo={childTxn.void_info} />,
+    <div key="handled-by">
+      <SectionHeading>Handled By</SectionHeading>
+      <AdjustmentChildHandledBy t={childTxn} />
+    </div>,
+    <div key="customer">
+      <SectionHeading>Customer</SectionHeading>
+      <InfoRow label="Name" value={customer?.full_name ?? '...'} />
+      <InfoRow label="Address" value={childTxn.customer_address ?? 'No address on file'} />
+    </div>,
+    childTxn.payment_entries?.length > 0 && (
+      <div key="payment-entries">
+        <SectionHeading>Payment Entries</SectionHeading>
+        <PaymentEntriesBlock
+          entries={childTxn.payment_entries}
+          cashTendered={childTxn.cash_tendered}
+          changeGiven={childTxn.change_given}
+          changeClaimed={childTxn.change_claimed}
+        />
+      </div>
+    ),
+    <div key="amount-summary">
+      <SectionHeading>Amount Summary</SectionHeading>
+      <div className="flex flex-col">
+        <InfoRow label="Amount Due" value={formatCurrency(childTxn.total_due)} />
+        {Number(childTxn.credit_applied) > 0 && (
+          <InfoRow label="Credit Applied" value={`-${formatCurrency(childTxn.credit_applied)}`} />
+        )}
+        {Number(childTxn.balance_settled) > 0 && (
+          <InfoRow label="Balance Settled" value={`+${formatCurrency(childTxn.balance_settled)}`} />
+        )}
+        {childTxn.remaining_balance_added != null && (
+          <InfoRow label="Remaining Balance Added" value={formatCurrency(childTxn.remaining_balance_added)} />
+        )}
+        <div className="flex justify-between text-sm font-bold pt-1.5 mt-1 border-t border-gray-300">
+          <span>Total Due</span>
+          <span>{formatCurrency(childTxn.total_due)}</span>
+        </div>
+      </div>
+    </div>,
+  ].filter(Boolean)
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-gray-900">{childTxn.order_number}</span>
+          <Badge status={childTxn.transaction_status} />
+          {customerTypeBadge && (
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${customerTypeBadge.className}`}>
+              {customerTypeBadge.label}
+            </span>
+          )}
+          {parentTxn && (
+            <span className="text-xs text-gray-500 ml-auto">
+              Linked Transaction: {parentTxn.order_number}
+            </span>
+          )}
+        </div>
+
+        {sections.flatMap((section, index) => [<Divider key={`divider-${index}`} />, section])}
+      </div>
+    </div>
+  )
+}
+
 // ArticleRows renders <tr> rows meant for a real <table><tbody> (see its own
 // comment) — a header-only div/grid can't host them, so the header lives in a
 // <thead> here instead, keeping the same sticky/label styling as before.
@@ -335,6 +436,19 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
     : null
   const hasLinkedAdjustment = Boolean(linkedChildTxn)
 
+  // "View Details" can be opened directly on a child row (Transaction History
+  // lists adjustment/refund children as their own rows) — the chain endpoint
+  // always returns the full parent+child chain either way, so this finds which
+  // specific row was actually clicked to decide whether to render the
+  // standalone child layout instead of always defaulting to the parent's view.
+  // Refund/credit-adjustment standalone view isn't built yet, so only
+  // 'adjustment' switches to the new layout — a refund child falls through to
+  // the existing originalTxn-centric rendering, unchanged.
+  const viewedTxn = chain?.find((t) => t.id === transactionId) ?? null
+  const isStandaloneAdjustmentChild = Boolean(
+    viewedTxn?.parent_transaction_id != null && viewedTxn.transaction_type === 'adjustment'
+  )
+
   // Scope guard for the unified single-card layout: exactly one parent
   // (original) + exactly one child, and that child must be an adjustment
   // ("customer owes more") or a refund ("store owes customer", always
@@ -377,7 +491,7 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
       onClose={onClose}
       title="Transaction History"
       closeLabel="‹ Back"
-      centerLabel={originalTxn?.order_number}
+      centerLabel={isStandaloneAdjustmentChild ? viewedTxn.order_number : originalTxn?.order_number}
     >
       <div className="flex flex-col h-full min-h-0">
         {loading && (
@@ -440,7 +554,11 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
             </div>
 
             <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0">
-              <DetailsColumn originalTxn={originalTxn} linkedChildTxn={linkedChildTxn} />
+              {isStandaloneAdjustmentChild ? (
+                <AdjustmentChildDetailsColumn childTxn={viewedTxn} parentTxn={originalTxn} />
+              ) : (
+                <DetailsColumn originalTxn={originalTxn} linkedChildTxn={linkedChildTxn} />
+              )}
             </div>
           </div>
         )}
