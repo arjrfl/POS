@@ -71,8 +71,7 @@ CREATE TYPE transaction_type_enum AS ENUM (
     'original',           -- standard / first transaction
     'adjustment',         -- substandard: customer pays extra
     'refund',             -- substandard: store returns money
-    'balance_settlement', -- customer paying their utang
-    'credit_usage'        -- customer using their credit
+    'balance_settlement'  -- customer paying their utang
 );
 
 CREATE TYPE queue_status_enum AS ENUM (

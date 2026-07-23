@@ -74,7 +74,12 @@ dependency not listed above without explicit instruction.
 - A completed or settled transaction is immutable
 - Substandard kilo outcomes always generate a **child transaction** linked via
   `parent_transaction_id` — never edit the original
-- transaction types: `original`, `adjustment`, `refund`, `balance_settlement`, `credit_usage`
+- transaction types: `original`, `adjustment`, `refund`, `balance_settlement`
+  (`credit_usage` was removed from `transaction_type_enum` — it was never
+  produced by any code path; credit application happens via the
+  `sales_transaction.credit_applied` field, not a typed transaction row.
+  Note: `transaction_item.item_type` still has a separate, still-valid
+  `credit_usage` value — unaffected by this change.)
 
 ### Two Customer Flows — Different Pipeline Order
 - `walk_in`: Receiver → Payment → Releasing

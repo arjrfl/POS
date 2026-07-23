@@ -11,8 +11,6 @@ export function getTransactionTypeLabel(transactionType) {
       return 'Credit Adjustment'
     case 'balance_settlement':
       return 'Balance Settlement'
-    case 'credit_usage':
-      return 'Credit Usage'
     default:
       return transactionType
   }

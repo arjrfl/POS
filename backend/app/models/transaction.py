@@ -36,7 +36,6 @@ class TransactionTypeEnum(str, enum.Enum):
     adjustment = "adjustment"
     refund = "refund"
     balance_settlement = "balance_settlement"
-    credit_usage = "credit_usage"
 
 
 class QueueStatusEnum(str, enum.Enum):
