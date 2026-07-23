@@ -35,16 +35,14 @@ export function DashboardSection() {
     queryFn: () => get('/admin/dashboard/summary'),
   })
 
-  const totalSalesToday = (completedToday?.items ?? []).reduce(
-    (sum, t) => sum + Number(t.actual_amount ?? t.estimated_amount ?? 0),
-    0,
-  )
-
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard label="Transactions Today" value={loadingCompleted ? '...' : (completedToday?.total ?? 0)} />
-        <SummaryCard label="Total Sales Today" value={loadingCompleted ? '...' : formatCurrency(totalSalesToday)} />
+        <SummaryCard
+          label="Total Sales Today"
+          value={loadingSummary ? '...' : formatCurrency(summary?.total_sales_today ?? 0)}
+        />
         <SummaryCard
           label="Total Unpaid Transaction"
           value={loadingSummary ? '...' : formatCurrency(summary?.total_unpaid_balance ?? 0)}

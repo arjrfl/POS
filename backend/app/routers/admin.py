@@ -8,7 +8,13 @@ from app.core.database import get_db
 from app.core.dependencies import require_role
 from app.models.customer import Customer, CustomerStatusEnum
 from app.models.product import Product, ProductStatusEnum
-from app.models.transaction import ItemTypeEnum, SalesTransaction, TransactionItem, TransactionStatusEnum
+from app.models.transaction import (
+    ItemTypeEnum,
+    SalesTransaction,
+    TransactionItem,
+    TransactionStatusEnum,
+    TransactionTypeEnum,
+)
 from app.schemas.admin import DashboardSummary, TopProductRevenue
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -24,10 +30,20 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     products_stmt = select(func.count()).select_from(Product).where(Product.product_status == ProductStatusEnum.active)
     total_listed_products = (await db.execute(products_stmt)).scalar_one()
 
+    # total_due already nets credit_applied; refund-type excluded per CLAUDE.md
+    # locked rule — resolve-as-credit produces no payment_detail row.
+    sales_stmt = select(func.coalesce(func.sum(SalesTransaction.total_due), 0)).where(
+        SalesTransaction.transaction_status == TransactionStatusEnum.completed,
+        func.date(SalesTransaction.payment_at) == func.current_date(),
+        SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+    )
+    total_sales_today = (await db.execute(sales_stmt)).scalar_one()
+
     return {
         "data": DashboardSummary(
             total_unpaid_balance=Decimal(total_unpaid_balance),
             total_listed_products=total_listed_products,
+            total_sales_today=Decimal(total_sales_today),
         ),
         "error": None,
     }
