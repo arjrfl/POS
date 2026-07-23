@@ -31,6 +31,13 @@ class CustomerResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # independently computed gross totals (not derived from net_balance, which
+    # nets the two together) — see customer_service.compute_ledger_totals. No
+    # matching ORM attribute, so this always needs the default here; filled in
+    # by the router for both the list and detail endpoints.
+    total_balance: Decimal = Decimal("0")
+    total_credit: Decimal = Decimal("0")
+
 
 class CustomerLedgerEntryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -56,10 +63,6 @@ class CustomerDetailResponse(CustomerResponse):
     # ORM attribute for from_attributes to pick up, so they always need the
     # default here and are filled in by the router.
     listed_by_name: str | None = None
-
-    # independently computed gross totals — see customer_service.compute_ledger_totals
-    total_balance: Decimal = Decimal("0")
-    total_credit: Decimal = Decimal("0")
 
 
 class CustomerBalanceEntryResponse(BaseModel):

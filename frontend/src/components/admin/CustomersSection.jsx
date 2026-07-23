@@ -7,18 +7,19 @@ import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { formatCurrency } from '../../utils/format'
 
-// Same net_balance sign split CLAUDE.md documents (positive = credit,
-// negative = balance/utang) — split into two dedicated cells (debt-only,
-// credit-only) instead of one combined signed cell, so the list can show
-// them as separate columns.
-function NetBalanceDebtCell({ netBalance }) {
-  const amount = Number(netBalance)
-  if (amount >= 0) return <span className="text-gray-500">₱0.00</span>
-  return <span className="text-red-600 font-medium">{formatCurrency(Math.abs(amount))}</span>
+// Gross totals (customer.total_balance/total_credit — same
+// customer_service.compute_ledger_totals aggregation CustomerDetailPanel's
+// Total Balance/Total Credit use), NOT net_balance split by sign — a customer
+// can have outstanding balance AND unused credit at the same time, and
+// net_balance alone (a single netted column) would hide one side of that.
+function NetBalanceDebtCell({ totalBalance }) {
+  const amount = Number(totalBalance)
+  if (amount <= 0) return <span className="text-gray-500">₱0.00</span>
+  return <span className="text-red-600 font-medium">{formatCurrency(amount)}</span>
 }
 
-function NetBalanceCreditCell({ netBalance }) {
-  const amount = Number(netBalance)
+function NetBalanceCreditCell({ totalCredit }) {
+  const amount = Number(totalCredit)
   if (amount <= 0) return <span className="text-gray-500">₱0.00</span>
   return <span className="text-green-700 font-medium">{formatCurrency(amount)}</span>
 }
@@ -76,10 +77,10 @@ export function CustomersSection() {
                   >
                     <td className="px-3 py-2 text-sm font-medium text-gray-900 truncate">{customer.full_name}</td>
                     <td className="px-3 py-2 text-sm text-right">
-                      <NetBalanceDebtCell netBalance={customer.net_balance} />
+                      <NetBalanceDebtCell totalBalance={customer.total_balance} />
                     </td>
                     <td className="px-3 py-2 text-sm text-right">
-                      <NetBalanceCreditCell netBalance={customer.net_balance} />
+                      <NetBalanceCreditCell totalCredit={customer.total_credit} />
                     </td>
                     <td className="px-3 py-2 text-center">
                       <Badge status={customer.customer_status} />

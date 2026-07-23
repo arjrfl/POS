@@ -40,7 +40,16 @@ async def list_customers(search: str | None = Query(default=None), db: AsyncSess
 
     result = await db.execute(stmt)
     customers = result.scalars().all()
-    return {"data": [CustomerResponse.model_validate(c) for c in customers], "error": None}
+
+    responses = []
+    for c in customers:
+        response = CustomerResponse.model_validate(c)
+        # customer.ledger_entries is lazy="selectin" — already eager-loaded on
+        # every row above, so this is no extra query per customer.
+        response.total_balance, response.total_credit = customer_service.compute_ledger_totals(c.ledger_entries)
+        responses.append(response)
+
+    return {"data": responses, "error": None}
 
 
 @router.get("/{customer_id}")

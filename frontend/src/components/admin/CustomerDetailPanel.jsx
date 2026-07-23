@@ -75,7 +75,14 @@ function CustomerTransactionRow({ transaction, onViewDetails }) {
 
 export function CustomerDetailPanel({ customerId }) {
   const { data: customer, isLoading } = useCustomer(customerId)
-  const { data: transactions, isLoading: loadingTransactions } = useTransactions({ customerId, pageSize: 20 })
+  // includePaymentStatus so this card's Status column can show the same
+  // derived label (getDisplayStatus) as the modal's Transaction History table
+  // below, instead of the raw transaction_status enum value.
+  const { data: transactions, isLoading: loadingTransactions } = useTransactions({
+    customerId,
+    pageSize: 20,
+    includePaymentStatus: true,
+  })
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [ledgerTab, setLedgerTab] = useState('balance')
   const [viewingTransactionId, setViewingTransactionId] = useState(null)
@@ -145,16 +152,22 @@ export function CustomerDetailPanel({ customerId }) {
                 </tr>
               </thead>
               <tbody>
-                {transactions.items.map((t) => (
-                  <tr key={t.id} className="border-b border-gray-100 last:border-b-0">
-                    <td className="px-3 py-2 text-sm font-medium text-gray-900">{t.order_number}</td>
-                    <td className="px-3 py-2">
-                      <Badge status={t.transaction_status} />
-                    </td>
-                    <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(t.total_due)}</td>
-                    <td className="px-3 py-2 text-sm text-gray-500">{new Date(t.created_at).toLocaleString()}</td>
-                  </tr>
-                ))}
+                {transactions.items.map((t) => {
+                  // Same derived label the modal's own Transaction History table
+                  // (CustomerTransactionRow below) and the Admin Transaction
+                  // History tab use — not the raw transaction_status enum.
+                  const { status: paymentStatus, label: paymentStatusLabel } = getDisplayStatus(t)
+                  return (
+                    <tr key={t.id} className="border-b border-gray-100 last:border-b-0">
+                      <td className="px-3 py-2 text-sm font-medium text-gray-900">{t.order_number}</td>
+                      <td className="px-3 py-2">
+                        <Badge status={paymentStatus}>{paymentStatusLabel}</Badge>
+                      </td>
+                      <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(t.total_due)}</td>
+                      <td className="px-3 py-2 text-sm text-gray-500">{new Date(t.created_at).toLocaleString()}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
