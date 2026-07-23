@@ -1,7 +1,8 @@
-import { usePaymentQueue, useReleasingQueue } from '../../hooks/useQueue'
+import { useQuery } from '@tanstack/react-query'
 import { useTransactions } from '../../hooks/useTransactions'
 import { Card } from '../ui/Card'
 import { TopProductsChart } from './TopProductsChart'
+import { get } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 
 function todayIsoDate() {
@@ -29,8 +30,10 @@ export function DashboardSection() {
     dateTo: today,
     pageSize: 100,
   })
-  const { data: paymentQueue, isLoading: loadingPayment } = usePaymentQueue()
-  const { data: releasingQueue, isLoading: loadingReleasing } = useReleasingQueue()
+  const { data: summary, isLoading: loadingSummary } = useQuery({
+    queryKey: ['admin', 'dashboard', 'summary'],
+    queryFn: () => get('/admin/dashboard/summary'),
+  })
 
   const totalSalesToday = (completedToday?.items ?? []).reduce(
     (sum, t) => sum + Number(t.actual_amount ?? t.estimated_amount ?? 0),
@@ -42,8 +45,11 @@ export function DashboardSection() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard label="Transactions Today" value={loadingCompleted ? '...' : (completedToday?.total ?? 0)} />
         <SummaryCard label="Total Sales Today" value={loadingCompleted ? '...' : formatCurrency(totalSalesToday)} />
-        <SummaryCard label="Pending in Payment" value={loadingPayment ? '...' : (paymentQueue?.total ?? 0)} />
-        <SummaryCard label="Pending in Releasing" value={loadingReleasing ? '...' : (releasingQueue?.total ?? 0)} />
+        <SummaryCard
+          label="Total Unpaid Transaction"
+          value={loadingSummary ? '...' : formatCurrency(summary?.total_unpaid_balance ?? 0)}
+        />
+        <SummaryCard label="Total Listed Products" value={loadingSummary ? '...' : (summary?.total_listed_products ?? 0)} />
       </div>
 
       <TopProductsChart />

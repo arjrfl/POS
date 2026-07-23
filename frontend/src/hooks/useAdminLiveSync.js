@@ -21,12 +21,17 @@ export function useAdminLiveSync() {
   const timerRef = useRef(null)
 
   useEffect(() => {
-    if (lastEvent?.type !== 'transaction_status_changed' && lastEvent?.type !== 'queue_status_changed') return
+    const isQueueEvent = lastEvent?.type === 'transaction_status_changed' || lastEvent?.type === 'queue_status_changed'
+    const isProductEvent = lastEvent?.type === 'product_changed'
+    if (!isQueueEvent && !isProductEvent) return
 
     clearTimeout(timerRef.current)
     timerRef.current = setTimeout(() => {
-      queryClient.invalidateQueries({ queryKey: ['transactions'] })
-      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'top-products'] })
+      if (isQueueEvent) {
+        queryClient.invalidateQueries({ queryKey: ['transactions'] })
+        queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'top-products'] })
+      }
+      queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'summary'] })
     }, DEBOUNCE_MS)
   }, [lastEvent, queryClient])
 

@@ -1,14 +1,36 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import require_role
-from app.models.product import Product
+from app.models.customer import Customer, CustomerStatusEnum
+from app.models.product import Product, ProductStatusEnum
 from app.models.transaction import ItemTypeEnum, SalesTransaction, TransactionItem, TransactionStatusEnum
-from app.schemas.admin import TopProductRevenue
+from app.schemas.admin import DashboardSummary, TopProductRevenue
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+@router.get("/dashboard/summary", dependencies=[Depends(require_role("admin"))])
+async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
+    unpaid_stmt = select(func.coalesce(func.sum(func.abs(Customer.net_balance)), 0)).where(
+        Customer.net_balance < 0, Customer.customer_status == CustomerStatusEnum.active
+    )
+    total_unpaid_balance = (await db.execute(unpaid_stmt)).scalar_one()
+
+    products_stmt = select(func.count()).select_from(Product).where(Product.product_status == ProductStatusEnum.active)
+    total_listed_products = (await db.execute(products_stmt)).scalar_one()
+
+    return {
+        "data": DashboardSummary(
+            total_unpaid_balance=Decimal(total_unpaid_balance),
+            total_listed_products=total_listed_products,
+        ),
+        "error": None,
+    }
 
 
 @router.get("/dashboard/top-products", dependencies=[Depends(require_role("admin"))])
