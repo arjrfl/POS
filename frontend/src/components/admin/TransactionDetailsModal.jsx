@@ -349,11 +349,16 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
         <InfoRow label="Estimated Amount" value={formatCurrency(parentTxn?.estimated_amount)} />
         <InfoRow label="Actual Amount" value={formatCurrency(parentTxn?.actual_amount)} />
         {parentHasVariance && (
-          <p className={`text-sm font-medium py-0.5 ${parentBalanceDue > 0 ? 'text-amber-700' : 'text-blue-700'}`}>
-            {parentBalanceDue > 0
-              ? `+${formatCurrency(parentBalanceDue)} — item was heavier`
-              : `-${formatCurrency(Math.abs(parentBalanceDue))} — item was lighter`}
-          </p>
+          <InfoRow
+            label="Amount Difference"
+            value={
+              <span className={parentBalanceDue > 0 ? 'text-amber-700' : 'text-blue-700'}>
+                {parentBalanceDue > 0
+                  ? `+${formatCurrency(parentBalanceDue)}`
+                  : `-${formatCurrency(Math.abs(parentBalanceDue))}`}
+              </span>
+            }
+          />
         )}
       </div>
     </div>,
@@ -460,9 +465,10 @@ function CreditAdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate })
         <InfoRow label="Estimated Amount" value={formatCurrency(parentTxn?.estimated_amount)} />
         <InfoRow label="Actual Amount" value={formatCurrency(parentTxn?.actual_amount)} />
         {parentHasVariance && (
-          <p className="text-sm font-medium py-0.5 text-blue-700">
-            -{formatCurrency(Math.abs(parentBalanceDue))} — item was lighter, store owes customer
-          </p>
+          <InfoRow
+            label="Amount Difference"
+            value={<span className="text-blue-700">-{formatCurrency(Math.abs(parentBalanceDue))}</span>}
+          />
         )}
       </div>
     </div>,
