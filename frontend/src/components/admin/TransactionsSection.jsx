@@ -7,7 +7,7 @@ import { Badge } from '../ui/Badge'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { formatCurrency } from '../../utils/format'
-import { getDisplayStatus, PAYMENT_STATUS_LABELS } from '../../utils/transactionStatus'
+import { getDisplayStatus, isViewablePaymentStatus, PAYMENT_STATUS_LABELS } from '../../utils/transactionStatus'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
 import { TransactionDetailsModal } from './TransactionDetailsModal'
 
@@ -78,7 +78,7 @@ function CustomerSearchFilter({ selectedCustomer, onSelect, onClear }) {
 function TransactionRow({ transaction, onViewDetails }) {
   const { data: customer } = useCustomer(transaction.customer_id)
   const { status: paymentStatus, label: paymentStatusLabel } = getDisplayStatus(transaction)
-  const isViewable = paymentStatus === 'full' || paymentStatus === 'partial' || paymentStatus === 'voided'
+  const isViewable = isViewablePaymentStatus(paymentStatus)
 
   return (
     <tr className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50">

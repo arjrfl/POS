@@ -8,7 +8,7 @@ import { getTransactionTypeLabel } from '../../utils/transactionType'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
 import { formatCurrency } from '../../utils/format'
-import { getDisplayStatus } from '../../utils/transactionStatus'
+import { getDisplayStatus, isViewablePaymentStatus } from '../../utils/transactionStatus'
 
 const ARTICLE_TABLE_COLUMNS = ['QTY', 'UNIT', 'ARTICLES', 'UNIT PRICE', 'AMOUNT']
 const PAYMENT_ENTRY_LABELS = { ...PAYMENT_METHOD_LABEL, credit: 'Credit' }
@@ -193,7 +193,7 @@ function LinkedOrderLabel({ label, targetTxn, onNavigate }) {
   // list uses to disable its own "View Details" button (see TransactionRow's
   // isViewable) — a pending target has nothing to navigate to yet.
   const { status: paymentStatus } = getDisplayStatus(targetTxn)
-  const isEligible = paymentStatus === 'full' || paymentStatus === 'partial' || paymentStatus === 'voided'
+  const isEligible = isViewablePaymentStatus(paymentStatus)
 
   return (
     <span className="text-xs text-gray-500 ml-auto">

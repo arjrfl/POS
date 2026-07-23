@@ -17,3 +17,12 @@ export function getDisplayStatus(transaction) {
     label: PAYMENT_STATUS_LABELS[status] ?? null,
   }
 }
+
+// Shared "can this row's View Details actually be opened" gate — a `pending`
+// transaction has nothing resolved yet to show. Used by the Transaction
+// History tab's own row, the Customer Details modal's Transaction History
+// table, and the Linked/Original Transaction navigation label so all three
+// agree on exactly the same condition.
+export function isViewablePaymentStatus(status) {
+  return status === 'full' || status === 'partial' || status === 'voided'
+}

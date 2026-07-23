@@ -6,8 +6,9 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { formatCurrency } from '../../utils/format'
-import { getDisplayStatus } from '../../utils/transactionStatus'
+import { getDisplayStatus, isViewablePaymentStatus } from '../../utils/transactionStatus'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
+import { TransactionDetailsModal } from './TransactionDetailsModal'
 
 const LEDGER_TAB_CLASS = (isActive) =>
   `px-3 py-1.5 text-sm border-b-2 transition-colors ${
@@ -40,11 +41,44 @@ function computeLedgerTotals(ledgerEntries) {
   return { totalBalance, totalCredit }
 }
 
+// One row of the full Transaction History table inside the Customer Details
+// modal — same column set/action as TransactionsSection's own TransactionRow,
+// minus the Customer column (redundant here — already scoped to one customer).
+function CustomerTransactionRow({ transaction, onViewDetails }) {
+  const { status: paymentStatus, label: paymentStatusLabel } = getDisplayStatus(transaction)
+  const isViewable = isViewablePaymentStatus(paymentStatus)
+
+  return (
+    <tr className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50">
+      <td className="px-3 py-2 text-sm font-medium text-gray-900 truncate">{transaction.order_number}</td>
+      <td className="px-3 py-2 text-sm text-gray-600">{getTransactionTypeLabel(transaction.transaction_type)}</td>
+      <td className="px-3 py-2 text-center">
+        <Badge status={paymentStatus}>{paymentStatusLabel}</Badge>
+      </td>
+      <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(transaction.total_due)}</td>
+      <td className="px-3 py-2 text-sm text-gray-500">{new Date(transaction.created_at).toLocaleString()}</td>
+      <td className="px-3 py-2 text-center">
+        <Button
+          type="button"
+          variant="outline"
+          className="px-3 py-1 text-xs"
+          disabled={!isViewable}
+          title={isViewable ? undefined : 'Available once payment is processed'}
+          onClick={() => onViewDetails(transaction.id)}
+        >
+          View Details
+        </Button>
+      </td>
+    </tr>
+  )
+}
+
 export function CustomerDetailPanel({ customerId }) {
   const { data: customer, isLoading } = useCustomer(customerId)
   const { data: transactions, isLoading: loadingTransactions } = useTransactions({ customerId, pageSize: 20 })
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [ledgerTab, setLedgerTab] = useState('balance')
+  const [viewingTransactionId, setViewingTransactionId] = useState(null)
   const { data: ledgerEntries, isLoading: loadingLedger } = useCustomerLedger(customerId, ledgerTab, detailsOpen)
   // Same GET /transactions?customer_id= query as the standing panel's own card above
   // (and the Admin Transaction History tab it's modeled on) — just a bigger page size
@@ -249,28 +283,15 @@ export function CustomerDetailPanel({ customerId }) {
                     <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-300">
                       <th className="w-1/6 px-3 py-2">Order #</th>
                       <th className="w-1/6 px-3 py-2">Type</th>
-                      <th className="w-1/6 px-3 py-2">Date</th>
-                      <th className="w-1/6 px-3 py-2 text-right">Total</th>
                       <th className="w-1/6 px-3 py-2 text-center">Status</th>
+                      <th className="w-1/6 px-3 py-2 text-right">Total Due</th>
+                      <th className="w-1/6 px-3 py-2">Created</th>
                       <th className="w-1/6 px-3 py-2 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {allTransactions.items.map((t) => (
-                      <tr key={t.id} className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50">
-                        <td className="px-3 py-2 text-sm font-medium text-gray-900 truncate">{t.order_number}</td>
-                        <td className="px-3 py-2 text-sm text-gray-600">{getTransactionTypeLabel(t.transaction_type)}</td>
-                        <td className="px-3 py-2 text-sm text-gray-500">{new Date(t.created_at).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(t.total_due)}</td>
-                        <td className="px-3 py-2 text-center">
-                          <Badge status={getDisplayStatus(t).status}>{getDisplayStatus(t).label}</Badge>
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <Button type="button" variant="outline" className="px-3 py-1 text-xs">
-                            View
-                          </Button>
-                        </td>
-                      </tr>
+                      <CustomerTransactionRow key={t.id} transaction={t} onViewDetails={setViewingTransactionId} />
                     ))}
                   </tbody>
                 </table>
@@ -279,6 +300,14 @@ export function CustomerDetailPanel({ customerId }) {
           </div>
         </div>
       </FullScreenModal>
+
+      {viewingTransactionId && (
+        <TransactionDetailsModal
+          transactionId={viewingTransactionId}
+          onClose={() => setViewingTransactionId(null)}
+          onNavigate={setViewingTransactionId}
+        />
+      )}
     </div>
   )
 }
