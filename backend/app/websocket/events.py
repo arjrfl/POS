@@ -66,6 +66,17 @@ def product_changed(product_id: int, change_type: str) -> tuple[list[str], dict]
     return PRODUCT_ROOMS, event
 
 
+def user_changed(user_id: int, change_type: str) -> tuple[list[str], dict]:
+    # Users management is admin-only (unlike products, which also feeds
+    # releasing-queue) — broadcast to the admin room only.
+    event = {
+        "type": "user_changed",
+        "user_id": user_id,
+        "change_type": change_type,
+    }
+    return [ADMIN_ROOM], event
+
+
 def queue_status_changed(
     transaction_id: int, old_queue_status: str, new_queue_status: str, transaction_status: str
 ) -> tuple[list[str], dict]:

@@ -1,15 +1,16 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.database import engine, get_db
+from app.core.database import AsyncSessionLocal, engine, get_db
 from app.core.security import create_access_token, decode_access_token_soft
-from app.routers import admin, auth, customers, payment_methods, products, transactions, ws
+from app.models.user import User
+from app.routers import admin, auth, customers, payment_methods, products, transactions, users, ws
 
 
 @asynccontextmanager
@@ -37,17 +38,43 @@ app.add_middleware(
 # all) gets no refresh and its token expires normally after
 # ACCESS_TOKEN_EXPIRE_MINUTES. Stateless — no session store involved, just a
 # new JWT handed back on top of the normal response.
+#
+# is_active is re-verified against the DB on every request here (never
+# trusted from the JWT — the token doesn't even carry it, see
+# create_access_token's claims). This runs before call_next so a
+# deactivated account is rejected before the route handler executes, not
+# just denied a refreshed token after the fact — applies to every router
+# uniformly since this is global HTTP middleware, not a per-route
+# dependency. WebSocket connections are a separate ASGI path and aren't
+# covered by this middleware — see CLAUDE.md Session management.
 @app.middleware("http")
 async def refresh_token_middleware(request: Request, call_next):
-    response = await call_next(request)
-
     auth_header = request.headers.get("Authorization")
+    refreshed_token = None
+
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header.removeprefix("Bearer ").strip()
         payload = decode_access_token_soft(token)
         if payload is not None:
+            async with AsyncSessionLocal() as db:
+                is_active = await db.scalar(select(User.is_active).where(User.id == payload.get("user_id")))
+
+            if is_active is not True:
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={
+                        "data": None,
+                        "error": "Your account has been deactivated. Please contact an administrator.",
+                    },
+                )
+
             payload.pop("exp", None)
-            response.headers["X-Refreshed-Token"] = create_access_token(payload)
+            refreshed_token = create_access_token(payload)
+
+    response = await call_next(request)
+
+    if refreshed_token:
+        response.headers["X-Refreshed-Token"] = refreshed_token
 
     return response
 
@@ -67,6 +94,7 @@ app.include_router(customers.router)
 app.include_router(payment_methods.router)
 app.include_router(products.router)
 app.include_router(transactions.router)
+app.include_router(users.router)
 app.include_router(ws.router)
 
 

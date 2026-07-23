@@ -18,7 +18,7 @@ from app.models.transaction import (
     TransactionStatusEnum,
     TransactionTypeEnum,
 )
-from app.models.user import Role, User
+from app.models.user import Role, User, UserAuditLog, UserChangeTypeEnum
 
 __all__ = [
     "AuditChangeTypeEnum",
@@ -43,4 +43,6 @@ __all__ = [
     "TransactionTypeEnum",
     "TransactionVoidLog",
     "User",
+    "UserAuditLog",
+    "UserChangeTypeEnum",
 ]

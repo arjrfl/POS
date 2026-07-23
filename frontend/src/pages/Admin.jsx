@@ -5,10 +5,12 @@ import { DashboardSection } from '../components/admin/DashboardSection'
 import { TransactionsSection } from '../components/admin/TransactionsSection'
 import { CustomersSection } from '../components/admin/CustomersSection'
 import { ProductsSection } from '../components/admin/ProductsSection'
+import { UsersSection } from '../components/admin/UsersSection'
 import { useAdminLiveSync } from '../hooks/useAdminLiveSync'
 
 const SECTION_TITLES = {
   dashboard: 'Dashboard',
+  users: 'Users',
   history: 'Transaction History',
   customers: 'Customers',
   products: 'Products',
@@ -16,12 +18,13 @@ const SECTION_TITLES = {
 
 const SECTIONS = {
   dashboard: DashboardSection,
+  users: UsersSection,
   history: TransactionsSection,
   customers: CustomersSection,
   products: ProductsSection,
 }
 
-const VALID_TABS = ['dashboard', 'customers', 'products', 'history']
+const VALID_TABS = ['dashboard', 'users', 'customers', 'products', 'history']
 
 export default function Admin() {
   const [searchParams, setSearchParams] = useSearchParams()

@@ -49,6 +49,13 @@ No internet at runtime. No cloud. No external services.
 | `releasing` | `releasing` | Confirms actual item weight, sends variance to Payment — NO financial decisions |
 | `admin` | `admin` | Full visibility — queues, reports, audit log, customer ledger |
 
+`role_id` on `"user"` is set once at account creation (`POST /api/users`) and
+is immutable afterward — `PATCH /api/users/{id}` only accepts `full_name` and
+`username`, never `role_id`. There is no role-promotion/demotion feature. To
+change a user's role, an admin deactivates the old account and creates a new
+one with the correct role. This is an intentional simplicity tradeoff, not an
+oversight.
+
 ---
 
 ## Confirmed Stack
@@ -326,6 +333,33 @@ dependency not listed above without explicit instruction.
     (full/partial/voided); same list endpoint as the Transaction History
     tab, not a separate `/customers/{id}/transactions` route
   - WebSocket connections are under `/ws/{room}` — see `ws.py`, not a REST router
+
+---
+
+## Session Management
+
+- Sliding JWT session: `refresh_token_middleware` in `backend/app/main.py`
+  reissues a fresh token (`X-Refreshed-Token` response header) on every
+  authenticated HTTP request with a still-valid token, so an actively-used
+  terminal is never logged out mid-transaction. An idle terminal's token
+  expires normally after `ACCESS_TOKEN_EXPIRE_MINUTES`.
+- Every authenticated REST request also re-verifies `is_active` against the
+  DB in real time (not just at login) — a deactivated account is rejected
+  on its very next request regardless of remaining token lifetime. This
+  runs in the same middleware, before the route handler executes, so a
+  deactivated account can't complete an action and get a refreshed token in
+  the same request — it's rejected outright with 401 and the message
+  "Your account has been deactivated. Please contact an administrator."
+  `is_active` is never trusted from the JWT itself — the token doesn't
+  carry it at all (claims are just `user_id`, `username`, `role_name`).
+- WebSocket connections opened before deactivation are NOT proactively
+  closed — they may continue receiving broadcasts until the client's next
+  REST call or reconnect. This is an accepted limitation (WS delivers
+  read-only UI updates; all state-changing actions still go through REST,
+  where the check is enforced), not a bug to fix here.
+- Frontend: any 401 response (`frontend/src/services/api.js`) clears the
+  auth store and redirects to `/` — the same handling for an expired token
+  and a deactivated account, deliberately no special-cased message.
 
 ---
 

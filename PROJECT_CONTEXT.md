@@ -415,7 +415,11 @@ TabBar navigation with tabs:
    Releasing's Inventory tab via the same underlying components — dual
    ownership, not admin-only. Changes in either screen broadcast live to
    the other over WebSocket
-5. **Users** — NOT YET BUILT — tab exists in the TabBar but is disabled
+5. **Users** — NOT YET BUILT — tab exists in the TabBar but is disabled.
+   Backend rule: `role_id` is set once at creation and immutable afterward —
+   `PATCH /api/users/{id}` only accepts `full_name`/`username`. Changing a
+   user's role means deactivating the old account and creating a new one
+   with the correct role — intentional simplicity tradeoff, not an oversight.
 6. **Queue Monitor** — NOT WIRED IN — `QueueMonitorSection.jsx` exists
    (live view of Payment/Releasing queues, parked >30min alerts) but is not
    wired into the Admin page/TabBar. Explicitly deprioritized/skipped per

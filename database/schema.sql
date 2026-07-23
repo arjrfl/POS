@@ -108,6 +108,14 @@ CREATE TYPE product_change_type_enum AS ENUM (
     'reactivated'
 );
 
+CREATE TYPE user_change_type_enum AS ENUM (
+    'created',
+    'updated',
+    'deactivated',
+    'reactivated',
+    'password_reset'
+);
+
 -- =============================================================
 -- ROLE
 -- =============================================================
@@ -134,6 +142,29 @@ CREATE TABLE "user" (
 CREATE TRIGGER trg_user_updated_at
     BEFORE UPDATE ON "user"
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =============================================================
+-- USER AUDIT LOG
+-- Tracks every create/update/status/password-reset change on a user
+-- account. Full traceability: who did what, when, and what changed.
+-- =============================================================
+CREATE TABLE user_audit_log (
+    id                 SERIAL PRIMARY KEY,
+    user_id            INT                    NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    -- the user this entry is ABOUT — cascades if that user is ever hard-deleted
+    changed_by_user_id INT                    NOT NULL REFERENCES "user"(id) ON DELETE RESTRICT,
+    -- the admin who performed the action
+    change_type        user_change_type_enum  NOT NULL,
+    old_value          TEXT                   NULL,     -- JSON, only changed fields, NULL for 'created'
+    new_value          TEXT                   NOT NULL, -- JSON, only changed fields
+    -- CRITICAL: password_hash must never appear in old_value/new_value, in any form.
+    -- 'password_reset' entries log new_value = '{"password_reset": true}' only.
+    notes              TEXT                   NULL,
+    changed_at         TIMESTAMPTZ            NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_ual_user        ON user_audit_log (user_id);
+CREATE INDEX idx_ual_change_type ON user_audit_log (change_type);
 
 -- =============================================================
 -- CUSTOMER
