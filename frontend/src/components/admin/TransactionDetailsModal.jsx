@@ -97,49 +97,60 @@ function PaymentEntriesBlock({ entries }) {
   )
 }
 
+// Credit amounts read distinctly from Balance Settled's "+₱" — same green
+// convention CustomersSection's NetBalanceCreditCell uses for NET CREDIT.
+function CreditAppliedValue({ amount }) {
+  return <span className="text-green-700 font-medium">{`-${formatCurrency(amount)}`}</span>
+}
+
 function OriginalAmountSummary({ t, hasLinkedAdjustment }) {
   return (
     <div className="flex flex-col">
-      <InfoRow label="Estimated Amount" value={formatCurrency(t.estimated_amount)} />
-      {t.actual_amount != null && (
-        <InfoRow
-          label="Actual Amount"
-          value={
-            hasLinkedAdjustment ? (
-              <span className="text-gray-500">— see Linked Transaction</span>
-            ) : (
-              formatCurrency(t.actual_amount)
-            )
-          }
-        />
-      )}
-      {Number(t.balance_settled) > 0 && (
-        <InfoRow
-          label={<BalanceSettledLabel sources={t.balance_settlement_sources} />}
-          value={`+${formatCurrency(t.balance_settled)}`}
-        />
-      )}
-      {t.payment_entries?.length > 0 && (
-        <InfoRow label="Total Payment Entries" value={formatCurrency(sumPaymentEntries(t.payment_entries))} />
-      )}
-      {Number(t.change_given) > 0 && (
-        <>
-          <InfoRow label="Change" value={formatCurrency(t.change_given)} />
-          <InfoRow label="Change Taken by Customer?" value={t.change_claimed ? 'Yes' : 'No'} />
-          {!t.change_claimed && (
-            <InfoRow label="Added to Customer Credit Record" value={formatCurrency(t.change_given)} />
-          )}
-        </>
-      )}
-      {Number(t.credit_applied) > 0 && (
-        <InfoRow label="Credit Applied" value={`-${formatCurrency(t.credit_applied)}`} />
-      )}
-      {t.remaining_balance_added != null && (
-        <InfoRow label="Remaining Balance Added" value={formatCurrency(t.remaining_balance_added)} />
-      )}
-      <div className="flex justify-between text-sm font-bold pt-1.5 mt-1 border-t border-gray-300">
-        <span>Total Due</span>
-        <span>{formatCurrency(t.total_due)}</span>
+      <div className="flex flex-col">
+        <InfoRow label="Estimated Amount" value={formatCurrency(t.estimated_amount)} />
+        {t.actual_amount != null && (
+          <InfoRow
+            label="Actual Amount"
+            value={
+              hasLinkedAdjustment ? (
+                <span className="text-gray-500">— see Linked Transaction</span>
+              ) : (
+                formatCurrency(t.actual_amount)
+              )
+            }
+          />
+        )}
+        {Number(t.balance_settled) > 0 && (
+          <InfoRow
+            label={<BalanceSettledLabel sources={t.balance_settlement_sources} />}
+            value={`+${formatCurrency(t.balance_settled)}`}
+          />
+        )}
+        {Number(t.credit_applied) > 0 && (
+          <InfoRow label="Credit Applied" value={<CreditAppliedValue amount={t.credit_applied} />} />
+        )}
+        {t.remaining_balance_added != null && (
+          <InfoRow label="Remaining Balance Added" value={formatCurrency(t.remaining_balance_added)} />
+        )}
+        <div className="flex justify-between text-sm font-bold pt-1.5 mt-1 border-t border-gray-300">
+          <span>Total Due</span>
+          <span>{formatCurrency(t.total_due)}</span>
+        </div>
+      </div>
+
+      <div className="flex flex-col mt-3 pt-2 border-t border-gray-200">
+        {t.payment_entries?.length > 0 && (
+          <InfoRow label="Total Payment Entries" value={formatCurrency(sumPaymentEntries(t.payment_entries))} />
+        )}
+        {Number(t.change_given) > 0 && (
+          <>
+            <InfoRow label="Change" value={formatCurrency(t.change_given)} />
+            <InfoRow label="Change Taken by Customer?" value={t.change_claimed ? 'Yes' : 'No'} />
+            {!t.change_claimed && (
+              <InfoRow label="Added to Customer Credit Record" value={formatCurrency(t.change_given)} />
+            )}
+          </>
+        )}
       </div>
     </div>
   )
@@ -405,34 +416,39 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
     <div key="amount-summary">
       <SectionHeading>Amount Summary</SectionHeading>
       <div className="flex flex-col">
-        <InfoRow label="Amount Due" value={formatCurrency(childTxn.total_due)} />
-        {Number(childTxn.balance_settled) > 0 && (
-          <InfoRow
-            label={<BalanceSettledLabel sources={childTxn.balance_settlement_sources} />}
-            value={`+${formatCurrency(childTxn.balance_settled)}`}
-          />
-        )}
-        {childTxn.payment_entries?.length > 0 && (
-          <InfoRow label="Total Payment Entries" value={formatCurrency(sumPaymentEntries(childTxn.payment_entries))} />
-        )}
-        {Number(childTxn.change_given) > 0 && (
-          <>
-            <InfoRow label="Change" value={formatCurrency(childTxn.change_given)} />
-            <InfoRow label="Change Taken by Customer?" value={childTxn.change_claimed ? 'Yes' : 'No'} />
-            {!childTxn.change_claimed && (
-              <InfoRow label="Added to Customer Credit Record" value={formatCurrency(childTxn.change_given)} />
-            )}
-          </>
-        )}
-        {Number(childTxn.credit_applied) > 0 && (
-          <InfoRow label="Credit Applied" value={`-${formatCurrency(childTxn.credit_applied)}`} />
-        )}
-        {childTxn.remaining_balance_added != null && (
-          <InfoRow label="Remaining Balance Added" value={formatCurrency(childTxn.remaining_balance_added)} />
-        )}
-        <div className="flex justify-between text-sm font-bold pt-1.5 mt-1 border-t border-gray-300">
-          <span>Total Due</span>
-          <span>{formatCurrency(childTxn.total_due)}</span>
+        <div className="flex flex-col">
+          <InfoRow label="Amount Due" value={formatCurrency(childTxn.total_due)} />
+          {Number(childTxn.balance_settled) > 0 && (
+            <InfoRow
+              label={<BalanceSettledLabel sources={childTxn.balance_settlement_sources} />}
+              value={`+${formatCurrency(childTxn.balance_settled)}`}
+            />
+          )}
+          {Number(childTxn.credit_applied) > 0 && (
+            <InfoRow label="Credit Applied" value={<CreditAppliedValue amount={childTxn.credit_applied} />} />
+          )}
+          {childTxn.remaining_balance_added != null && (
+            <InfoRow label="Remaining Balance Added" value={formatCurrency(childTxn.remaining_balance_added)} />
+          )}
+          <div className="flex justify-between text-sm font-bold pt-1.5 mt-1 border-t border-gray-300">
+            <span>Total Due</span>
+            <span>{formatCurrency(childTxn.total_due)}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col mt-3 pt-2 border-t border-gray-200">
+          {childTxn.payment_entries?.length > 0 && (
+            <InfoRow label="Total Payment Entries" value={formatCurrency(sumPaymentEntries(childTxn.payment_entries))} />
+          )}
+          {Number(childTxn.change_given) > 0 && (
+            <>
+              <InfoRow label="Change" value={formatCurrency(childTxn.change_given)} />
+              <InfoRow label="Change Taken by Customer?" value={childTxn.change_claimed ? 'Yes' : 'No'} />
+              {!childTxn.change_claimed && (
+                <InfoRow label="Added to Customer Credit Record" value={formatCurrency(childTxn.change_given)} />
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>,
