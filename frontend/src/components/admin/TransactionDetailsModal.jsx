@@ -304,8 +304,37 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn }) {
 
   const customerTypeBadge = CUSTOMER_TYPE_BADGE[childTxn.customer_type]
 
+  // The variance that caused this adjustment lives on the ORIGINAL (parent)
+  // transaction, not the child — same balance_due field OriginalAmountSummary
+  // used before its own variance line was removed, so the amount here is
+  // guaranteed to equal this child's own total_due/Amount Due below.
+  const parentHasVariance =
+    parentTxn?.actual_amount != null && Number(parentTxn.actual_amount) !== Number(parentTxn.estimated_amount)
+  const parentBalanceDue = Number(parentTxn?.balance_due ?? 0)
+
   const sections = [
     childTxn.void_info && <VoidInfoBlock key="void" voidInfo={childTxn.void_info} />,
+    <div key="adjustment-details">
+      <SectionHeading>Adjustment Details</SectionHeading>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+            ADJUSTMENT
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <InfoRow label="Estimated Amount" value={formatCurrency(parentTxn?.estimated_amount)} />
+          <InfoRow label="Actual Amount" value={formatCurrency(parentTxn?.actual_amount)} />
+          {parentHasVariance && (
+            <p className={`text-sm font-medium py-0.5 ${parentBalanceDue > 0 ? 'text-amber-700' : 'text-blue-700'}`}>
+              {parentBalanceDue > 0
+                ? `+${formatCurrency(parentBalanceDue)} — item was heavier`
+                : `-${formatCurrency(Math.abs(parentBalanceDue))} — item was lighter`}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>,
     <div key="handled-by">
       <SectionHeading>Handled By</SectionHeading>
       <AdjustmentChildHandledBy t={childTxn} />
@@ -360,7 +389,7 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn }) {
           )}
           {parentTxn && (
             <span className="text-xs text-gray-500 ml-auto">
-              Linked Transaction: {parentTxn.order_number}
+              Original Transaction: {parentTxn.order_number}
             </span>
           )}
         </div>
