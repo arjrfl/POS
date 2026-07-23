@@ -379,6 +379,11 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
 
   const sections = [
     childTxn.void_info && <VoidInfoBlock key="void" voidInfo={childTxn.void_info} />,
+    <div key="customer">
+      <SectionHeading>Customer</SectionHeading>
+      <InfoRow label="Name" value={customer?.full_name ?? '...'} />
+      <InfoRow label="Address" value={childTxn.customer_address ?? 'No address on file'} />
+    </div>,
     <div key="adjustment-details">
       <SectionHeading>Adjustment Details</SectionHeading>
       <div className="flex flex-col">
@@ -397,11 +402,6 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
           />
         )}
       </div>
-    </div>,
-    <div key="customer">
-      <SectionHeading>Customer</SectionHeading>
-      <InfoRow label="Name" value={customer?.full_name ?? '...'} />
-      <InfoRow label="Address" value={childTxn.customer_address ?? 'No address on file'} />
     </div>,
     <div key="handled-by">
       <SectionHeading>Handled By</SectionHeading>
@@ -503,6 +503,11 @@ function CreditAdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate })
 
   const sections = [
     childTxn.void_info && <VoidInfoBlock key="void" voidInfo={childTxn.void_info} />,
+    <div key="customer">
+      <SectionHeading>Customer</SectionHeading>
+      <InfoRow label="Name" value={customer?.full_name ?? '...'} />
+      <InfoRow label="Address" value={childTxn.customer_address ?? 'No address on file'} />
+    </div>,
     <div key="credit-adjustment-details">
       <SectionHeading>Credit Adjustment Details</SectionHeading>
       <div className="flex flex-col">
@@ -515,11 +520,6 @@ function CreditAdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate })
           />
         )}
       </div>
-    </div>,
-    <div key="customer">
-      <SectionHeading>Customer</SectionHeading>
-      <InfoRow label="Name" value={customer?.full_name ?? '...'} />
-      <InfoRow label="Address" value={childTxn.customer_address ?? 'No address on file'} />
     </div>,
     <div key="handled-by">
       <SectionHeading>Handled By</SectionHeading>
