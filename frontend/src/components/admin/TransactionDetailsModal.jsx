@@ -33,15 +33,20 @@ function SectionHeading({ children }) {
   return <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{children}</h4>
 }
 
-// "Balance Settled" label, with a muted "(from: TXN-xxx, TXN-yyy)" suffix when
-// the transaction carries source order_numbers — falls back to the plain label
-// when balance_settlement_sources is empty (legacy data pre-dating this field).
-function BalanceSettledLabel({ sources }) {
-  if (!sources?.length) return 'Balance Settled'
+// Indented, bulleted sub-list of source order_numbers shown below a Balance
+// Settled/Credit Applied row — one bullet per unique source, always bulleted
+// (even a single source) for visual consistency. Omits entirely when there
+// are no resolvable sources (legacy data pre-dating these fields).
+function SourceOrderList({ sources }) {
+  if (!sources?.length) return null
   return (
-    <>
-      Balance Settled <span className="text-xs text-gray-700 font-semibold">(from: {sources.join(', ')})</span>
-    </>
+    <ul className="pl-4 pb-0.5 list-disc text-xs text-gray-700">
+      {sources.map((orderNumber) => (
+        <li key={orderNumber} className="font-semibold">
+          {orderNumber}
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -121,13 +126,16 @@ function OriginalAmountSummary({ t, hasLinkedAdjustment }) {
           />
         )}
         {Number(t.balance_settled) > 0 && (
-          <InfoRow
-            label={<BalanceSettledLabel sources={t.balance_settlement_sources} />}
-            value={`+${formatCurrency(t.balance_settled)}`}
-          />
+          <>
+            <InfoRow label="Balance Settled" value={`+${formatCurrency(t.balance_settled)}`} />
+            <SourceOrderList sources={t.balance_settlement_sources} />
+          </>
         )}
         {Number(t.credit_applied) > 0 && (
-          <InfoRow label="Credit Applied" value={<CreditAppliedValue amount={t.credit_applied} />} />
+          <>
+            <InfoRow label="Credit Applied" value={<CreditAppliedValue amount={t.credit_applied} />} />
+            <SourceOrderList sources={t.credit_usage_sources} />
+          </>
         )}
         {t.remaining_balance_added != null && (
           <InfoRow label="Remaining Balance Added" value={formatCurrency(t.remaining_balance_added)} />
@@ -419,13 +427,16 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
         <div className="flex flex-col">
           <InfoRow label="Amount Due" value={formatCurrency(childTxn.total_due)} />
           {Number(childTxn.balance_settled) > 0 && (
-            <InfoRow
-              label={<BalanceSettledLabel sources={childTxn.balance_settlement_sources} />}
-              value={`+${formatCurrency(childTxn.balance_settled)}`}
-            />
+            <>
+              <InfoRow label="Balance Settled" value={`+${formatCurrency(childTxn.balance_settled)}`} />
+              <SourceOrderList sources={childTxn.balance_settlement_sources} />
+            </>
           )}
           {Number(childTxn.credit_applied) > 0 && (
-            <InfoRow label="Credit Applied" value={<CreditAppliedValue amount={childTxn.credit_applied} />} />
+            <>
+              <InfoRow label="Credit Applied" value={<CreditAppliedValue amount={childTxn.credit_applied} />} />
+              <SourceOrderList sources={childTxn.credit_usage_sources} />
+            </>
           )}
           {childTxn.remaining_balance_added != null && (
             <InfoRow label="Remaining Balance Added" value={formatCurrency(childTxn.remaining_balance_added)} />

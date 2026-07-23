@@ -265,6 +265,11 @@ class TransactionResponse(BaseModel):
     # references and customer_ledger notes), filled in by _build_transaction_response.
     # Empty when balance_settled is 0 or the sources can't be determined.
     balance_settlement_sources: list[str] = []
+    # Same as balance_settlement_sources above, but for credit_applied — unique
+    # source order_numbers this transaction's applied credit originally came
+    # from, in first-seen order. Empty when credit_applied is 0 or the sources
+    # can't be determined.
+    credit_usage_sources: list[str] = []
 
 
 TransactionResponse.model_rebuild()

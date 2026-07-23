@@ -137,6 +137,51 @@ def _balance_settlement_source_order_numbers(
     return order_numbers
 
 
+# process_payment's credit_entries_checked loop (the only credit-application path
+# actually reachable from the live UI) never links its credit_used customer_ledger
+# row back to the source transaction(s) with a real FK either — same as
+# balance_settled above, the source order_number(s) only ever land in this notes
+# string: "Applied from ORDER (₱amount), ORDER (₱amount)". Parsed back out here
+# rather than adding a column, per the no-schema-change constraint.
+_CREDIT_USED_NOTE_PREFIX = "Applied from "
+_CREDIT_USED_SOURCE_RE = re.compile(r"([^,]+?) \(₱[0-9,.]+\)")
+
+
+def _credit_usage_source_order_numbers(
+    transaction: SalesTransaction, items: list[TransactionItemResponse]
+) -> list[str]:
+    """Unique source order_numbers this transaction's credit_applied amount came
+    from, in first-seen order. Same dual-mechanism pattern as
+    _balance_settlement_source_order_numbers:
+      1. A transaction_item with item_type=credit_usage + reference_transaction_id
+         (only ever created via direct API/tests — the Payment UI never sends this).
+      2. The credit_used customer_ledger row process_payment's credit_entries_checked
+         loop creates, whose notes list each source as "ORDER (₱amount)" — this is
+         what the live Payment screen actually produces.
+    """
+    order_numbers: list[str] = []
+    seen: set[str] = set()
+
+    def add(order_number: str | None) -> None:
+        if order_number and order_number not in seen:
+            seen.add(order_number)
+            order_numbers.append(order_number)
+
+    for item in items:
+        if item.item_type == ItemTypeEnum.credit_usage:
+            add(item.reference_order_number)
+
+    for entry in transaction.ledger_entries:
+        if entry.entry_type != LedgerEntryTypeEnum.credit_used or not entry.notes:
+            continue
+        if not entry.notes.startswith(_CREDIT_USED_NOTE_PREFIX):
+            continue
+        for match in _CREDIT_USED_SOURCE_RE.finditer(entry.notes[len(_CREDIT_USED_NOTE_PREFIX) :]):
+            add(match.group(1).strip())
+
+    return order_numbers
+
+
 def _build_transaction_response(transaction: SalesTransaction) -> TransactionResponse:
     # payment_details (the relationship) loads every payment_detail row regardless
     # of is_draft — split it here so confirmed and draft entries are always kept
@@ -197,6 +242,7 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
         if item is not None and item.reference_transaction is not None:
             item_response.reference_order_number = item.reference_transaction.order_number
     response.balance_settlement_sources = _balance_settlement_source_order_numbers(transaction, response.items)
+    response.credit_usage_sources = _credit_usage_source_order_numbers(transaction, response.items)
 
     response.children = [_build_transaction_response(child) for child in transaction.children]
     return response
