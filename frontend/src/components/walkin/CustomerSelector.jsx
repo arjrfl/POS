@@ -5,11 +5,24 @@ import { Input } from '../ui/Input'
 import { AddCustomerModal } from './AddCustomerModal'
 import { formatCurrency } from '../../utils/format'
 
-function BalanceLine({ netBalance }) {
-  const amount = Number(netBalance)
-  if (amount > 0) return <span className="text-sm text-green-700">Has credit: {formatCurrency(amount)}</span>
-  if (amount < 0) return <span className="text-sm text-red-600">Has balance: {formatCurrency(Math.abs(amount))}</span>
-  return null
+// Credit side stays net_balance-derived (untouched, per the balance-only fix
+// below). Balance side now reads customer.total_balance — the gross sum of
+// outstanding balance_added ledger entries (same aggregation as Admin's TOTAL
+// BALANCE and Payment's balance checkboxes — see customer_service
+// .get_outstanding_balance_total) — instead of netBalance's sign/magnitude,
+// which understates what's owed whenever this customer also carries credit
+// (net_balance nets the two together into one column).
+function BalanceLine({ netBalance, totalBalance }) {
+  const creditAmount = Number(netBalance)
+  const balanceAmount = Number(totalBalance)
+  return (
+    <>
+      {balanceAmount > 0 && (
+        <span className="text-sm text-red-600 block">Has balance: {formatCurrency(balanceAmount)}</span>
+      )}
+      {creditAmount > 0 && <span className="text-sm text-green-700 block">Has credit: {formatCurrency(creditAmount)}</span>}
+    </>
+  )
 }
 
 export function CustomerSelector({ value, onSelect, onClear }) {
@@ -31,6 +44,7 @@ export function CustomerSelector({ value, onSelect, onClear }) {
   })
 
   const netBalance = value ? Number(value.net_balance) : 0
+  const totalBalance = value ? Number(value.total_balance) : 0
 
   const handleSelect = (customer) => {
     onSelect(customer)
@@ -114,9 +128,9 @@ export function CustomerSelector({ value, onSelect, onClear }) {
         </div>
       )}
 
-      {value && netBalance !== 0 && (
+      {value && (totalBalance > 0 || netBalance > 0) && (
         <div className="mt-2">
-          <BalanceLine netBalance={netBalance} />
+          <BalanceLine netBalance={netBalance} totalBalance={totalBalance} />
         </div>
       )}
 

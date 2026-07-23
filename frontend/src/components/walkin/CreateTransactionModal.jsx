@@ -36,9 +36,15 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
   const [discardGuard, setDiscardGuard] = useState(false)
   const [settleOnlyGuard, setSettleOnlyGuard] = useState(false)
 
-  const netBalance = customer ? Number(customer.net_balance) : 0
-  const absBalance = Math.abs(netBalance)
-  const hasBalance = !!customer && netBalance < 0
+  // Gross outstanding balance (customer.total_balance — same
+  // get_outstanding_balance_total aggregation as Admin's TOTAL BALANCE and
+  // Payment's balance checkboxes), NOT customer.net_balance — net_balance nets
+  // against credit and understates what's owed whenever this customer also
+  // carries credit. Receiver's checkbox always settles the FULL outstanding
+  // set (no per-entry selection like Payment has), so this is also exactly
+  // the amount sent as balance_settled below.
+  const absBalance = customer ? Number(customer.total_balance) : 0
+  const hasBalance = !!customer && absBalance > 0
 
   const total = settleOnly ? absBalance : items.reduce((sum, item) => sum + item.subtotal, 0)
   const hasData = !!customer || items.length > 0 || settleOnly

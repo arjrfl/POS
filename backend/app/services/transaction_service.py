@@ -342,15 +342,23 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
 
     transaction_type = TransactionTypeEnum(data.transaction_type)
 
+    # Receiver's "Balance Settlement Only" checkbox always settles the customer's
+    # FULL outstanding balance — there is no per-entry selection at Receiver (that
+    # only exists at Payment, via the balance checkboxes / get_outstanding_balance_entries).
+    # The gross outstanding total (customer_service.get_outstanding_balance_total —
+    # the same aggregation behind GET /{id}/balance-entries and Admin's TOTAL
+    # BALANCE) is treated as the authoritative amount here, NOT data.balance_settled
+    # (client input, ignored for this transaction_type) or customer.net_balance
+    # (which nets against credit and understates what's actually owed whenever
+    # this customer also carries credit — see PROJECT_CONTEXT balance/credit rules).
+    balance_settled_amount = data.balance_settled
     if transaction_type == TransactionTypeEnum.balance_settlement:
         if data.items:
             raise ValueError("balance settlement transactions cannot include items")
-        if data.balance_settled <= 0:
-            raise ValueError("balance_settled must be greater than 0 for a balance settlement transaction")
-        if customer.net_balance >= 0:
+        outstanding_balance_total = await customer_service.get_outstanding_balance_total(db, customer.id)
+        if outstanding_balance_total <= 0:
             raise ValueError("Customer does not have an outstanding balance to settle")
-        if data.balance_settled > abs(customer.net_balance):
-            raise ValueError("balance_settled exceeds the customer's outstanding balance")
+        balance_settled_amount = outstanding_balance_total
 
     try:
         transaction = SalesTransaction(
@@ -361,7 +369,7 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
             walkin_user_id=walkin_user_id,
             customer_id=data.customer_id,
             credit_applied=data.credit_applied,
-            balance_settled=data.balance_settled,
+            balance_settled=balance_settled_amount,
             queue_status=QueueStatusEnum.waiting,
             walkin_at=datetime.now(timezone.utc),
         )
@@ -389,7 +397,7 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
             )
 
         transaction.estimated_amount = estimated_amount
-        transaction.total_due = estimated_amount + data.balance_settled - data.credit_applied
+        transaction.total_due = estimated_amount + balance_settled_amount - data.credit_applied
 
         if data.credit_applied > 0:
             customer.net_balance -= data.credit_applied
@@ -1210,18 +1218,34 @@ async def process_payment(
             )
 
         if transaction.transaction_type == TransactionTypeEnum.balance_settlement:
-            # amount was fixed at creation (Receiver's "Balance Settlement Only" toggle) —
-            # only now, once payment is actually collected, does it hit the ledger
-            customer.net_balance += transaction.balance_settled
-            db.add(
-                CustomerLedger(
-                    customer_id=customer.id,
-                    transaction_id=transaction.id,
-                    entry_type=LedgerEntryTypeEnum.balance_settled,
-                    amount=transaction.balance_settled,
-                    running_balance=customer.net_balance,
+            # Settle every currently-outstanding balance_added entry individually —
+            # one customer_ledger row per source, notes referencing the source
+            # order_number — same shape as the balances_to_settle loop above
+            # (Payment's per-transaction checkboxes), just applied to the FULL
+            # outstanding set rather than a hand-picked subset, since Receiver's
+            # "Balance Settlement Only" checkbox has no per-entry selection.
+            # Re-queried fresh here (not trusting transaction.balance_settled,
+            # fixed back at creation) so this always clears exactly what's
+            # actually outstanding right now, even if the set changed in the
+            # window between Receiver creating this transaction and Payment
+            # processing it. Credit (credit_added entries) is untouched here —
+            # that stays available for Payment's own credit checkboxes.
+            outstanding_balance_entries = await customer_service.get_outstanding_balance_entries(db, customer.id)
+            settled_total = Decimal("0.00")
+            for entry in outstanding_balance_entries:
+                customer.net_balance += entry.amount
+                settled_total += entry.amount
+                db.add(
+                    CustomerLedger(
+                        customer_id=customer.id,
+                        transaction_id=transaction.id,
+                        entry_type=LedgerEntryTypeEnum.balance_settled,
+                        amount=entry.amount,
+                        running_balance=customer.net_balance,
+                        notes=f"Settled from transaction {entry.order_number}",
+                    )
                 )
-            )
+            transaction.balance_settled = settled_total
 
         if data.is_partial and remaining > 0:
             customer.net_balance -= remaining
