@@ -96,6 +96,10 @@ class TransactionItemResponse(BaseModel):
     actual_quantity_kg: Decimal | None
     unit_price: Decimal | None
     reference_transaction_id: int | None
+    # order_number of reference_transaction_id, for balance_settlement/credit_usage
+    # items — no matching ORM attribute (would require a join), always defaults to
+    # None here and is filled in by _build_transaction_response afterward.
+    reference_order_number: str | None = None
     subtotal: Decimal
     actual_subtotal: Decimal
 
@@ -256,6 +260,11 @@ class TransactionResponse(BaseModel):
     # _build_transaction_response, which reads this off customer_ledger directly
     # rather than back-computing it)
     remaining_balance_added: Decimal | None = None
+    # Unique source order_numbers this transaction's balance_settled amount came
+    # from, in first-seen order — no matching ORM attribute (derived from item
+    # references and customer_ledger notes), filled in by _build_transaction_response.
+    # Empty when balance_settled is 0 or the sources can't be determined.
+    balance_settlement_sources: list[str] = []
 
 
 TransactionResponse.model_rebuild()

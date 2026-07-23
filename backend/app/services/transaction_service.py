@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -31,6 +32,7 @@ from app.schemas.transaction import (
     TransactionCreate,
     TransactionHistoryItem,
     TransactionItemCreate,
+    TransactionItemResponse,
     TransactionListResponse,
     TransactionParentItemResponse,
     TransactionParentResponse,
@@ -94,6 +96,47 @@ def _build_parent_summary(parent: SalesTransaction) -> TransactionParentResponse
     )
 
 
+# process_payment (the Payment screen's per-entry balance checkboxes — the only
+# balance-settlement path actually reachable from the live UI) never links its
+# balance_settled customer_ledger row back to the source transaction with a real
+# FK; the source order_number only ever lands in this fixed notes string. Parsed
+# back out here rather than adding a column, per the no-schema-change constraint.
+_BALANCE_SETTLED_NOTE_RE = re.compile(r"^Settled from transaction (\S+)$")
+
+
+def _balance_settlement_source_order_numbers(
+    transaction: SalesTransaction, items: list[TransactionItemResponse]
+) -> list[str]:
+    """Unique source order_numbers this transaction's balance_settled amount came
+    from, in first-seen order. Two mechanisms exist in this codebase:
+      1. A transaction_item with item_type=balance_settlement + reference_transaction_id
+         (only ever created via direct API/tests — the Receiver UI never sends this).
+      2. A customer_ledger row (entry_type=balance_settled) created by process_payment's
+         balances_to_settle loop — this is what the live Payment screen actually produces.
+    Both are checked so the field is correct regardless of which path populated it.
+    """
+    order_numbers: list[str] = []
+    seen: set[str] = set()
+
+    def add(order_number: str | None) -> None:
+        if order_number and order_number not in seen:
+            seen.add(order_number)
+            order_numbers.append(order_number)
+
+    for item in items:
+        if item.item_type == ItemTypeEnum.balance_settlement:
+            add(item.reference_order_number)
+
+    for entry in transaction.ledger_entries:
+        if entry.entry_type != LedgerEntryTypeEnum.balance_settled or not entry.notes:
+            continue
+        match = _BALANCE_SETTLED_NOTE_RE.match(entry.notes)
+        if match:
+            add(match.group(1))
+
+    return order_numbers
+
+
 def _build_transaction_response(transaction: SalesTransaction) -> TransactionResponse:
     # payment_details (the relationship) loads every payment_detail row regardless
     # of is_draft — split it here so confirmed and draft entries are always kept
@@ -144,6 +187,16 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
         (le for le in transaction.ledger_entries if le.entry_type == LedgerEntryTypeEnum.balance_added), None
     )
     response.remaining_balance_added = balance_added_entry.amount if balance_added_entry else None
+
+    # reference_order_number has no matching ORM attribute (would require a join) —
+    # filled in here from the already-eager-loaded item.reference_transaction
+    # relationship (TransactionItem.reference_transaction is lazy="selectin").
+    items_by_id = {item.id: item for item in transaction.items}
+    for item_response in response.items:
+        item = items_by_id.get(item_response.id)
+        if item is not None and item.reference_transaction is not None:
+            item_response.reference_order_number = item.reference_transaction.order_number
+    response.balance_settlement_sources = _balance_settlement_source_order_numbers(transaction, response.items)
 
     response.children = [_build_transaction_response(child) for child in transaction.children]
     return response

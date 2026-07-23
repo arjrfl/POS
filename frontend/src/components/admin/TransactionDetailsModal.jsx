@@ -33,6 +33,18 @@ function SectionHeading({ children }) {
   return <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{children}</h4>
 }
 
+// "Balance Settled" label, with a muted "(from: TXN-xxx, TXN-yyy)" suffix when
+// the transaction carries source order_numbers — falls back to the plain label
+// when balance_settlement_sources is empty (legacy data pre-dating this field).
+function BalanceSettledLabel({ sources }) {
+  if (!sources?.length) return 'Balance Settled'
+  return (
+    <>
+      Balance Settled <span className="text-xs text-gray-400 font-normal">(from: {sources.join(', ')})</span>
+    </>
+  )
+}
+
 // Same subtle line already used above "Total Due" (border-t border-gray-300)
 // and by Section B's own top border — reused here rather than a new style, so
 // every section boundary in the Details column reads consistently.
@@ -102,7 +114,10 @@ function OriginalAmountSummary({ t, hasLinkedAdjustment }) {
         />
       )}
       {Number(t.balance_settled) > 0 && (
-        <InfoRow label="Balance Settled" value={`+${formatCurrency(t.balance_settled)}`} />
+        <InfoRow
+          label={<BalanceSettledLabel sources={t.balance_settlement_sources} />}
+          value={`+${formatCurrency(t.balance_settled)}`}
+        />
       )}
       {t.payment_entries?.length > 0 && (
         <InfoRow label="Total Payment Entries" value={formatCurrency(sumPaymentEntries(t.payment_entries))} />
@@ -392,7 +407,10 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
       <div className="flex flex-col">
         <InfoRow label="Amount Due" value={formatCurrency(childTxn.total_due)} />
         {Number(childTxn.balance_settled) > 0 && (
-          <InfoRow label="Balance Settled" value={`+${formatCurrency(childTxn.balance_settled)}`} />
+          <InfoRow
+            label={<BalanceSettledLabel sources={childTxn.balance_settlement_sources} />}
+            value={`+${formatCurrency(childTxn.balance_settled)}`}
+          />
         )}
         {childTxn.payment_entries?.length > 0 && (
           <InfoRow label="Total Payment Entries" value={formatCurrency(sumPaymentEntries(childTxn.payment_entries))} />
