@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTransactions } from '../../hooks/useTransactions'
 import { Card } from '../ui/Card'
 import { TopProductsChart } from './TopProductsChart'
+import { PaymentUserSalesTable } from './PaymentUserSalesTable'
 import { get } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 
@@ -53,7 +54,14 @@ export function DashboardSection() {
         />
       </div>
 
-      <TopProductsChart />
+      <div className="flex flex-col lg:flex-row gap-4">
+        <div className="lg:w-3/5 h-[420px] overflow-y-auto">
+          <TopProductsChart />
+        </div>
+        <div className="lg:w-2/5 h-[420px]">
+          <PaymentUserSalesTable />
+        </div>
+      </div>
     </div>
   )
 }

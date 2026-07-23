@@ -30,6 +30,7 @@ export function useAdminLiveSync() {
       if (isQueueEvent) {
         queryClient.invalidateQueries({ queryKey: ['transactions'] })
         queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'top-products'] })
+        queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'payment-user-sales'] })
       }
       queryClient.invalidateQueries({ queryKey: ['admin', 'dashboard', 'summary'] })
     }, DEBOUNCE_MS)

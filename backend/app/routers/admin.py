@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -17,7 +17,8 @@ from app.models.transaction import (
     TransactionStatusEnum,
     TransactionTypeEnum,
 )
-from app.schemas.admin import DashboardSummary, TopProductRevenue
+from app.models.user import Role, User
+from app.schemas.admin import DashboardSummary, PaymentUserSales, TopProductRevenue
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -91,6 +92,47 @@ async def get_top_products(db: AsyncSession = Depends(get_db)):
     return {
         "data": [
             TopProductRevenue(product_id=row.product_id, product_name=row.product_name, total_revenue=row.total_revenue)
+            for row in rows
+        ],
+        "error": None,
+    }
+
+
+@router.get("/dashboard/payment-user-sales", dependencies=[Depends(require_role("admin"))])
+async def get_payment_user_sales(db: AsyncSession = Depends(get_db)):
+    # Join conditions (not WHERE) so active payment users with zero qualifying
+    # transactions today still appear, via LEFT JOIN, with total_sales = 0.00.
+    # Same "today" boundary + refund-exclusion + total_due rule as Total Sales
+    # Today (see get_dashboard_summary above) — total_due already nets credit_applied.
+    today_sales_join = and_(
+        SalesTransaction.payment_user_id == User.id,
+        SalesTransaction.transaction_status == TransactionStatusEnum.completed,
+        func.date(SalesTransaction.payment_at) == func.current_date(),
+        SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+    )
+
+    stmt = (
+        select(
+            User.id.label("user_id"),
+            User.full_name.label("full_name"),
+            User.username.label("username"),
+            func.coalesce(func.sum(SalesTransaction.total_due), 0).label("total_sales"),
+        )
+        .join(Role, Role.id == User.role_id)
+        .outerjoin(SalesTransaction, today_sales_join)
+        .where(Role.role_name == "payment", User.is_active.is_(True))
+        .group_by(User.id, User.full_name, User.username)
+        .order_by(func.coalesce(func.sum(SalesTransaction.total_due), 0).desc())
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    return {
+        "data": [
+            PaymentUserSales(
+                user_id=row.user_id, full_name=row.full_name, username=row.username, total_sales=row.total_sales
+            )
             for row in rows
         ],
         "error": None,
