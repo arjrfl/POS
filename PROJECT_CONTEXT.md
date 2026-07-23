@@ -218,6 +218,9 @@ Payment handles ALL financial decisions:
 - The old behavior of letting a `refund` transaction flow through the normal
   `/pay` endpoint (a cash/online payout) still exists in the backend code, but
   is intentionally not exposed in the current Payment UI — may be re-enabled later
+- Note: because no `payment_detail` row is created, refund children must be
+  excluded from any cash/sales aggregate (e.g. Admin Dashboard's Total Sales
+  Today) — see the locked rule in CLAUDE.md.
 
 ### Payment Draft Entries
 - Entries saved as drafts in `payment_detail` (`is_draft = TRUE`)

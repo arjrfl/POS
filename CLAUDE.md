@@ -162,6 +162,16 @@ dependency not listed above without explicit instruction.
   - The old code path that lets a `refund` transaction flow through the normal
     `/pay` endpoint is still in the codebase (see comment above that route) but
     is intentionally not surfaced in the UI — may be re-enabled later
+  - **Refund children are credit-only, not cash (locked rule):**
+    `refund`-type transactions never produce a `payment_detail` row under
+    the current UI — resolved via `/resolve-as-credit` only, which just
+    adds `total_due` to `customer.net_balance` as a `credit_added` ledger
+    entry. No cash changes hands. Any cash/sales aggregate (e.g. Total
+    Sales Today on the Admin Dashboard) must exclude
+    `transaction_type = 'refund'` rows entirely — do not add, subtract,
+    or otherwise fold them into a revenue figure. If the dormant
+    cash-payout `/pay` path for refunds is ever reactivated, this
+    exclusion rule must be revisited.
 - After Payment resolves child → parent → `settled` (stays in Releasing's queue,
   read-only, as a "Payment Resolved" card) → Releasing confirms handover
   (`POST /{id}/confirm-handover`, this is where stock actually leaves) → `completed`
