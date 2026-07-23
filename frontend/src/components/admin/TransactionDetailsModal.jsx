@@ -101,6 +101,9 @@ function OriginalAmountSummary({ t, hasLinkedAdjustment }) {
           }
         />
       )}
+      {Number(t.balance_settled) > 0 && (
+        <InfoRow label="Balance Settled" value={`+${formatCurrency(t.balance_settled)}`} />
+      )}
       {t.payment_entries?.length > 0 && (
         <InfoRow label="Total Payment Entries" value={formatCurrency(sumPaymentEntries(t.payment_entries))} />
       )}
@@ -115,9 +118,6 @@ function OriginalAmountSummary({ t, hasLinkedAdjustment }) {
       )}
       {Number(t.credit_applied) > 0 && (
         <InfoRow label="Credit Applied" value={`-${formatCurrency(t.credit_applied)}`} />
-      )}
-      {Number(t.balance_settled) > 0 && (
-        <InfoRow label="Balance Settled" value={`+${formatCurrency(t.balance_settled)}`} />
       )}
       {t.remaining_balance_added != null && (
         <InfoRow label="Remaining Balance Added" value={formatCurrency(t.remaining_balance_added)} />
@@ -391,6 +391,9 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
       <SectionHeading>Amount Summary</SectionHeading>
       <div className="flex flex-col">
         <InfoRow label="Amount Due" value={formatCurrency(childTxn.total_due)} />
+        {Number(childTxn.balance_settled) > 0 && (
+          <InfoRow label="Balance Settled" value={`+${formatCurrency(childTxn.balance_settled)}`} />
+        )}
         {childTxn.payment_entries?.length > 0 && (
           <InfoRow label="Total Payment Entries" value={formatCurrency(sumPaymentEntries(childTxn.payment_entries))} />
         )}
@@ -405,9 +408,6 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
         )}
         {Number(childTxn.credit_applied) > 0 && (
           <InfoRow label="Credit Applied" value={`-${formatCurrency(childTxn.credit_applied)}`} />
-        )}
-        {Number(childTxn.balance_settled) > 0 && (
-          <InfoRow label="Balance Settled" value={`+${formatCurrency(childTxn.balance_settled)}`} />
         )}
         {childTxn.remaining_balance_added != null && (
           <InfoRow label="Remaining Balance Added" value={formatCurrency(childTxn.remaining_balance_added)} />
