@@ -40,7 +40,7 @@ function BalanceSettledLabel({ sources }) {
   if (!sources?.length) return 'Balance Settled'
   return (
     <>
-      Balance Settled <span className="text-xs text-gray-400 font-normal">(from: {sources.join(', ')})</span>
+      Balance Settled <span className="text-xs text-gray-700 font-semibold">(from: {sources.join(', ')})</span>
     </>
   )
 }
