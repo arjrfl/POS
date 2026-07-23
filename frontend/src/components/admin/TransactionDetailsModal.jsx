@@ -4,7 +4,6 @@ import { Badge } from '../ui/Badge'
 import { get } from '../../services/api'
 import { useCustomer } from '../../hooks/useCustomer'
 import { ArticleRows, ARTICLE_ROW_COLUMN_WIDTHS } from '../payment/ArticleRows'
-import { useArticleRows } from '../../hooks/useArticleRows'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
@@ -398,7 +397,10 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn }) {
 // table-fixed + ARTICLE_ROW_COLUMN_WIDTHS on the header cells (matching the
 // widths ArticleRows itself sets on its <td>s) keeps the header and every row
 // pixel-aligned on the same 5 proportional columns.
-function ArticleTable({ children }) {
+// `footer` (optional) renders below the table but still inside the same
+// bordered/rounded card — used by the standalone Adjustment child view's
+// "Adjusted Items" section, which isn't itself table-row content.
+function ArticleTable({ children, footer }) {
   return (
     <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
       <table className="w-full table-fixed text-sm">
@@ -416,6 +418,44 @@ function ArticleTable({ children }) {
         </thead>
         <tbody>{children}</tbody>
       </table>
+      {footer}
+    </div>
+  )
+}
+
+// Lists each of the original transaction's items that varied (quantity_kg
+// and/or unit_count — see adjustedItemRows above), only shown on the
+// standalone Adjustment child view alongside the highlighted rows in the
+// table above. Independent QTY/UNIT arrows — a resolution can change either
+// dimension without touching the other.
+function AdjustedItemsSection({ items }) {
+  if (!items?.length) return null
+  return (
+    <div className="px-3 pb-3">
+      <Divider />
+      <div className="pt-3 flex flex-col gap-2">
+        <SectionHeading>Adjusted Items</SectionHeading>
+        {items.map((item) => {
+          const qtyChanged =
+            item.actual_quantity_kg != null && Number(item.actual_quantity_kg) !== Number(item.quantity_kg)
+          const unitChanged = item.actual_unit_count != null && item.actual_unit_count !== item.unit_count
+          return (
+            <div key={item.id} className="text-sm">
+              <div className="font-medium text-gray-900">{item.product_name}</div>
+              {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
+              <div className="flex gap-4 text-xs text-gray-700 mt-0.5">
+                <span>
+                  QTY:{' '}
+                  {qtyChanged
+                    ? `${Number(item.quantity_kg).toFixed(3)} → ${Number(item.actual_quantity_kg).toFixed(3)}`
+                    : Number(item.quantity_kg).toFixed(3)}
+                </span>
+                <span>UNIT: {unitChanged ? `${item.unit_count} → ${item.actual_unit_count}` : item.unit_count}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -494,15 +534,25 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
     return { parent: { ...originalTxn, items: originalTxn.items.filter((item) => item.item_type === 'product') } }
   }, [originalTxn])
 
-  // Reuses the exact same before→after pairing the Adjustment box itself
-  // derives (useArticleRows(linkedChildTxn) reads linkedChildTxn.parent.items,
-  // i.e. these are the same underlying items as originalAsParent above) — no
-  // separate matching mechanism, just borrowing its `adjusted` result to know
-  // which product_ids to flag in the Original box.
-  const { adjusted: linkedAdjustedRows } = useArticleRows(linkedChildTxn)
+  // Which of the original's items actually varied — quantity_kg OR unit_count,
+  // independently (a substandard resolution can adjust either dimension) —
+  // broader than useArticleRows' own isAdjusted (quantity_kg only), since that
+  // hook is built for the child's before→after item table, not this flag.
+  // Only applied on the standalone Adjustment child view (see
+  // isStandaloneAdjustmentChild below) — the original's own view never
+  // highlights or lists these, regardless of whether a linked child exists.
+  const adjustedItemRows = useMemo(() => {
+    if (!originalAsParent) return []
+    return originalAsParent.parent.items.filter((item) => {
+      const qtyChanged =
+        item.actual_quantity_kg != null && Number(item.actual_quantity_kg) !== Number(item.quantity_kg)
+      const unitChanged = item.actual_unit_count != null && item.actual_unit_count !== item.unit_count
+      return qtyChanged || unitChanged
+    })
+  }, [originalAsParent])
   const highlightedProductIds = useMemo(
-    () => new Set(linkedAdjustedRows.map((row) => row.product_id)),
-    [linkedAdjustedRows]
+    () => new Set(adjustedItemRows.map((item) => item.product_id)),
+    [adjustedItemRows]
   )
   const highlightColor = linkedChildTxn?.transaction_type === 'refund' ? 'blue' : 'amber'
 
@@ -532,12 +582,14 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
             <div className="flex-1 min-w-0 flex flex-col gap-[10px] min-h-0">
               {isUnifiedLinkedCase ? (
                 <div className="flex-1 min-h-0 flex flex-col gap-2">
-                  <ArticleTable>
+                  <ArticleTable
+                    footer={isStandaloneAdjustmentChild && <AdjustedItemsSection items={adjustedItemRows} />}
+                  >
                     <ArticleRows
                       transaction={originalAsParent}
                       variant="plain"
                       align="center"
-                      highlightedProductIds={highlightedProductIds}
+                      highlightedProductIds={isStandaloneAdjustmentChild ? highlightedProductIds : undefined}
                       highlightColor={highlightColor}
                     />
                   </ArticleTable>
@@ -546,12 +598,14 @@ export function TransactionDetailsModal({ transactionId, onClose }) {
                 <>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
                     <span className="text-sm font-medium">Original - {originalTxn.order_number}</span>
-                    <ArticleTable>
+                    <ArticleTable
+                      footer={isStandaloneAdjustmentChild && <AdjustedItemsSection items={adjustedItemRows} />}
+                    >
                       <ArticleRows
                         transaction={originalAsParent}
                         variant="plain"
                         align="center"
-                        highlightedProductIds={highlightedProductIds}
+                        highlightedProductIds={isStandaloneAdjustmentChild ? highlightedProductIds : undefined}
                         highlightColor={highlightColor}
                       />
                     </ArticleTable>
