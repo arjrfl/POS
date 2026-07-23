@@ -410,6 +410,86 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
   )
 }
 
+// Standalone Details column for a "View Details" click directly on a
+// refund/credit-adjustment child's own row — same shell as
+// AdjustmentChildDetailsColumn above (header row shape, Handled By via the
+// shared AdjustmentChildHandledBy, Customer section, Article Table +
+// ADJUSTED ITEMS reuse the same shared logic in TransactionDetailsModal
+// below) but this resolution path goes through resolve-as-credit, not /pay
+// — there's no payment_detail row at all, so Payment Entries + Amount
+// Summary don't apply here. Replaced with CREDIT ADJUSTMENT DETAILS (the
+// variance that caused it, sourced from the parent, same as the Adjustment
+// child) and CREDIT RESOLUTION (the credit outcome itself). Deliberately a
+// separate function rather than a branch inside AdjustmentChildDetailsColumn
+// so that component's existing rendering path stays untouched.
+function CreditAdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
+  const { data: customer } = useCustomer(childTxn?.customer_id)
+  if (!childTxn) return null
+
+  const customerTypeBadge = CUSTOMER_TYPE_BADGE[childTxn.customer_type]
+
+  // Same source as AdjustmentChildDetailsColumn's parentHasVariance/
+  // parentBalanceDue — the variance lives on the ORIGINAL, not the child.
+  const parentHasVariance =
+    parentTxn?.actual_amount != null && Number(parentTxn.actual_amount) !== Number(parentTxn.estimated_amount)
+  const parentBalanceDue = Number(parentTxn?.balance_due ?? 0)
+
+  const sections = [
+    childTxn.void_info && <VoidInfoBlock key="void" voidInfo={childTxn.void_info} />,
+    <div key="credit-adjustment-details">
+      <SectionHeading>Credit Adjustment Details</SectionHeading>
+      <div className="flex flex-col">
+        <InfoRow label="Estimated Amount" value={formatCurrency(parentTxn?.estimated_amount)} />
+        <InfoRow label="Actual Amount" value={formatCurrency(parentTxn?.actual_amount)} />
+        {parentHasVariance && (
+          <p className="text-sm font-medium py-0.5 text-blue-700">
+            -{formatCurrency(Math.abs(parentBalanceDue))} — item was lighter, store owes customer
+          </p>
+        )}
+      </div>
+    </div>,
+    <div key="handled-by">
+      <SectionHeading>Handled By</SectionHeading>
+      <AdjustmentChildHandledBy t={childTxn} />
+    </div>,
+    <div key="customer">
+      <SectionHeading>Customer</SectionHeading>
+      <InfoRow label="Name" value={customer?.full_name ?? '...'} />
+      <InfoRow label="Address" value={childTxn.customer_address ?? 'No address on file'} />
+    </div>,
+    <div key="credit-resolution">
+      <SectionHeading>Credit Resolution</SectionHeading>
+      <div className="flex flex-col">
+        <InfoRow label="Amount Added to Credit" value={formatCurrency(childTxn.total_due)} />
+        <InfoRow label="Resolved By" value={childTxn.payment_user_name} />
+        <InfoRow label="Resolved At" value={formatDateTime(childTxn.payment_at)} />
+      </div>
+    </div>,
+  ].filter(Boolean)
+
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-semibold text-gray-900">{childTxn.order_number}</span>
+          <Badge status={childTxn.transaction_status} />
+          {customerTypeBadge && (
+            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${customerTypeBadge.className}`}>
+              {customerTypeBadge.label}
+            </span>
+          )}
+          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-100 text-teal-800">
+            CREDIT ADJUSTMENT
+          </span>
+          <LinkedOrderLabel label="Original Transaction" targetTxn={parentTxn} onNavigate={onNavigate} />
+        </div>
+
+        {sections.flatMap((section, index) => [<Divider key={`divider-${index}`} />, section])}
+      </div>
+    </div>
+  )
+}
+
 // ArticleRows renders <tr> rows meant for a real <table><tbody> (see its own
 // comment) — a header-only div/grid can't host them, so the header lives in a
 // <thead> here instead, keeping the same sticky/label styling as before.
@@ -447,35 +527,76 @@ function ArticleTable({ children, footer }) {
 // standalone Adjustment child view alongside the highlighted rows in the
 // table above. Independent QTY/UNIT arrows — a resolution can change either
 // dimension without touching the other.
+// One row per varied item, using the exact same column widths/alignment as
+// the main table's own rows above (ARTICLE_ROW_COLUMN_WIDTHS, same
+// py-2/pr-2 cell padding) — a second <table> rather than a free-form block,
+// so the two stay pixel-aligned regardless of content length. Arrows only
+// appear on the dimension that actually changed for THIS item (a resolution
+// can adjust quantity_kg and unit_count independently).
+function AdjustedItemRow({ item }) {
+  const qtyChanged = item.actual_quantity_kg != null && Number(item.actual_quantity_kg) !== Number(item.quantity_kg)
+  const unitChanged = item.actual_unit_count != null && item.actual_unit_count !== item.unit_count
+  const actualSubtotal = item.actual_subtotal != null ? Number(item.actual_subtotal) : Number(item.subtotal)
+  const subtotalChanged = actualSubtotal !== Number(item.subtotal)
+
+  return (
+    <tr className="border-b border-gray-100 last:border-b-0 align-top">
+      <td className={`py-2 pr-2 text-gray-700 text-center ${ARTICLE_ROW_COLUMN_WIDTHS[0]}`}>
+        {qtyChanged
+          ? `${Number(item.quantity_kg).toFixed(3)} → ${Number(item.actual_quantity_kg).toFixed(3)}`
+          : Number(item.quantity_kg).toFixed(3)}
+      </td>
+      <td className={`py-2 pr-2 text-gray-700 text-center ${ARTICLE_ROW_COLUMN_WIDTHS[1]}`}>
+        {unitChanged ? `${item.unit_count} → ${item.actual_unit_count}` : item.unit_count}
+      </td>
+      <td className={`py-2 pr-2 text-left ${ARTICLE_ROW_COLUMN_WIDTHS[2]}`}>
+        <div className="font-medium text-gray-900">{item.product_name}</div>
+        {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
+      </td>
+      <td className={`py-2 pr-2 text-gray-700 text-center ${ARTICLE_ROW_COLUMN_WIDTHS[3]}`}>
+        {formatCurrency(item.unit_price)}
+      </td>
+      <td className={`py-2 pr-2 font-medium text-gray-900 text-center ${ARTICLE_ROW_COLUMN_WIDTHS[4]}`}>
+        {subtotalChanged
+          ? `${formatCurrency(item.subtotal)} → ${formatCurrency(actualSubtotal)}`
+          : formatCurrency(item.subtotal)}
+      </td>
+    </tr>
+  )
+}
+
+// Same "Adjusted Items" heading convention ArticleRows.jsx's own 'adjusted'
+// variant already uses (colSpan={5} label row) — rendered in a second
+// table-fixed <table> (matching the main one's w-full table-fixed text-sm)
+// so both land on identical column boundaries without duplicating the
+// QTY/UNIT/ARTICLES/UNIT PRICE/AMOUNT header itself.
 function AdjustedItemsSection({ items }) {
   if (!items?.length) return null
   return (
-    <div className="px-3 pb-3">
-      <Divider />
-      <div className="pt-3 flex flex-col gap-2">
-        <SectionHeading>Adjusted Items</SectionHeading>
-        {items.map((item) => {
-          const qtyChanged =
-            item.actual_quantity_kg != null && Number(item.actual_quantity_kg) !== Number(item.quantity_kg)
-          const unitChanged = item.actual_unit_count != null && item.actual_unit_count !== item.unit_count
-          return (
-            <div key={item.id} className="text-sm">
-              <div className="font-medium text-gray-900">{item.product_name}</div>
-              {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
-              <div className="flex gap-4 text-xs text-gray-700 mt-0.5">
-                <span>
-                  QTY:{' '}
-                  {qtyChanged
-                    ? `${Number(item.quantity_kg).toFixed(3)} → ${Number(item.actual_quantity_kg).toFixed(3)}`
-                    : Number(item.quantity_kg).toFixed(3)}
-                </span>
-                <span>UNIT: {unitChanged ? `${item.unit_count} → ${item.actual_unit_count}` : item.unit_count}</span>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
+    <table className="w-full table-fixed text-sm">
+      {/* table-fixed derives column widths from the first row's cells — the
+          "Adjusted Items" label below is a single colSpan={5} cell, which
+          can't convey 5 individual widths, so an explicit colgroup is needed
+          to keep this table's columns aligned with the main table above it. */}
+      <colgroup>
+        {ARTICLE_ROW_COLUMN_WIDTHS.map((widthClass, index) => (
+          <col key={index} className={widthClass} />
+        ))}
+      </colgroup>
+      <tbody>
+        <tr>
+          <td
+            colSpan={5}
+            className="pt-3 pb-1 px-3 text-xs font-semibold text-gray-500 uppercase tracking-wide border-t border-gray-200"
+          >
+            Adjusted Items
+          </td>
+        </tr>
+        {items.map((item) => (
+          <AdjustedItemRow key={item.id} item={item} />
+        ))}
+      </tbody>
+    </table>
   )
 }
 
@@ -519,15 +640,16 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
   // "View Details" can be opened directly on a child row (Transaction History
   // lists adjustment/refund children as their own rows) — the chain endpoint
   // always returns the full parent+child chain either way, so this finds which
-  // specific row was actually clicked to decide whether to render the
+  // specific row was actually clicked to decide whether to render a
   // standalone child layout instead of always defaulting to the parent's view.
-  // Refund/credit-adjustment standalone view isn't built yet, so only
-  // 'adjustment' switches to the new layout — a refund child falls through to
-  // the existing originalTxn-centric rendering, unchanged.
   const viewedTxn = chain?.find((t) => t.id === transactionId) ?? null
   const isStandaloneAdjustmentChild = Boolean(
     viewedTxn?.parent_transaction_id != null && viewedTxn.transaction_type === 'adjustment'
   )
+  const isStandaloneRefundChild = Boolean(
+    viewedTxn?.parent_transaction_id != null && viewedTxn.transaction_type === 'refund'
+  )
+  const isStandaloneChild = isStandaloneAdjustmentChild || isStandaloneRefundChild
 
   // Scope guard for the unified single-card layout: exactly one parent
   // (original) + exactly one child, and that child must be an adjustment
@@ -557,9 +679,10 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
   // independently (a substandard resolution can adjust either dimension) —
   // broader than useArticleRows' own isAdjusted (quantity_kg only), since that
   // hook is built for the child's before→after item table, not this flag.
-  // Only applied on the standalone Adjustment child view (see
-  // isStandaloneAdjustmentChild below) — the original's own view never
-  // highlights or lists these, regardless of whether a linked child exists.
+  // Only applied on a standalone child view (see isStandaloneChild below,
+  // covers both Adjustment and Credit Adjustment/refund) — the original's
+  // own view never highlights or lists these, regardless of whether a
+  // linked child exists.
   const adjustedItemRows = useMemo(() => {
     if (!originalAsParent) return []
     return originalAsParent.parent.items.filter((item) => {
@@ -581,7 +704,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
       onClose={onClose}
       title="Transaction History"
       closeLabel="‹ Back"
-      centerLabel={isStandaloneAdjustmentChild ? viewedTxn.order_number : originalTxn?.order_number}
+      centerLabel={isStandaloneChild ? viewedTxn.order_number : originalTxn?.order_number}
     >
       <div className="flex flex-col h-full min-h-0">
         {loading && (
@@ -602,13 +725,13 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
               {isUnifiedLinkedCase ? (
                 <div className="flex-1 min-h-0 flex flex-col gap-2">
                   <ArticleTable
-                    footer={isStandaloneAdjustmentChild && <AdjustedItemsSection items={adjustedItemRows} />}
+                    footer={isStandaloneChild && <AdjustedItemsSection items={adjustedItemRows} />}
                   >
                     <ArticleRows
                       transaction={originalAsParent}
                       variant="plain"
                       align="center"
-                      highlightedProductIds={isStandaloneAdjustmentChild ? highlightedProductIds : undefined}
+                      highlightedProductIds={isStandaloneChild ? highlightedProductIds : undefined}
                       highlightColor={highlightColor}
                     />
                   </ArticleTable>
@@ -618,13 +741,13 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
                     <span className="text-sm font-medium">Original - {originalTxn.order_number}</span>
                     <ArticleTable
-                      footer={isStandaloneAdjustmentChild && <AdjustedItemsSection items={adjustedItemRows} />}
+                      footer={isStandaloneChild && <AdjustedItemsSection items={adjustedItemRows} />}
                     >
                       <ArticleRows
                         transaction={originalAsParent}
                         variant="plain"
                         align="center"
-                        highlightedProductIds={isStandaloneAdjustmentChild ? highlightedProductIds : undefined}
+                        highlightedProductIds={isStandaloneChild ? highlightedProductIds : undefined}
                         highlightColor={highlightColor}
                       />
                     </ArticleTable>
@@ -650,6 +773,12 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
             <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0">
               {isStandaloneAdjustmentChild ? (
                 <AdjustmentChildDetailsColumn childTxn={viewedTxn} parentTxn={originalTxn} onNavigate={onNavigate} />
+              ) : isStandaloneRefundChild ? (
+                <CreditAdjustmentChildDetailsColumn
+                  childTxn={viewedTxn}
+                  parentTxn={originalTxn}
+                  onNavigate={onNavigate}
+                />
               ) : (
                 <DetailsColumn originalTxn={originalTxn} linkedChildTxn={linkedChildTxn} onNavigate={onNavigate} />
               )}
