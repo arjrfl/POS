@@ -203,6 +203,11 @@ function DetailsColumn({ originalTxn, linkedChildTxn }) {
               {customerTypeBadge.label}
             </span>
           )}
+          {linkedChildTxn && (
+            <span className="text-xs text-gray-500 ml-auto">
+              Linked Transaction: {linkedChildTxn.order_number}
+            </span>
+          )}
         </div>
 
         {sectionsA.flatMap((section, index) => [<Divider key={`divider-${index}`} />, section])}
