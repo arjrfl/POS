@@ -67,6 +67,7 @@ export function DashboardSection() {
   })
 
   const rangeLabel = appliedRange ? formatRangeLabel(appliedRange.from, appliedRange.to) : null
+  const isFiltered = Boolean(appliedRange)
 
   return (
     <div className="flex flex-col gap-6 h-full min-h-0">
@@ -89,19 +90,19 @@ export function DashboardSection() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <SummaryCard
-          label="Transactions Today"
+          label={isFiltered ? 'Transactions' : 'Transactions Today'}
           value={loadingSummary ? '...' : (summary?.transactions_today ?? 0)}
           hidden={valuesHidden}
           subtext={rangeLabel}
         />
         <SummaryCard
-          label="Total Sales Today"
+          label={isFiltered ? 'Total Sales' : 'Total Sales Today'}
           value={loadingSummary ? '...' : formatCurrency(summary?.total_sales_today ?? 0)}
           hidden={valuesHidden}
           subtext={rangeLabel}
         />
         <SummaryCard
-          label="Actual Sales Today"
+          label={isFiltered ? 'Actual Sales' : 'Actual Sales Today'}
           value={loadingSummary ? '...' : formatCurrency(summary?.actual_sales_today ?? 0)}
           hidden={valuesHidden}
           subtext={rangeLabel}
@@ -125,7 +126,7 @@ export function DashboardSection() {
           <TopProductsChart />
         </div>
         <div className="flex-[40] h-full min-h-0 flex flex-col">
-          <PaymentUserSalesTable fromDate={appliedRange?.from} toDate={appliedRange?.to} />
+          <PaymentUserSalesTable fromDate={appliedRange?.from} toDate={appliedRange?.to} isFiltered={isFiltered} />
         </div>
       </div>
 

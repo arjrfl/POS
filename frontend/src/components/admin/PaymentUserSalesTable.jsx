@@ -4,7 +4,7 @@ import { get } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 import { buildRangeQueryString } from '../../utils/dateRange'
 
-export function PaymentUserSalesTable({ fromDate, toDate }) {
+export function PaymentUserSalesTable({ fromDate, toDate, isFiltered }) {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'dashboard', 'payment-user-sales', fromDate, toDate],
     queryFn: () => get(`/admin/dashboard/payment-user-sales${buildRangeQueryString(fromDate, toDate)}`),
@@ -12,7 +12,9 @@ export function PaymentUserSalesTable({ fromDate, toDate }) {
 
   return (
     <Card className="flex flex-col h-full">
-      <h2 className="text-sm font-semibold text-gray-900 mb-3">Payment Users — Sales Today</h2>
+      <h2 className="text-sm font-semibold text-gray-900 mb-3">
+        {isFiltered ? 'Payment Users — Sales' : 'Payment Users — Sales Today'}
+      </h2>
 
       {isLoading && <p className="text-gray-500 text-sm">Loading...</p>}
 
