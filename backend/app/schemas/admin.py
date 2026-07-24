@@ -26,4 +26,4 @@ class PaymentUserSales(BaseModel):
     total_sales: Decimal
     transactions_processed: int
     actual_total_sales: Decimal
-    unpaid_transactions_count: int
+    unpaid_amount: Decimal

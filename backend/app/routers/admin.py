@@ -289,19 +289,19 @@ async def get_payment_user_sales(
         .subquery()
     )
 
-    # unpaid_transactions_count — transactions that left a balance_added ledger
-    # entry behind (partial payment or unsettled balance).
+    # unpaid_amount — total balance_added left behind by this user's transactions
+    # (partial payments / unsettled balances), not just a count of how many. A
+    # transaction with more than one balance_added entry (shouldn't normally
+    # happen) sums all of them, not just the first.
     unpaid_subq = (
         select(
             SalesTransaction.payment_user_id.label("payment_user_id"),
-            func.count(func.distinct(SalesTransaction.id)).label("unpaid_transactions_count"),
+            func.coalesce(func.sum(CustomerLedger.amount), 0).label("unpaid_amount"),
         )
+        .join(CustomerLedger, CustomerLedger.transaction_id == SalesTransaction.id)
         .where(
-            SalesTransaction.id.in_(
-                select(CustomerLedger.transaction_id).where(
-                    CustomerLedger.entry_type == LedgerEntryTypeEnum.balance_added
-                )
-            ),
+            CustomerLedger.entry_type == LedgerEntryTypeEnum.balance_added,
+            SalesTransaction.transaction_status != TransactionStatusEnum.voided,
             *_payment_at_filters(),
         )
         .group_by(SalesTransaction.payment_user_id)
@@ -318,7 +318,7 @@ async def get_payment_user_sales(
             total_sales_col.label("total_sales"),
             func.coalesce(processed_subq.c.transactions_processed, 0).label("transactions_processed"),
             func.coalesce(actual_subq.c.actual_total_sales, 0).label("actual_total_sales"),
-            func.coalesce(unpaid_subq.c.unpaid_transactions_count, 0).label("unpaid_transactions_count"),
+            func.coalesce(unpaid_subq.c.unpaid_amount, 0).label("unpaid_amount"),
         )
         .join(Role, Role.id == User.role_id)
         .outerjoin(sales_subq, sales_subq.c.payment_user_id == User.id)
@@ -341,7 +341,7 @@ async def get_payment_user_sales(
                 total_sales=row.total_sales,
                 transactions_processed=row.transactions_processed,
                 actual_total_sales=row.actual_total_sales,
-                unpaid_transactions_count=row.unpaid_transactions_count,
+                unpaid_amount=row.unpaid_amount,
             )
             for row in rows
         ],

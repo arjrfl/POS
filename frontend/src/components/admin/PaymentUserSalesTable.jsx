@@ -35,7 +35,7 @@ export function PaymentUserSalesTable({ fromDate, toDate, rangeLabel, valuesHidd
                 <th className="py-2 px-2 text-xs font-medium uppercase tracking-wide text-center">Processed</th>
                 <th className="py-2 px-2 text-xs font-medium uppercase tracking-wide text-right">Total Sales</th>
                 <th className="py-2 px-2 text-xs font-medium uppercase tracking-wide text-right">Actual Sales</th>
-                <th className="py-2 pl-2 text-xs font-medium uppercase tracking-wide text-center">Unpaid</th>
+                <th className="py-2 pl-2 text-xs font-medium uppercase tracking-wide text-right">Unpaid</th>
               </tr>
             </thead>
             <tbody>
@@ -53,8 +53,8 @@ export function PaymentUserSalesTable({ fromDate, toDate, rangeLabel, valuesHidd
                   <td className="py-2 px-2 text-right text-gray-900">
                     {valuesHidden ? MASKED_VALUE : formatCurrency(row.actual_total_sales)}
                   </td>
-                  <td className="py-2 pl-2 text-center text-gray-900">
-                    {valuesHidden ? MASKED_VALUE : row.unpaid_transactions_count}
+                  <td className="py-2 pl-2 text-right text-gray-900">
+                    {valuesHidden ? MASKED_VALUE : formatCurrency(row.unpaid_amount)}
                   </td>
                 </tr>
               ))}
