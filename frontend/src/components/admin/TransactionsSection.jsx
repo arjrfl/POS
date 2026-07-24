@@ -124,6 +124,8 @@ export function TransactionsSection() {
 
   const handleClear = () => {
     setDraftFilters(DEFAULT_FILTERS)
+    setAppliedFilters(DEFAULT_FILTERS)
+    setPage(1)
     setCustomerFilterKey((k) => k + 1)
   }
 
