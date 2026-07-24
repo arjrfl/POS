@@ -10,6 +10,7 @@ export function useTransactions(filters = {}) {
     paymentStatus,
     customerType,
     customerId,
+    paymentUserId,
     dateFrom,
     dateTo,
     page = 1,
@@ -23,6 +24,7 @@ export function useTransactions(filters = {}) {
   if (paymentStatus) params.set('payment_status', paymentStatus)
   if (customerType) params.set('customer_type', customerType)
   if (customerId) params.set('customer_id', customerId)
+  if (paymentUserId) params.set('payment_user_id', paymentUserId)
   if (dateFrom) params.set('date_from', dateFrom)
   if (dateTo) params.set('date_to', dateTo)
   if (includePaymentStatus) params.set('include_payment_status', 'true')
@@ -39,7 +41,18 @@ export function useTransactions(filters = {}) {
     queryKey: [
       'transactions',
       'list',
-      { status, paymentStatus, customerType, customerId, dateFrom, dateTo, page, pageSize, includePaymentStatus },
+      {
+        status,
+        paymentStatus,
+        customerType,
+        customerId,
+        paymentUserId,
+        dateFrom,
+        dateTo,
+        page,
+        pageSize,
+        includePaymentStatus,
+      },
     ],
     queryFn: () => get(`/transactions?${queryString}`),
     enabled,

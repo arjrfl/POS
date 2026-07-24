@@ -595,6 +595,7 @@ async def list_transactions(
     queue_status: QueueStatusEnum | None = None,
     customer_type: CustomerTypeEnum | None = None,
     customer_id: int | None = None,
+    payment_user_id: int | None = None,
     walkin_user_id: int | None = None,
     include_pending_edit: bool = False,
     processing_by_user_id: int | None = None,
@@ -617,6 +618,8 @@ async def list_transactions(
         filters.append(SalesTransaction.customer_type == customer_type)
     if customer_id is not None:
         filters.append(SalesTransaction.customer_id == customer_id)
+    if payment_user_id is not None:
+        filters.append(SalesTransaction.payment_user_id == payment_user_id)
     if walkin_user_id is not None:
         if include_pending_edit:
             # returned transactions are visible to every receiver, not just

@@ -109,7 +109,42 @@ function TransactionRow({ transaction, onViewDetails }) {
   )
 }
 
-const DEFAULT_FILTERS = { status: '', customerType: '', selectedCustomer: null, dateFrom: '', dateTo: '' }
+function PaymentUserFilter({ value, onChange }) {
+  const { data: paymentUsers } = useQuery({
+    queryKey: ['users', 'payment'],
+    queryFn: () => get('/users?role=payment&status=active'),
+  })
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor="tx-payment-user" className="text-sm font-medium text-gray-700">
+        Payment
+      </label>
+      <select
+        id="tx-payment-user"
+        className={SELECT_CLASSES}
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
+      >
+        <option value="">All payment users</option>
+        {paymentUsers?.map((user) => (
+          <option key={user.id} value={user.id}>
+            {user.full_name}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+const DEFAULT_FILTERS = {
+  status: '',
+  customerType: '',
+  selectedCustomer: null,
+  paymentUserId: null,
+  dateFrom: '',
+  dateTo: '',
+}
 
 export function TransactionsSection() {
   const [draftFilters, setDraftFilters] = useState(DEFAULT_FILTERS)
@@ -136,6 +171,7 @@ export function TransactionsSection() {
     paymentStatus: appliedFilters.status || undefined,
     customerType: appliedFilters.customerType || undefined,
     customerId: appliedFilters.selectedCustomer?.id,
+    paymentUserId: appliedFilters.paymentUserId || undefined,
     dateFrom: appliedFilters.dateFrom || undefined,
     dateTo: appliedFilters.dateTo || undefined,
     page,
@@ -185,6 +221,11 @@ export function TransactionsSection() {
             </select>
           </div>
 
+          <PaymentUserFilter
+            value={draftFilters.paymentUserId}
+            onChange={(value) => setDraftField('paymentUserId', value)}
+          />
+
           <Input
             id="tx-date-from"
             label="From"
@@ -209,12 +250,14 @@ export function TransactionsSection() {
             onClear={() => setDraftField('selectedCustomer', null)}
           />
 
-          <Button type="button" variant="primary" className="w-full mt-1" onClick={handleRun}>
-            Run
-          </Button>
-          <Button type="button" variant="outline" className="w-full" onClick={handleClear}>
-            Clear
-          </Button>
+          <div className="flex gap-2 mt-1">
+            <Button type="button" variant="primary" className="flex-1" onClick={handleRun}>
+              Run
+            </Button>
+            <Button type="button" variant="outline" className="flex-1" onClick={handleClear}>
+              Clear
+            </Button>
+          </div>
         </div>
       </div>
 
