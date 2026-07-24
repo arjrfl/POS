@@ -28,7 +28,14 @@ export function PaymentUserSalesTable({ fromDate, toDate, rangeLabel, valuesHidd
 
       {!isLoading && data?.length > 0 && (
         <div className="overflow-y-auto flex-1">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm table-fixed">
+            <colgroup>
+              <col style={{ width: '25%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+            </colgroup>
             <thead>
               <tr className="text-left text-gray-500 border-b border-gray-200">
                 <th className="py-2 pr-2 text-xs font-medium uppercase tracking-wide">Payment User</th>
@@ -42,7 +49,7 @@ export function PaymentUserSalesTable({ fromDate, toDate, rangeLabel, valuesHidd
               {data.map((row) => (
                 <tr key={row.user_id} className="border-b border-gray-100 last:border-0">
                   <td className="py-2 pr-2">
-                    <div className="text-gray-900">{row.full_name}</div>
+                    <div className="text-gray-900 truncate" title={row.full_name}>{row.full_name}</div>
                   </td>
                   <td className="py-2 px-2 text-center text-gray-900">
                     {valuesHidden ? MASKED_VALUE : row.transactions_processed}
