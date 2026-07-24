@@ -10,6 +10,7 @@ export function useTransactions(filters = {}) {
     paymentStatus,
     customerType,
     customerId,
+    search,
     paymentUserId,
     dateFrom,
     dateTo,
@@ -24,6 +25,7 @@ export function useTransactions(filters = {}) {
   if (paymentStatus) params.set('payment_status', paymentStatus)
   if (customerType) params.set('customer_type', customerType)
   if (customerId) params.set('customer_id', customerId)
+  if (search) params.set('search', search)
   if (paymentUserId) params.set('payment_user_id', paymentUserId)
   if (dateFrom) params.set('date_from', dateFrom)
   if (dateTo) params.set('date_to', dateTo)
@@ -46,6 +48,7 @@ export function useTransactions(filters = {}) {
         paymentStatus,
         customerType,
         customerId,
+        search,
         paymentUserId,
         dateFrom,
         dateTo,

@@ -17,61 +17,16 @@ const PAYMENT_STATUSES = ['pending', 'full', 'partial', 'voided']
 const SELECT_CLASSES =
   'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light text-sm'
 
-function CustomerSearchFilter({ selectedCustomer, onSelect, onClear }) {
-  const [term, setTerm] = useState('')
-  const [isOpen, setIsOpen] = useState(false)
-
-  const { data: matches } = useQuery({
-    queryKey: ['customers', term],
-    queryFn: () => get(`/customers?search=${encodeURIComponent(term)}`),
-    enabled: isOpen && term.trim().length > 0,
-  })
-
-  if (selectedCustomer) {
-    return (
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium text-gray-700">Customer / Order #</span>
-        <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm">
-          <span className="text-gray-900">{selectedCustomer.full_name}</span>
-          <button type="button" onClick={onClear} className="ml-auto text-gray-400 hover:text-gray-600" aria-label="Clear customer filter">
-            &#10005;
-          </button>
-        </div>
-      </div>
-    )
-  }
-
+function CustomerSearchFilter({ value, onChange }) {
   return (
-    <div className="relative">
-      <Input
-        id="tx-customer-search"
-        label="Customer / Order #"
-        placeholder="Search by name or order #..."
-        value={term}
-        onChange={(e) => setTerm(e.target.value)}
-        onFocus={() => setIsOpen(true)}
-        onBlur={() => setTimeout(() => setIsOpen(false), 150)}
-        autoComplete="off"
-      />
-      {isOpen && term.trim() && (
-        <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg">
-          {matches?.length ? (
-            matches.map((customer) => (
-              <button
-                type="button"
-                key={customer.id}
-                onMouseDown={() => onSelect(customer)}
-                className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 text-sm"
-              >
-                {customer.full_name}
-              </button>
-            ))
-          ) : (
-            <div className="px-3 py-2 text-sm text-gray-500">No matches.</div>
-          )}
-        </div>
-      )}
-    </div>
+    <Input
+      id="tx-customer-search"
+      label="Customer / Order #"
+      placeholder="Search by name or order #..."
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      autoComplete="off"
+    />
   )
 }
 
@@ -140,7 +95,7 @@ function PaymentUserFilter({ value, onChange }) {
 const DEFAULT_FILTERS = {
   status: '',
   customerType: '',
-  selectedCustomer: null,
+  search: '',
   paymentUserId: null,
   dateFrom: '',
   dateTo: '',
@@ -151,7 +106,6 @@ export function TransactionsSection() {
   const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS)
   const [page, setPage] = useState(1)
   const [viewingTransactionId, setViewingTransactionId] = useState(null)
-  const [customerFilterKey, setCustomerFilterKey] = useState(0)
 
   const setDraftField = (field, value) => setDraftFilters((prev) => ({ ...prev, [field]: value }))
 
@@ -164,13 +118,12 @@ export function TransactionsSection() {
     setDraftFilters(DEFAULT_FILTERS)
     setAppliedFilters(DEFAULT_FILTERS)
     setPage(1)
-    setCustomerFilterKey((k) => k + 1)
   }
 
   const { data, isLoading } = useTransactions({
     paymentStatus: appliedFilters.status || undefined,
     customerType: appliedFilters.customerType || undefined,
-    customerId: appliedFilters.selectedCustomer?.id,
+    search: appliedFilters.search || undefined,
     paymentUserId: appliedFilters.paymentUserId || undefined,
     dateFrom: appliedFilters.dateFrom || undefined,
     dateTo: appliedFilters.dateTo || undefined,
@@ -243,12 +196,7 @@ export function TransactionsSection() {
             onChange={(e) => setDraftField('dateTo', e.target.value)}
           />
 
-          <CustomerSearchFilter
-            key={customerFilterKey}
-            selectedCustomer={draftFilters.selectedCustomer}
-            onSelect={(customer) => setDraftField('selectedCustomer', customer)}
-            onClear={() => setDraftField('selectedCustomer', null)}
-          />
+          <CustomerSearchFilter value={draftFilters.search} onChange={(value) => setDraftField('search', value)} />
 
           <div className="flex gap-2 mt-1">
             <Button type="button" variant="primary" className="flex-1" onClick={handleRun}>

@@ -595,6 +595,7 @@ async def list_transactions(
     queue_status: QueueStatusEnum | None = None,
     customer_type: CustomerTypeEnum | None = None,
     customer_id: int | None = None,
+    search: str | None = None,
     payment_user_id: int | None = None,
     walkin_user_id: int | None = None,
     include_pending_edit: bool = False,
@@ -618,6 +619,15 @@ async def list_transactions(
         filters.append(SalesTransaction.customer_type == customer_type)
     if customer_id is not None:
         filters.append(SalesTransaction.customer_id == customer_id)
+    needs_customer_join = bool(search and search.strip())
+    if needs_customer_join:
+        term = search.strip()
+        filters.append(
+            or_(
+                Customer.full_name.ilike(f"%{term}%"),
+                SalesTransaction.order_number.ilike(f"%{term}%"),
+            )
+        )
     if payment_user_id is not None:
         filters.append(SalesTransaction.payment_user_id == payment_user_id)
     if walkin_user_id is not None:
@@ -639,13 +649,23 @@ async def list_transactions(
 
     needs_payment_status = include_payment_status or payment_status_filter is not None
 
+    # search matches against Customer.full_name, so those three queries below
+    # need a join to Customer whenever a search term is active — added here
+    # rather than unconditionally, since none of the other filters need it.
+    def _with_customer_join(stmt):
+        if needs_customer_join:
+            return stmt.join(Customer, SalesTransaction.customer_id == Customer.id)
+        return stmt
+
     if not needs_payment_status:
         total = (
-            await db.execute(select(func.count()).select_from(SalesTransaction).where(*filters))
+            await db.execute(
+                _with_customer_join(select(func.count()).select_from(SalesTransaction)).where(*filters)
+            )
         ).scalar_one()
 
         result = await db.execute(
-            select(SalesTransaction)
+            _with_customer_join(select(SalesTransaction))
             .where(*filters)
             .order_by(SalesTransaction.created_at.desc())
             .offset((page - 1) * page_size)
@@ -664,11 +684,13 @@ async def list_transactions(
     # columns needed to compute the bucket, not full transaction + children.
     lightweight_rows = (
         await db.execute(
-            select(
-                SalesTransaction.id,
-                SalesTransaction.transaction_status,
-                SalesTransaction.customer_type,
-                SalesTransaction.customer_id,
+            _with_customer_join(
+                select(
+                    SalesTransaction.id,
+                    SalesTransaction.transaction_status,
+                    SalesTransaction.customer_type,
+                    SalesTransaction.customer_id,
+                )
             )
             .where(*filters)
             .order_by(SalesTransaction.created_at.desc())
