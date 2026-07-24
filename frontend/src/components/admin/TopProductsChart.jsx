@@ -1,16 +1,35 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import { Card } from '../ui/Card'
 import { get } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 
-function ChartTooltip({ active, payload }) {
+// Fixed palette of ~10 distinct greens/teals — stays in the app's green
+// brand family (tailwind.config.js primary = #166534) while remaining
+// distinguishable slice-to-slice.
+const PIE_COLORS = [
+  '#14532d',
+  '#166534',
+  '#15803d',
+  '#16a34a',
+  '#22c55e',
+  '#4ade80',
+  '#86efac',
+  '#059669',
+  '#0d9488',
+  '#65a30d',
+]
+
+function ChartTooltip({ active, payload, total }) {
   if (!active || !payload?.length) return null
   const { product_name, total_revenue } = payload[0].payload
+  const percent = total > 0 ? ((total_revenue / total) * 100).toFixed(1) : '0.0'
   return (
     <div className="bg-white border border-gray-200 rounded-md shadow-sm px-3 py-2 text-sm">
       <div className="font-medium text-gray-900">{product_name}</div>
       <div className="text-gray-600">{formatCurrency(total_revenue)}</div>
+      <div className="text-gray-400 text-xs">{percent}% of total</div>
     </div>
   )
 }
@@ -21,35 +40,61 @@ export function TopProductsChart() {
     queryFn: () => get('/admin/dashboard/top-products'),
   })
 
+  const chartData = useMemo(
+    () => (data ?? []).map((row) => ({ ...row, total_revenue: Number(row.total_revenue) })),
+    [data],
+  )
+  const total = useMemo(() => chartData.reduce((sum, row) => sum + row.total_revenue, 0), [chartData])
+
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <h2 className="text-sm font-semibold text-gray-900 mb-3">Top 10 Products by Revenue (This Month)</h2>
 
       {isLoading && <p className="text-gray-500 text-sm">Loading...</p>}
 
-      {!isLoading && data?.length === 0 && (
-        <div className="flex items-center justify-center h-64">
+      {!isLoading && chartData.length === 0 && (
+        <div className="flex items-center justify-center flex-1">
           <p className="text-gray-400 text-sm">No sales recorded yet this month</p>
         </div>
       )}
 
-      {!isLoading && data?.length > 0 && (
-        <div style={{ width: '100%', height: Math.max(240, data.length * 40) }}>
-          <ResponsiveContainer>
-            <BarChart data={data} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-              <XAxis type="number" tickFormatter={(value) => formatCurrency(value)} tick={{ fontSize: 12 }} />
-              <YAxis
-                type="category"
-                dataKey="product_name"
-                width={140}
-                tick={{ fontSize: 12 }}
-                interval={0}
-              />
-              <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
-              <Bar dataKey="total_revenue" fill="#166534" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      {!isLoading && chartData.length > 0 && (
+        <div className="flex-1 min-h-0 flex items-center gap-4">
+          <div className="flex-1 min-h-0 h-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={chartData}
+                  dataKey="total_revenue"
+                  nameKey="product_name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius="80%"
+                  strokeWidth={1}
+                  stroke="#ffffff"
+                  isAnimationActive={false}
+                >
+                  {chartData.map((row, index) => (
+                    <Cell key={row.product_id} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip content={<ChartTooltip total={total} />} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="w-2/5 h-full overflow-y-auto pr-1">
+            {chartData.map((row, index) => (
+              <div key={row.product_id} className="flex items-center gap-2 py-1.5 text-sm">
+                <span
+                  className="w-3 h-3 rounded-sm flex-shrink-0"
+                  style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
+                />
+                <span className="text-gray-900 truncate flex-1">{row.product_name}</span>
+                <span className="text-gray-600 flex-shrink-0">{formatCurrency(row.total_revenue)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </Card>

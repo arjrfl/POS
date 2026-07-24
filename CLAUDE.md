@@ -69,6 +69,11 @@ oversight.
 | Database | PostgreSQL 16 |
 | Proxy | Nginx |
 | Containers | Docker Compose: nginx, backend, postgres, backup |
+| Charting (Dashboard only) | recharts |
+
+recharts is approved specifically for Admin Dashboard charts (Top Products
+pie chart). Do not use it for any other UI, and do not add a second
+charting library.
 
 Do not introduce Redis, Socket.io, Celery, GraphQL, Next.js, or any other
 dependency not listed above without explicit instruction.

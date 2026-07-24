@@ -37,7 +37,7 @@ export function DashboardSection() {
   })
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 h-full min-h-0">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard label="Transactions Today" value={loadingCompleted ? '...' : (completedToday?.total ?? 0)} />
         <SummaryCard
@@ -54,11 +54,11 @@ export function DashboardSection() {
         />
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className="lg:w-3/5 h-[420px] overflow-y-auto">
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4">
+        <div className="flex-[60] h-full min-h-0 flex flex-col">
           <TopProductsChart />
         </div>
-        <div className="lg:w-2/5 h-[420px]">
+        <div className="flex-[40] h-full min-h-0 flex flex-col">
           <PaymentUserSalesTable />
         </div>
       </div>
