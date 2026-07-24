@@ -1,12 +1,13 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_role
 from app.models.customer import Customer, CustomerStatusEnum
+from app.models.transaction import SalesTransaction
 from app.schemas.customer import (
     CustomerCreate,
     CustomerDetailResponse,
@@ -35,7 +36,17 @@ async def _get_customer_or_404(customer_id: int, db: AsyncSession) -> Customer:
 async def list_customers(search: str | None = Query(default=None), db: AsyncSession = Depends(get_db)):
     stmt = select(Customer).where(Customer.customer_status == CustomerStatusEnum.active)
     if search:
-        stmt = stmt.where(Customer.full_name.ilike(f"%{search}%"))
+        # Also matches customers who have a transaction with a matching
+        # order_number, so the Admin Transaction History search box can find
+        # a customer by order number, not just by name.
+        stmt = stmt.where(
+            or_(
+                Customer.full_name.ilike(f"%{search}%"),
+                Customer.id.in_(
+                    select(SalesTransaction.customer_id).where(SalesTransaction.order_number.ilike(f"%{search}%"))
+                ),
+            )
+        )
     stmt = stmt.order_by(Customer.full_name)
 
     result = await db.execute(stmt)

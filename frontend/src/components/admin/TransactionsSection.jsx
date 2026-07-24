@@ -30,7 +30,7 @@ function CustomerSearchFilter({ selectedCustomer, onSelect, onClear }) {
   if (selectedCustomer) {
     return (
       <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium text-gray-700">Customer</span>
+        <span className="text-sm font-medium text-gray-700">Customer / Order #</span>
         <div className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm">
           <span className="text-gray-900">{selectedCustomer.full_name}</span>
           <button type="button" onClick={onClear} className="ml-auto text-gray-400 hover:text-gray-600" aria-label="Clear customer filter">
@@ -45,8 +45,8 @@ function CustomerSearchFilter({ selectedCustomer, onSelect, onClear }) {
     <div className="relative">
       <Input
         id="tx-customer-search"
-        label="Customer"
-        placeholder="Search by name..."
+        label="Customer / Order #"
+        placeholder="Search by name or order #..."
         value={term}
         onChange={(e) => setTerm(e.target.value)}
         onFocus={() => setIsOpen(true)}
