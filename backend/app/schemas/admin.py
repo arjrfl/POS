@@ -13,6 +13,7 @@ class DashboardSummary(BaseModel):
     total_unpaid_balance: Decimal
     total_sales_today: Decimal
     actual_sales_today: Decimal
+    total_unused_credit: Decimal
 
 
 class PaymentUserSales(BaseModel):

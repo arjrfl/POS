@@ -52,6 +52,10 @@ export function DashboardSection() {
           label="Total Unpaid Transaction"
           value={loadingSummary ? '...' : formatCurrency(summary?.total_unpaid_balance ?? 0)}
         />
+        <SummaryCard
+          label="Total Unused Credit"
+          value={loadingSummary ? '...' : formatCurrency(summary?.total_unused_credit ?? 0)}
+        />
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4">

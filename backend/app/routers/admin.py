@@ -30,6 +30,11 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
     )
     total_unpaid_balance = (await db.execute(unpaid_stmt)).scalar_one()
 
+    unused_credit_stmt = select(func.coalesce(func.sum(Customer.net_balance), 0)).where(
+        Customer.net_balance > 0, Customer.customer_status == CustomerStatusEnum.active
+    )
+    total_unused_credit = (await db.execute(unused_credit_stmt)).scalar_one()
+
     # total_due already nets credit_applied; refund-type excluded per CLAUDE.md
     # locked rule — resolve-as-credit produces no payment_detail row.
     sales_stmt = select(func.coalesce(func.sum(SalesTransaction.total_due), 0)).where(
@@ -60,6 +65,7 @@ async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
             total_unpaid_balance=Decimal(total_unpaid_balance),
             total_sales_today=Decimal(total_sales_today),
             actual_sales_today=Decimal(actual_sales_today),
+            total_unused_credit=Decimal(total_unused_credit),
         ),
         "error": None,
     }
