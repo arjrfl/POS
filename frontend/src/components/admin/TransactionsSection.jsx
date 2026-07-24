@@ -113,12 +113,18 @@ export function TransactionsSection() {
   const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS)
   const [page, setPage] = useState(1)
   const [viewingTransactionId, setViewingTransactionId] = useState(null)
+  const [customerFilterKey, setCustomerFilterKey] = useState(0)
 
   const setDraftField = (field, value) => setDraftFilters((prev) => ({ ...prev, [field]: value }))
 
   const handleRun = () => {
     setAppliedFilters(draftFilters)
     setPage(1)
+  }
+
+  const handleClear = () => {
+    setDraftFilters(DEFAULT_FILTERS)
+    setCustomerFilterKey((k) => k + 1)
   }
 
   const { data, isLoading } = useTransactions({
@@ -192,6 +198,7 @@ export function TransactionsSection() {
           />
 
           <CustomerSearchFilter
+            key={customerFilterKey}
             selectedCustomer={draftFilters.selectedCustomer}
             onSelect={(customer) => setDraftField('selectedCustomer', customer)}
             onClear={() => setDraftField('selectedCustomer', null)}
@@ -199,6 +206,9 @@ export function TransactionsSection() {
 
           <Button type="button" variant="primary" className="w-full mt-1" onClick={handleRun}>
             Run
+          </Button>
+          <Button type="button" variant="outline" className="w-full" onClick={handleClear}>
+            Clear
           </Button>
         </div>
       </div>
