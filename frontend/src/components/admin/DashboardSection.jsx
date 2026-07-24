@@ -190,16 +190,16 @@ export function DashboardSection() {
   return (
     <div className="flex flex-col gap-6 h-full min-h-0">
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={toggleValuesHidden}>
+        <Button type="button" variant="primary" onClick={toggleValuesHidden}>
           {valuesHidden ? 'Show' : 'Hide'}
         </Button>
         <div className="relative">
-          <Button type="button" variant="outline" onClick={handleOpenFilterModal}>
+          <Button type="button" variant="primary" onClick={handleOpenFilterModal}>
             Filter
           </Button>
           {appliedRange && (
             <span
-              className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500 animate-pulse"
+              className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500 ring-2 ring-white animate-pulse"
               aria-hidden="true"
             />
           )}
