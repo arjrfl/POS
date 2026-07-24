@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useTransactions } from '../../hooks/useTransactions'
 import { Card } from '../ui/Card'
+import { Button } from '../ui/Button'
 import { TopProductsChart } from './TopProductsChart'
 import { PaymentUserSalesTable } from './PaymentUserSalesTable'
 import { get } from '../../services/api'
@@ -38,7 +39,17 @@ export function DashboardSection() {
 
   return (
     <div className="flex flex-col gap-6 h-full min-h-0">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => console.log('Filter clicked - not yet wired')}
+        >
+          Filter
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <SummaryCard label="Transactions Today" value={loadingCompleted ? '...' : (completedToday?.total ?? 0)} />
         <SummaryCard
           label="Total Sales Today"
