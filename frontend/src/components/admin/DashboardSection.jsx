@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
@@ -10,7 +10,20 @@ import { formatCurrency } from '../../utils/format'
 import { buildRangeQueryString } from '../../utils/dateRange'
 
 const VALUES_HIDDEN_KEY = 'admin_dashboard_values_hidden'
+const FILTER_STATE_KEY = 'admin_dashboard_filter_state'
 const MASKED_VALUE = '••••••'
+
+// { type: 'today' | 'all' | 'manual', from?, to? } | null. 'all' stores from/to
+// for reference only — its from/to are always recomputed fresh on mount rather
+// than trusted from a previous day (see the mount effect below).
+function readStoredFilterState() {
+  try {
+    const raw = localStorage.getItem(FILTER_STATE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
 
 function formatRangeLabel(fromDate, toDate) {
   const from = new Date(`${fromDate}T00:00:00`)
@@ -45,7 +58,17 @@ export function DashboardSection() {
   // is applied shows the previously-selected range, not a blank form.
   const [draftFrom, setDraftFrom] = useState('')
   const [draftTo, setDraftTo] = useState('')
-  const [appliedRange, setAppliedRange] = useState(null) // { from, to } | null — not persisted, resets on reload
+  // { from, to } | null. A persisted "manual" filter is restored synchronously
+  // here (no network round-trip needed) so there's no default-Today flash on
+  // reload; a persisted "all" filter can't be — its range depends on a fresh
+  // server computation — so that one is restored by the mount effect below.
+  const [appliedRange, setAppliedRange] = useState(() => {
+    const stored = readStoredFilterState()
+    if (stored?.type === 'manual' && stored.from && stored.to) {
+      return { from: stored.from, to: stored.to }
+    }
+    return null
+  })
   // Which preset (if any) produced the currently active appliedRange — lets the
   // modal tell "All was applied" apart from "the user happened to type the same
   // dates manually" when it reopens. 'today' never needs to be stored here: Run
@@ -56,6 +79,26 @@ export function DashboardSection() {
   // Staged inside the currently-open modal only — separate from appliedRange/
   // appliedPreset above, which stay untouched until Run is clicked.
   const [stagedPreset, setStagedPreset] = useState(null) // 'today' | 'all' | null
+
+  // Restores a persisted "all" filter on mount — its from/to are always
+  // recomputed fresh (today's actual current date, not a stale reload-day
+  // value from a previous session) rather than trusted from localStorage.
+  useEffect(() => {
+    const stored = readStoredFilterState()
+    if (stored?.type !== 'all') return
+    ;(async () => {
+      try {
+        const summaryData = await get('/admin/dashboard/summary?all_time=true')
+        const range = summaryData?.range_applied
+        if (range) {
+          setAppliedRange({ from: range.from, to: range.to })
+          setAppliedPreset('all')
+        }
+      } catch {
+        // Leave the default Today scope in place on failure.
+      }
+    })()
+  }, [])
 
   const toggleValuesHidden = () => {
     setValuesHidden((prev) => {
@@ -88,12 +131,15 @@ export function DashboardSection() {
       // Today scope (dot clears, card labels drop the date-range subtext).
       setAppliedRange(null)
       setAppliedPreset(null)
+      localStorage.setItem(FILTER_STATE_KEY, JSON.stringify({ type: 'today' }))
     } else if (stagedPreset === 'all') {
       setAppliedRange({ from: draftFrom, to: draftTo })
       setAppliedPreset('all')
+      localStorage.setItem(FILTER_STATE_KEY, JSON.stringify({ type: 'all', from: draftFrom, to: draftTo }))
     } else {
       setAppliedRange({ from: draftFrom, to: draftTo })
       setAppliedPreset(null)
+      localStorage.setItem(FILTER_STATE_KEY, JSON.stringify({ type: 'manual', from: draftFrom, to: draftTo }))
     }
     setFilterModalOpen(false)
   }
@@ -153,7 +199,7 @@ export function DashboardSection() {
           </Button>
           {appliedRange && (
             <span
-              className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500"
+              className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-green-500 animate-pulse"
               aria-hidden="true"
             />
           )}
