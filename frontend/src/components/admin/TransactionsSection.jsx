@@ -81,7 +81,7 @@ function TransactionRow({ transaction, onViewDetails }) {
   const isViewable = isViewablePaymentStatus(paymentStatus)
 
   return (
-    <tr className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50">
+    <tr className="border-b border-gray-200 hover:bg-gray-50">
       <td className="px-3 py-2 text-sm font-medium text-gray-900">{transaction.order_number}</td>
       <td className="px-3 py-2 text-sm text-gray-700">{customer?.full_name ?? '...'}</td>
       <td className="px-3 py-2 text-sm text-gray-600 text-center">{getTransactionTypeLabel(transaction.transaction_type)}</td>
