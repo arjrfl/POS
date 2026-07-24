@@ -20,6 +20,14 @@ function formatRangeLabel(fromDate, toDate) {
   return `${fromLabel} – ${toLabel}`
 }
 
+function getTodayIso() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function SummaryCard({ label, value, hidden, subtext }) {
   return (
     <Card>
@@ -38,7 +46,16 @@ export function DashboardSection() {
   const [draftFrom, setDraftFrom] = useState('')
   const [draftTo, setDraftTo] = useState('')
   const [appliedRange, setAppliedRange] = useState(null) // { from, to } | null — not persisted, resets on reload
+  // Which preset (if any) produced the currently active appliedRange — lets the
+  // modal tell "All was applied" apart from "the user happened to type the same
+  // dates manually" when it reopens. 'today' never needs to be stored here: Run
+  // with the Today preset sets appliedRange back to null, which is already the
+  // same "default" state as never having filtered at all.
+  const [appliedPreset, setAppliedPreset] = useState(null) // 'all' | null
   const [isAllTimeLoading, setAllTimeLoading] = useState(false)
+  // Staged inside the currently-open modal only — separate from appliedRange/
+  // appliedPreset above, which stay untouched until Run is clicked.
+  const [stagedPreset, setStagedPreset] = useState(null) // 'today' | 'all' | null
 
   const toggleValuesHidden = () => {
     setValuesHidden((prev) => {
@@ -48,19 +65,55 @@ export function DashboardSection() {
     })
   }
 
+  const handleOpenFilterModal = () => {
+    if (appliedRange === null) {
+      setStagedPreset(null)
+      setDraftFrom(getTodayIso())
+      setDraftTo(getTodayIso())
+    } else if (appliedPreset === 'all') {
+      setStagedPreset('all')
+      setDraftFrom(appliedRange.from)
+      setDraftTo(appliedRange.to)
+    } else {
+      setStagedPreset(null)
+      setDraftFrom(appliedRange.from)
+      setDraftTo(appliedRange.to)
+    }
+    setFilterModalOpen(true)
+  }
+
   const handleRunFilter = () => {
-    setAppliedRange({ from: draftFrom, to: draftTo })
+    if (stagedPreset === 'today') {
+      // Equivalent to clearing any active filter — reverts to the default
+      // Today scope (dot clears, card labels drop the date-range subtext).
+      setAppliedRange(null)
+      setAppliedPreset(null)
+    } else if (stagedPreset === 'all') {
+      setAppliedRange({ from: draftFrom, to: draftTo })
+      setAppliedPreset('all')
+    } else {
+      setAppliedRange({ from: draftFrom, to: draftTo })
+      setAppliedPreset(null)
+    }
     setFilterModalOpen(false)
   }
 
-  const handleClearFilter = () => {
+  // Resets the modal's own staged state only — does not touch whatever filter
+  // is currently applied to the dashboard until Run is next clicked.
+  const handleClearStaging = () => {
+    setStagedPreset(null)
     setDraftFrom('')
     setDraftTo('')
-    setAppliedRange(null)
-    setFilterModalOpen(false)
   }
 
-  const handleAllTime = async () => {
+  const handleStageToday = () => {
+    const today = getTodayIso()
+    setStagedPreset('today')
+    setDraftFrom(today)
+    setDraftTo(today)
+  }
+
+  const handleStageAllTime = async () => {
     setAllTimeLoading(true)
     try {
       const [summaryData] = await Promise.all([
@@ -69,11 +122,10 @@ export function DashboardSection() {
       ])
       const range = summaryData?.range_applied
       if (range) {
+        setStagedPreset('all')
         setDraftFrom(range.from)
         setDraftTo(range.to)
-        setAppliedRange({ from: range.from, to: range.to })
       }
-      setFilterModalOpen(false)
     } finally {
       setAllTimeLoading(false)
     }
@@ -96,7 +148,7 @@ export function DashboardSection() {
           {valuesHidden ? 'Show' : 'Hide'}
         </Button>
         <div className="relative">
-          <Button type="button" variant="outline" onClick={() => setFilterModalOpen(true)}>
+          <Button type="button" variant="outline" onClick={handleOpenFilterModal}>
             Filter
           </Button>
           {appliedRange && (
@@ -163,8 +215,10 @@ export function DashboardSection() {
         onChangeFrom={setDraftFrom}
         onChangeTo={setDraftTo}
         onRun={handleRunFilter}
-        onClear={handleClearFilter}
-        onAll={handleAllTime}
+        onClearStaging={handleClearStaging}
+        onToday={handleStageToday}
+        onAll={handleStageAllTime}
+        stagedPreset={stagedPreset}
         allLoading={isAllTimeLoading}
       />
     </div>

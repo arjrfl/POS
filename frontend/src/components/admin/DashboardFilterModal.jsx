@@ -10,10 +10,13 @@ export function DashboardFilterModal({
   onChangeFrom,
   onChangeTo,
   onRun,
-  onClear,
+  onClearStaging,
+  onToday,
   onAll,
+  stagedPreset,
   allLoading,
 }) {
+  const fieldsDisabled = stagedPreset === 'today' || stagedPreset === 'all'
   const bothFilled = Boolean(fromDate) && Boolean(toDate)
   const isInvalidRange = bothFilled && fromDate > toDate
   const canRun = bothFilled && !isInvalidRange
@@ -27,6 +30,8 @@ export function DashboardFilterModal({
           type="date"
           value={fromDate}
           onChange={(e) => onChangeFrom(e.target.value)}
+          disabled={fieldsDisabled}
+          className={fieldsDisabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}
         />
         <Input
           id="dashboard-filter-to"
@@ -34,15 +39,30 @@ export function DashboardFilterModal({
           type="date"
           value={toDate}
           onChange={(e) => onChangeTo(e.target.value)}
+          disabled={fieldsDisabled}
+          className={fieldsDisabled ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}
         />
 
         {isInvalidRange && <p className="text-sm text-red-600">From date must be before or equal to To date</p>}
 
         <div className="flex justify-end gap-2 mt-2">
-          <Button type="button" variant="outline" onClick={onClear}>
-            Clear Filter
+          <Button type="button" variant="outline" onClick={onClearStaging}>
+            Clear
           </Button>
-          <Button type="button" variant="outline" disabled={allLoading} onClick={onAll}>
+          <Button
+            type="button"
+            variant={stagedPreset === 'today' ? 'secondary' : 'outline'}
+            disabled={stagedPreset === 'all'}
+            onClick={onToday}
+          >
+            Today (default)
+          </Button>
+          <Button
+            type="button"
+            variant={stagedPreset === 'all' ? 'secondary' : 'outline'}
+            disabled={allLoading || stagedPreset === 'today'}
+            onClick={onAll}
+          >
             All
           </Button>
           <Button type="button" variant="primary" disabled={!canRun} onClick={onRun}>
