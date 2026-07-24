@@ -141,11 +141,11 @@ export function DashboardSection() {
         />
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4">
-        <div className="flex-[60] h-full min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="h-full min-h-0 flex flex-col">
           <TopProductsChart />
         </div>
-        <div className="flex-[40] h-full min-h-0 flex flex-col">
+        <div className="h-full min-h-0 flex flex-col">
           <PaymentUserSalesTable fromDate={appliedRange?.from} toDate={appliedRange?.to} rangeLabel={rangeLabel} />
         </div>
       </div>
