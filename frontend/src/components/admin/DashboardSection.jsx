@@ -108,13 +108,13 @@ export function DashboardSection() {
           subtext={rangeLabel}
         />
         <SummaryCard
-          label="Total Unpaid Transaction"
+          label={isFiltered ? 'Total Unpaid Transaction' : 'Total Unpaid Transaction Today'}
           value={loadingSummary ? '...' : formatCurrency(summary?.total_unpaid_balance ?? 0)}
           hidden={valuesHidden}
           subtext={rangeLabel}
         />
         <SummaryCard
-          label="Total Unused Credit"
+          label={isFiltered ? 'Total Unused Credit' : 'Total Unused Credit Today'}
           value={loadingSummary ? '...' : formatCurrency(summary?.total_unused_credit ?? 0)}
           hidden={valuesHidden}
           subtext={rangeLabel}

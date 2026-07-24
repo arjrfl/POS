@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import require_role
-from app.models.customer import Customer, CustomerStatusEnum
 from app.models.ledger import CustomerLedger, LedgerEntryTypeEnum
 from app.models.product import Product
 from app.models.transaction import (
@@ -92,19 +91,7 @@ async def get_dashboard_summary(
         )
         actual_sales_today = (await db.execute(actual_sales_stmt)).scalar_one()
 
-        unpaid_stmt = select(func.coalesce(func.sum(CustomerLedger.amount), 0)).where(
-            CustomerLedger.entry_type == LedgerEntryTypeEnum.balance_added,
-            CustomerLedger.created_at >= range_start,
-            CustomerLedger.created_at < range_end,
-        )
-        total_unpaid_balance = (await db.execute(unpaid_stmt)).scalar_one()
-
-        unused_credit_stmt = select(func.coalesce(func.sum(CustomerLedger.amount), 0)).where(
-            CustomerLedger.entry_type == LedgerEntryTypeEnum.credit_added,
-            CustomerLedger.created_at >= range_start,
-            CustomerLedger.created_at < range_end,
-        )
-        total_unused_credit = (await db.execute(unused_credit_stmt)).scalar_one()
+        effective_start, effective_end = range_start, range_end
     else:
         range_applied = None
 
@@ -113,16 +100,6 @@ async def get_dashboard_summary(
             func.date(SalesTransaction.created_at) == func.current_date(),
         )
         transactions_today = (await db.execute(transactions_count_stmt)).scalar_one()
-
-        unpaid_stmt = select(func.coalesce(func.sum(func.abs(Customer.net_balance)), 0)).where(
-            Customer.net_balance < 0, Customer.customer_status == CustomerStatusEnum.active
-        )
-        total_unpaid_balance = (await db.execute(unpaid_stmt)).scalar_one()
-
-        unused_credit_stmt = select(func.coalesce(func.sum(Customer.net_balance), 0)).where(
-            Customer.net_balance > 0, Customer.customer_status == CustomerStatusEnum.active
-        )
-        total_unused_credit = (await db.execute(unused_credit_stmt)).scalar_one()
 
         # total_due already nets credit_applied; refund-type excluded per CLAUDE.md
         # locked rule — resolve-as-credit produces no payment_detail row.
@@ -148,6 +125,30 @@ async def get_dashboard_summary(
             )
         )
         actual_sales_today = (await db.execute(actual_sales_stmt)).scalar_one()
+
+        # effective_from/effective_to default to today — no from_date/to_date was
+        # passed by the client, so range_applied above stays None (that field only
+        # reflects an explicit client-supplied range), but the ledger sums below
+        # still need concrete bounds to query against.
+        today = datetime.now(timezone.utc).date()
+        effective_start = datetime.combine(today, time.min, tzinfo=timezone.utc)
+        effective_end = effective_start + timedelta(days=1)
+
+    # Single ledger-sum code path for both cards regardless of whether a range was
+    # explicitly applied — no live customer.net_balance snapshot fallback.
+    unpaid_stmt = select(func.coalesce(func.sum(CustomerLedger.amount), 0)).where(
+        CustomerLedger.entry_type == LedgerEntryTypeEnum.balance_added,
+        CustomerLedger.created_at >= effective_start,
+        CustomerLedger.created_at < effective_end,
+    )
+    total_unpaid_balance = (await db.execute(unpaid_stmt)).scalar_one()
+
+    unused_credit_stmt = select(func.coalesce(func.sum(CustomerLedger.amount), 0)).where(
+        CustomerLedger.entry_type == LedgerEntryTypeEnum.credit_added,
+        CustomerLedger.created_at >= effective_start,
+        CustomerLedger.created_at < effective_end,
+    )
+    total_unused_credit = (await db.execute(unused_credit_stmt)).scalar_one()
 
     return {
         "data": DashboardSummary(
