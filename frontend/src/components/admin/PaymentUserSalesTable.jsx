@@ -35,7 +35,6 @@ export function PaymentUserSalesTable() {
                 <tr key={row.user_id} className="border-b border-gray-100 last:border-0">
                   <td className="py-2">
                     <div className="text-gray-900">{row.full_name}</div>
-                    <div className="text-xs text-gray-400">{row.username}</div>
                   </td>
                   <td className="py-2 text-right text-gray-900">{formatCurrency(row.total_sales)}</td>
                 </tr>
