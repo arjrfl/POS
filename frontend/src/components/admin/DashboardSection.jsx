@@ -146,7 +146,12 @@ export function DashboardSection() {
           <TopProductsChart />
         </div>
         <div className="h-full min-h-0 flex flex-col">
-          <PaymentUserSalesTable fromDate={appliedRange?.from} toDate={appliedRange?.to} rangeLabel={rangeLabel} />
+          <PaymentUserSalesTable
+            fromDate={appliedRange?.from}
+            toDate={appliedRange?.to}
+            rangeLabel={rangeLabel}
+            valuesHidden={valuesHidden}
+          />
         </div>
       </div>
 

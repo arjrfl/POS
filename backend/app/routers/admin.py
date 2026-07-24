@@ -2,7 +2,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -231,37 +231,102 @@ async def get_payment_user_sales(
 
     if resolved_range is not None:
         range_start, range_end, _range_applied = resolved_range
-        sales_join = and_(
-            SalesTransaction.payment_user_id == User.id,
-            SalesTransaction.transaction_status == TransactionStatusEnum.completed,
-            SalesTransaction.payment_at >= range_start,
-            SalesTransaction.payment_at < range_end,
-            SalesTransaction.transaction_type != TransactionTypeEnum.refund,
-        )
+
+        def _payment_at_filters():
+            return [SalesTransaction.payment_at >= range_start, SalesTransaction.payment_at < range_end]
     else:
-        # Join conditions (not WHERE) so active payment users with zero qualifying
-        # transactions today still appear, via LEFT JOIN, with total_sales = 0.00.
-        # Same "today" boundary + refund-exclusion + total_due rule as Total Sales
-        # Today (see get_dashboard_summary above) — total_due already nets credit_applied.
-        sales_join = and_(
-            SalesTransaction.payment_user_id == User.id,
-            SalesTransaction.transaction_status == TransactionStatusEnum.completed,
-            func.date(SalesTransaction.payment_at) == func.current_date(),
-            SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+        # Same "today" boundary as Total Sales Today (see get_dashboard_summary above).
+        def _payment_at_filters():
+            return [func.date(SalesTransaction.payment_at) == func.current_date()]
+
+    # Four separate per-user subqueries (rather than one multi-condition LEFT JOIN)
+    # so each metric's own filter conditions don't fan out / double-count against
+    # the others when joined together.
+
+    # total_sales — same rule as Total Sales Today: completed only, refund excluded,
+    # total_due already nets credit_applied.
+    sales_subq = (
+        select(
+            SalesTransaction.payment_user_id.label("payment_user_id"),
+            func.coalesce(func.sum(SalesTransaction.total_due), 0).label("total_sales"),
         )
+        .where(
+            SalesTransaction.transaction_status == TransactionStatusEnum.completed,
+            SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+            *_payment_at_filters(),
+        )
+        .group_by(SalesTransaction.payment_user_id)
+        .subquery()
+    )
+
+    # transactions_processed — any transaction_type counts (including refund and
+    # balance_settlement), only voided is excluded.
+    processed_subq = (
+        select(
+            SalesTransaction.payment_user_id.label("payment_user_id"),
+            func.count().label("transactions_processed"),
+        )
+        .where(
+            SalesTransaction.transaction_status != TransactionStatusEnum.voided,
+            *_payment_at_filters(),
+        )
+        .group_by(SalesTransaction.payment_user_id)
+        .subquery()
+    )
+
+    # actual_total_sales — refund excluded per the same locked rule as every other
+    # sales aggregate on this dashboard (resolve-as-credit produces no cash).
+    actual_subq = (
+        select(
+            SalesTransaction.payment_user_id.label("payment_user_id"),
+            func.coalesce(func.sum(SalesTransaction.actual_amount), 0).label("actual_total_sales"),
+        )
+        .where(
+            SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+            *_payment_at_filters(),
+        )
+        .group_by(SalesTransaction.payment_user_id)
+        .subquery()
+    )
+
+    # unpaid_transactions_count — transactions that left a balance_added ledger
+    # entry behind (partial payment or unsettled balance).
+    unpaid_subq = (
+        select(
+            SalesTransaction.payment_user_id.label("payment_user_id"),
+            func.count(func.distinct(SalesTransaction.id)).label("unpaid_transactions_count"),
+        )
+        .where(
+            SalesTransaction.id.in_(
+                select(CustomerLedger.transaction_id).where(
+                    CustomerLedger.entry_type == LedgerEntryTypeEnum.balance_added
+                )
+            ),
+            *_payment_at_filters(),
+        )
+        .group_by(SalesTransaction.payment_user_id)
+        .subquery()
+    )
+
+    total_sales_col = func.coalesce(sales_subq.c.total_sales, 0)
 
     stmt = (
         select(
             User.id.label("user_id"),
             User.full_name.label("full_name"),
             User.username.label("username"),
-            func.coalesce(func.sum(SalesTransaction.total_due), 0).label("total_sales"),
+            total_sales_col.label("total_sales"),
+            func.coalesce(processed_subq.c.transactions_processed, 0).label("transactions_processed"),
+            func.coalesce(actual_subq.c.actual_total_sales, 0).label("actual_total_sales"),
+            func.coalesce(unpaid_subq.c.unpaid_transactions_count, 0).label("unpaid_transactions_count"),
         )
         .join(Role, Role.id == User.role_id)
-        .outerjoin(SalesTransaction, sales_join)
+        .outerjoin(sales_subq, sales_subq.c.payment_user_id == User.id)
+        .outerjoin(processed_subq, processed_subq.c.payment_user_id == User.id)
+        .outerjoin(actual_subq, actual_subq.c.payment_user_id == User.id)
+        .outerjoin(unpaid_subq, unpaid_subq.c.payment_user_id == User.id)
         .where(Role.role_name == "payment", User.is_active.is_(True))
-        .group_by(User.id, User.full_name, User.username)
-        .order_by(func.coalesce(func.sum(SalesTransaction.total_due), 0).desc())
+        .order_by(total_sales_col.desc())
     )
 
     result = await db.execute(stmt)
@@ -270,7 +335,13 @@ async def get_payment_user_sales(
     return {
         "data": [
             PaymentUserSales(
-                user_id=row.user_id, full_name=row.full_name, username=row.username, total_sales=row.total_sales
+                user_id=row.user_id,
+                full_name=row.full_name,
+                username=row.username,
+                total_sales=row.total_sales,
+                transactions_processed=row.transactions_processed,
+                actual_total_sales=row.actual_total_sales,
+                unpaid_transactions_count=row.unpaid_transactions_count,
             )
             for row in rows
         ],
