@@ -38,6 +38,7 @@ export function DashboardSection() {
   const [draftFrom, setDraftFrom] = useState('')
   const [draftTo, setDraftTo] = useState('')
   const [appliedRange, setAppliedRange] = useState(null) // { from, to } | null — not persisted, resets on reload
+  const [isAllTimeLoading, setAllTimeLoading] = useState(false)
 
   const toggleValuesHidden = () => {
     setValuesHidden((prev) => {
@@ -57,6 +58,25 @@ export function DashboardSection() {
     setDraftTo('')
     setAppliedRange(null)
     setFilterModalOpen(false)
+  }
+
+  const handleAllTime = async () => {
+    setAllTimeLoading(true)
+    try {
+      const [summaryData] = await Promise.all([
+        get('/admin/dashboard/summary?all_time=true'),
+        get('/admin/dashboard/payment-user-sales?all_time=true'),
+      ])
+      const range = summaryData?.range_applied
+      if (range) {
+        setDraftFrom(range.from)
+        setDraftTo(range.to)
+        setAppliedRange({ from: range.from, to: range.to })
+      }
+      setFilterModalOpen(false)
+    } finally {
+      setAllTimeLoading(false)
+    }
   }
 
   const rangeQuery = buildRangeQueryString(appliedRange?.from, appliedRange?.to)
@@ -139,6 +159,8 @@ export function DashboardSection() {
         onChangeTo={setDraftTo}
         onRun={handleRunFilter}
         onClear={handleClearFilter}
+        onAll={handleAllTime}
+        allLoading={isAllTimeLoading}
       />
     </div>
   )

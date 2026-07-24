@@ -2,7 +2,18 @@ import { Modal } from '../ui/Modal'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 
-export function DashboardFilterModal({ open, onClose, fromDate, toDate, onChangeFrom, onChangeTo, onRun, onClear }) {
+export function DashboardFilterModal({
+  open,
+  onClose,
+  fromDate,
+  toDate,
+  onChangeFrom,
+  onChangeTo,
+  onRun,
+  onClear,
+  onAll,
+  allLoading,
+}) {
   const bothFilled = Boolean(fromDate) && Boolean(toDate)
   const isInvalidRange = bothFilled && fromDate > toDate
   const canRun = bothFilled && !isInvalidRange
@@ -30,6 +41,9 @@ export function DashboardFilterModal({ open, onClose, fromDate, toDate, onChange
         <div className="flex justify-end gap-2 mt-2">
           <Button type="button" variant="outline" onClick={onClear}>
             Clear Filter
+          </Button>
+          <Button type="button" variant="outline" disabled={allLoading} onClick={onAll}>
+            All
           </Button>
           <Button type="button" variant="primary" disabled={!canRun} onClick={onRun}>
             Run

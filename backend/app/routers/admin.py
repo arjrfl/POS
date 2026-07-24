@@ -51,13 +51,37 @@ def _resolve_date_range(from_date: date | None, to_date: date | None):
     return range_start, range_end, range_applied
 
 
+async def _compute_all_time_range(db: AsyncSession):
+    """Resolves all_time=true to (earliest known activity date) through today.
+
+    Earliest activity is the lesser of MIN(sales_transaction.created_at) and
+    MIN(customer_ledger.created_at) — whichever table has rows. Falls back to
+    today/today when both tables are empty, so a fresh database still returns
+    a valid (non-null) range instead of erroring.
+    """
+    min_txn = (await db.execute(select(func.min(SalesTransaction.created_at)))).scalar_one()
+    min_ledger = (await db.execute(select(func.min(CustomerLedger.created_at)))).scalar_one()
+
+    candidates = [value for value in (min_txn, min_ledger) if value is not None]
+    earliest = min(candidates) if candidates else datetime.now(timezone.utc)
+
+    from_date = earliest.date()
+    to_date = datetime.now(timezone.utc).date()
+
+    range_start = datetime.combine(from_date, time.min, tzinfo=timezone.utc)
+    range_end = datetime.combine(to_date, time.min, tzinfo=timezone.utc) + timedelta(days=1)
+    range_applied = {"from": from_date.isoformat(), "to": to_date.isoformat()}
+    return range_start, range_end, range_applied
+
+
 @router.get("/dashboard/summary", dependencies=[Depends(require_role("admin"))])
 async def get_dashboard_summary(
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
+    all_time: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ):
-    resolved_range = _resolve_date_range(from_date, to_date)
+    resolved_range = await _compute_all_time_range(db) if all_time else _resolve_date_range(from_date, to_date)
 
     if resolved_range is not None:
         range_start, range_end, range_applied = resolved_range
@@ -200,9 +224,10 @@ async def get_top_products(db: AsyncSession = Depends(get_db)):
 async def get_payment_user_sales(
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
+    all_time: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ):
-    resolved_range = _resolve_date_range(from_date, to_date)
+    resolved_range = await _compute_all_time_range(db) if all_time else _resolve_date_range(from_date, to_date)
 
     if resolved_range is not None:
         range_start, range_end, _range_applied = resolved_range
