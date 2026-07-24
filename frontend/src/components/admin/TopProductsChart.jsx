@@ -5,20 +5,20 @@ import { Card } from '../ui/Card'
 import { get } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 
-// Fixed palette of ~10 distinct greens/teals — stays in the app's green
-// brand family (tailwind.config.js primary = #166534) while remaining
-// distinguishable slice-to-slice.
+// Fixed categorical palette, one color per rank position (1st highest
+// revenue product = index 0, etc.) — assigned by slice position so the
+// mapping stays consistent month to month even as top products change.
 const PIE_COLORS = [
-  '#14532d',
-  '#166534',
-  '#15803d',
-  '#16a34a',
-  '#22c55e',
-  '#4ade80',
-  '#86efac',
-  '#059669',
-  '#0d9488',
-  '#65a30d',
+  '#2E7D32', // green
+  '#1565C0', // blue
+  '#EF6C00', // orange
+  '#8E24AA', // purple
+  '#C62828', // red
+  '#00838F', // teal
+  '#F9A825', // amber
+  '#5D4037', // brown
+  '#455A64', // blue-grey
+  '#AD1457', // pink
 ]
 
 function ChartTooltip({ active, payload, total }) {
