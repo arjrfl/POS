@@ -2,11 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { Card } from '../ui/Card'
 import { get } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
+import { buildRangeQueryString } from '../../utils/dateRange'
 
-export function PaymentUserSalesTable() {
+export function PaymentUserSalesTable({ fromDate, toDate }) {
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'dashboard', 'payment-user-sales'],
-    queryFn: () => get('/admin/dashboard/payment-user-sales'),
+    queryKey: ['admin', 'dashboard', 'payment-user-sales', fromDate, toDate],
+    queryFn: () => get(`/admin/dashboard/payment-user-sales${buildRangeQueryString(fromDate, toDate)}`),
   })
 
   return (

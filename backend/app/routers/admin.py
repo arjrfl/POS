@@ -1,12 +1,14 @@
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import require_role
 from app.models.customer import Customer, CustomerStatusEnum
+from app.models.ledger import CustomerLedger, LedgerEntryTypeEnum
 from app.models.product import Product
 from app.models.transaction import (
     ItemTypeEnum,
@@ -23,49 +25,138 @@ from app.schemas.admin import DashboardSummary, PaymentUserSales, TopProductReve
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 
-@router.get("/dashboard/summary", dependencies=[Depends(require_role("admin"))])
-async def get_dashboard_summary(db: AsyncSession = Depends(get_db)):
-    unpaid_stmt = select(func.coalesce(func.sum(func.abs(Customer.net_balance)), 0)).where(
-        Customer.net_balance < 0, Customer.customer_status == CustomerStatusEnum.active
-    )
-    total_unpaid_balance = (await db.execute(unpaid_stmt)).scalar_one()
+def _resolve_date_range(from_date: date | None, to_date: date | None):
+    """Validates and resolves an optional from_date/to_date pair.
 
-    unused_credit_stmt = select(func.coalesce(func.sum(Customer.net_balance), 0)).where(
-        Customer.net_balance > 0, Customer.customer_status == CustomerStatusEnum.active
-    )
-    total_unused_credit = (await db.execute(unused_credit_stmt)).scalar_one()
-
-    # total_due already nets credit_applied; refund-type excluded per CLAUDE.md
-    # locked rule — resolve-as-credit produces no payment_detail row.
-    sales_stmt = select(func.coalesce(func.sum(SalesTransaction.total_due), 0)).where(
-        SalesTransaction.transaction_status == TransactionStatusEnum.completed,
-        func.date(SalesTransaction.payment_at) == func.current_date(),
-        SalesTransaction.transaction_type != TransactionTypeEnum.refund,
-    )
-    total_sales_today = (await db.execute(sales_stmt)).scalar_one()
-
-    # Sums actual confirmed payment amounts recorded today, excluding credit-method
-    # rows (credit application is not fresh cash — it's a redemption of previously-
-    # issued store credit, already netted into total_due). Naturally reflects partial
-    # payments correctly — only the amount actually collected counts, not the full
-    # total_due.
-    actual_sales_stmt = (
-        select(func.coalesce(func.sum(PaymentDetail.amount), 0))
-        .join(PaymentMethod, PaymentMethod.id == PaymentDetail.payment_method_id)
-        .where(
-            PaymentDetail.is_draft.is_(False),
-            PaymentMethod.payment_method_name != "credit",
-            func.date(PaymentDetail.created_at) == func.current_date(),
+    Returns None when both are absent (caller keeps its current "today"/live
+    behavior). Returns (range_start, range_end, range_applied) when both are
+    present — range_end is exclusive (midnight the day after to_date), so a
+    half-open >= start / < end comparison covers the whole of to_date.
+    """
+    if (from_date is None) != (to_date is None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="from_date and to_date must be provided together",
         )
-    )
-    actual_sales_today = (await db.execute(actual_sales_stmt)).scalar_one()
+    if from_date is None:
+        return None
+    if from_date > to_date:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="from_date must be before or equal to to_date",
+        )
+
+    range_start = datetime.combine(from_date, time.min, tzinfo=timezone.utc)
+    range_end = datetime.combine(to_date, time.min, tzinfo=timezone.utc) + timedelta(days=1)
+    range_applied = {"from": from_date.isoformat(), "to": to_date.isoformat()}
+    return range_start, range_end, range_applied
+
+
+@router.get("/dashboard/summary", dependencies=[Depends(require_role("admin"))])
+async def get_dashboard_summary(
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    resolved_range = _resolve_date_range(from_date, to_date)
+
+    if resolved_range is not None:
+        range_start, range_end, range_applied = resolved_range
+
+        transactions_count_stmt = select(func.count()).select_from(SalesTransaction).where(
+            SalesTransaction.transaction_status == TransactionStatusEnum.completed,
+            SalesTransaction.created_at >= range_start,
+            SalesTransaction.created_at < range_end,
+        )
+        transactions_today = (await db.execute(transactions_count_stmt)).scalar_one()
+
+        # total_due already nets credit_applied; refund-type excluded per CLAUDE.md
+        # locked rule — resolve-as-credit produces no payment_detail row.
+        sales_stmt = select(func.coalesce(func.sum(SalesTransaction.total_due), 0)).where(
+            SalesTransaction.transaction_status == TransactionStatusEnum.completed,
+            SalesTransaction.payment_at >= range_start,
+            SalesTransaction.payment_at < range_end,
+            SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+        )
+        total_sales_today = (await db.execute(sales_stmt)).scalar_one()
+
+        actual_sales_stmt = (
+            select(func.coalesce(func.sum(PaymentDetail.amount), 0))
+            .join(PaymentMethod, PaymentMethod.id == PaymentDetail.payment_method_id)
+            .where(
+                PaymentDetail.is_draft.is_(False),
+                PaymentMethod.payment_method_name != "credit",
+                PaymentDetail.created_at >= range_start,
+                PaymentDetail.created_at < range_end,
+            )
+        )
+        actual_sales_today = (await db.execute(actual_sales_stmt)).scalar_one()
+
+        unpaid_stmt = select(func.coalesce(func.sum(CustomerLedger.amount), 0)).where(
+            CustomerLedger.entry_type == LedgerEntryTypeEnum.balance_added,
+            CustomerLedger.created_at >= range_start,
+            CustomerLedger.created_at < range_end,
+        )
+        total_unpaid_balance = (await db.execute(unpaid_stmt)).scalar_one()
+
+        unused_credit_stmt = select(func.coalesce(func.sum(CustomerLedger.amount), 0)).where(
+            CustomerLedger.entry_type == LedgerEntryTypeEnum.credit_added,
+            CustomerLedger.created_at >= range_start,
+            CustomerLedger.created_at < range_end,
+        )
+        total_unused_credit = (await db.execute(unused_credit_stmt)).scalar_one()
+    else:
+        range_applied = None
+
+        transactions_count_stmt = select(func.count()).select_from(SalesTransaction).where(
+            SalesTransaction.transaction_status == TransactionStatusEnum.completed,
+            func.date(SalesTransaction.created_at) == func.current_date(),
+        )
+        transactions_today = (await db.execute(transactions_count_stmt)).scalar_one()
+
+        unpaid_stmt = select(func.coalesce(func.sum(func.abs(Customer.net_balance)), 0)).where(
+            Customer.net_balance < 0, Customer.customer_status == CustomerStatusEnum.active
+        )
+        total_unpaid_balance = (await db.execute(unpaid_stmt)).scalar_one()
+
+        unused_credit_stmt = select(func.coalesce(func.sum(Customer.net_balance), 0)).where(
+            Customer.net_balance > 0, Customer.customer_status == CustomerStatusEnum.active
+        )
+        total_unused_credit = (await db.execute(unused_credit_stmt)).scalar_one()
+
+        # total_due already nets credit_applied; refund-type excluded per CLAUDE.md
+        # locked rule — resolve-as-credit produces no payment_detail row.
+        sales_stmt = select(func.coalesce(func.sum(SalesTransaction.total_due), 0)).where(
+            SalesTransaction.transaction_status == TransactionStatusEnum.completed,
+            func.date(SalesTransaction.payment_at) == func.current_date(),
+            SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+        )
+        total_sales_today = (await db.execute(sales_stmt)).scalar_one()
+
+        # Sums actual confirmed payment amounts recorded today, excluding credit-method
+        # rows (credit application is not fresh cash — it's a redemption of previously-
+        # issued store credit, already netted into total_due). Naturally reflects partial
+        # payments correctly — only the amount actually collected counts, not the full
+        # total_due.
+        actual_sales_stmt = (
+            select(func.coalesce(func.sum(PaymentDetail.amount), 0))
+            .join(PaymentMethod, PaymentMethod.id == PaymentDetail.payment_method_id)
+            .where(
+                PaymentDetail.is_draft.is_(False),
+                PaymentMethod.payment_method_name != "credit",
+                func.date(PaymentDetail.created_at) == func.current_date(),
+            )
+        )
+        actual_sales_today = (await db.execute(actual_sales_stmt)).scalar_one()
 
     return {
         "data": DashboardSummary(
+            transactions_today=transactions_today,
             total_unpaid_balance=Decimal(total_unpaid_balance),
             total_sales_today=Decimal(total_sales_today),
             actual_sales_today=Decimal(actual_sales_today),
             total_unused_credit=Decimal(total_unused_credit),
+            range_applied=range_applied,
         ),
         "error": None,
     }
@@ -105,17 +196,33 @@ async def get_top_products(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/dashboard/payment-user-sales", dependencies=[Depends(require_role("admin"))])
-async def get_payment_user_sales(db: AsyncSession = Depends(get_db)):
-    # Join conditions (not WHERE) so active payment users with zero qualifying
-    # transactions today still appear, via LEFT JOIN, with total_sales = 0.00.
-    # Same "today" boundary + refund-exclusion + total_due rule as Total Sales
-    # Today (see get_dashboard_summary above) — total_due already nets credit_applied.
-    today_sales_join = and_(
-        SalesTransaction.payment_user_id == User.id,
-        SalesTransaction.transaction_status == TransactionStatusEnum.completed,
-        func.date(SalesTransaction.payment_at) == func.current_date(),
-        SalesTransaction.transaction_type != TransactionTypeEnum.refund,
-    )
+async def get_payment_user_sales(
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    resolved_range = _resolve_date_range(from_date, to_date)
+
+    if resolved_range is not None:
+        range_start, range_end, _range_applied = resolved_range
+        sales_join = and_(
+            SalesTransaction.payment_user_id == User.id,
+            SalesTransaction.transaction_status == TransactionStatusEnum.completed,
+            SalesTransaction.payment_at >= range_start,
+            SalesTransaction.payment_at < range_end,
+            SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+        )
+    else:
+        # Join conditions (not WHERE) so active payment users with zero qualifying
+        # transactions today still appear, via LEFT JOIN, with total_sales = 0.00.
+        # Same "today" boundary + refund-exclusion + total_due rule as Total Sales
+        # Today (see get_dashboard_summary above) — total_due already nets credit_applied.
+        sales_join = and_(
+            SalesTransaction.payment_user_id == User.id,
+            SalesTransaction.transaction_status == TransactionStatusEnum.completed,
+            func.date(SalesTransaction.payment_at) == func.current_date(),
+            SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+        )
 
     stmt = (
         select(
@@ -125,7 +232,7 @@ async def get_payment_user_sales(db: AsyncSession = Depends(get_db)):
             func.coalesce(func.sum(SalesTransaction.total_due), 0).label("total_sales"),
         )
         .join(Role, Role.id == User.role_id)
-        .outerjoin(SalesTransaction, today_sales_join)
+        .outerjoin(SalesTransaction, sales_join)
         .where(Role.role_name == "payment", User.is_active.is_(True))
         .group_by(User.id, User.full_name, User.username)
         .order_by(func.coalesce(func.sum(SalesTransaction.total_due), 0).desc())
