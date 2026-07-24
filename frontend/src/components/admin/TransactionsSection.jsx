@@ -89,6 +89,9 @@ function TransactionRow({ transaction, onViewDetails }) {
         <Badge status={paymentStatus}>{paymentStatusLabel}</Badge>
       </td>
       <td className="px-3 py-2 text-sm text-right text-gray-900">{formatCurrency(transaction.total_due)}</td>
+      <td className="px-3 py-2 text-sm text-gray-700 text-center">
+        {transaction.payment_user_name ?? <span className="text-gray-400">—</span>}
+      </td>
       <td className="px-3 py-2 text-sm text-gray-500 text-center">{new Date(transaction.created_at).toLocaleString()}</td>
       <td className="px-3 py-2 text-center">
         <Button
@@ -226,6 +229,7 @@ export function TransactionsSection() {
                 <th className="px-3 py-2 text-center">Type</th>
                 <th className="px-3 py-2 text-center">Status</th>
                 <th className="px-3 py-2 text-right">Total Due</th>
+                <th className="px-3 py-2 text-center">Payment</th>
                 <th className="px-3 py-2 text-center">Created</th>
                 <th className="px-3 py-2 text-center">Action</th>
               </tr>
@@ -233,14 +237,14 @@ export function TransactionsSection() {
             <tbody>
               {isLoading && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-4 text-sm text-gray-500">
+                  <td colSpan={8} className="px-3 py-4 text-sm text-gray-500">
                     Loading...
                   </td>
                 </tr>
               )}
               {!isLoading && data?.items.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-4 text-sm text-gray-500">
+                  <td colSpan={8} className="px-3 py-4 text-sm text-gray-500">
                     No transactions match these filters.
                   </td>
                 </tr>
