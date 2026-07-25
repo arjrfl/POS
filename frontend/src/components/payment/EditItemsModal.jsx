@@ -28,22 +28,55 @@ const multiplyKg = (weight, count) => Math.round(weight * count * 1000) / 1000
 // data) and Apply/Cancel only ever touch that local copy — nothing here
 // calls the API or reaches back into the transaction behind the modal.
 export function EditItemsModal({ transaction, items, onClose }) {
+  // Snapshot of the values as they were when the modal opened — never
+  // mutated afterward. "Modified" and Revert both compare `localItems`
+  // against this instead of against `items` (same values at open time, but
+  // this makes the comparison's intent explicit and immune to `items`
+  // changing identity if the parent ever re-renders while the modal is open).
+  const [originalItemsSnapshot] = useState(
+    () =>
+      new Map(
+        items.map((item) => [
+          item.id,
+          {
+            estimated_weight_kg: item.estimated_weight_kg,
+            unit_count: item.unit_count,
+            quantity_kg: item.quantity_kg,
+          },
+        ]),
+      ),
+  )
   const [localItems, setLocalItems] = useState(items)
   const [editingItemId, setEditingItemId] = useState(null)
   const [editWeight, setEditWeight] = useState('')
   const [editUnitCount, setEditUnitCount] = useState('')
   const [editQty, setEditQty] = useState('')
+  const [confirmingRevert, setConfirmingRevert] = useState(false)
 
   const editingItem = localItems.find((item) => item.id === editingItemId) ?? null
+
+  const isItemModified = (item) => {
+    const original = originalItemsSnapshot.get(item.id)
+    if (!original) return false
+    return (
+      item.estimated_weight_kg !== original.estimated_weight_kg ||
+      item.unit_count !== original.unit_count ||
+      item.quantity_kg !== original.quantity_kg
+    )
+  }
 
   const startEditing = (item) => {
     setEditingItemId(item.id)
     setEditWeight(item.estimated_weight_kg != null ? String(item.estimated_weight_kg) : '')
     setEditUnitCount(item.unit_count != null ? String(item.unit_count) : '')
     setEditQty(item.quantity_kg != null ? String(item.quantity_kg) : '')
+    setConfirmingRevert(false)
   }
 
-  const stopEditing = () => setEditingItemId(null)
+  const stopEditing = () => {
+    setEditingItemId(null)
+    setConfirmingRevert(false)
+  }
 
   const handleWeightChange = (value) => {
     setEditWeight(value)
@@ -78,6 +111,31 @@ export function EditItemsModal({ transaction, items, onClose }) {
     stopEditing()
   }
 
+  const handleRevert = () => {
+    if (!editingItem) return
+    const original = originalItemsSnapshot.get(editingItem.id)
+    if (!original) return
+    setLocalItems((prev) =>
+      prev.map((item) =>
+        item.id !== editingItemId
+          ? item
+          : {
+              ...item,
+              estimated_weight_kg: original.estimated_weight_kg,
+              unit_count: original.unit_count,
+              quantity_kg: original.quantity_kg,
+              subtotal: original.quantity_kg * item.unit_price,
+            },
+      ),
+    )
+    // Panel stays open on this item, showing the just-reverted values —
+    // unlike Apply/Cancel, Revert doesn't close back to the placeholder.
+    setEditWeight(original.estimated_weight_kg != null ? String(original.estimated_weight_kg) : '')
+    setEditUnitCount(original.unit_count != null ? String(original.unit_count) : '')
+    setEditQty(original.quantity_kg != null ? String(original.quantity_kg) : '')
+    setConfirmingRevert(false)
+  }
+
   const editAmount = editingItem ? (editQty === '' ? 0 : Number(editQty)) * editingItem.unit_price : 0
 
   return (
@@ -98,12 +156,20 @@ export function EditItemsModal({ transaction, items, onClose }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {localItems.map((item) => (
+                  {localItems.map((item) => {
+                    // "Currently editing" takes visual precedence over the
+                    // persistent "modified" highlight when both apply to the
+                    // same row.
+                    const isEditing = item.id === editingItemId
+                    const rowHighlight = isEditing
+                      ? 'bg-blue-50'
+                      : isItemModified(item)
+                        ? 'bg-amber-50 border-l-4 border-l-amber-400'
+                        : ''
+                    return (
                     <tr
                       key={item.id}
-                      className={`border-b border-gray-100 last:border-b-0 align-top ${
-                        item.id === editingItemId ? 'bg-blue-50' : ''
-                      }`}
+                      className={`border-b border-gray-100 last:border-b-0 align-top ${rowHighlight}`}
                     >
                       <td className="py-2 pr-2 text-gray-700">{item.quantity_kg.toFixed(3)}</td>
                       <td className="py-2 pr-2 text-gray-700">{item.unit_count}</td>
@@ -124,7 +190,8 @@ export function EditItemsModal({ transaction, items, onClose }) {
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -188,14 +255,46 @@ export function EditItemsModal({ transaction, items, onClose }) {
                   </div>
                 </div>
 
-                <div className="flex gap-2 mt-2">
-                  <Button type="button" className="flex-1" onClick={handleApply}>
-                    Apply
-                  </Button>
-                  <Button type="button" variant="outline" className="flex-1" onClick={stopEditing}>
-                    Cancel
-                  </Button>
-                </div>
+                {confirmingRevert ? (
+                  <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-3">
+                    <p className="text-sm text-red-800 mb-2">Revert changes for this item?</p>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="danger" className="flex-1" onClick={handleRevert}>
+                        Yes, Revert
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => setConfirmingRevert(false)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex gap-2 mt-2">
+                      <Button type="button" className="flex-1" onClick={handleApply}>
+                        Apply
+                      </Button>
+                      <Button type="button" variant="outline" className="flex-1" onClick={stopEditing}>
+                        Cancel
+                      </Button>
+                    </div>
+                    <div className="mt-2">
+                      <Button
+                        type="button"
+                        variant="dangerOutline"
+                        className="w-full"
+                        disabled={!isItemModified(editingItem)}
+                        onClick={() => setConfirmingRevert(true)}
+                      >
+                        Revert
+                      </Button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
