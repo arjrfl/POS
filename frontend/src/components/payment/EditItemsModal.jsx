@@ -53,6 +53,8 @@ export function EditItemsModal({ transaction, items, onClose }) {
   const [editQty, setEditQty] = useState('')
   const [confirmingRevert, setConfirmingRevert] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [confirmingRevertAll, setConfirmingRevertAll] = useState(false)
+  const [confirmingConfirmEdits, setConfirmingConfirmEdits] = useState(false)
 
   const editingItem = localItems.find((item) => item.id === editingItemId) ?? null
 
@@ -150,6 +152,29 @@ export function EditItemsModal({ transaction, items, onClose }) {
   }
 
   const canDeleteEditingItem = localItems.length > 1
+
+  // "Any change this session" covers both value edits (Apply) and removed
+  // rows (Delete) — a membership mismatch against the snapshot means at
+  // least one item was deleted, since items are never added here.
+  const hasAnySessionChanges =
+    localItems.length !== originalItemsSnapshot.size || localItems.some((item) => isItemModified(item))
+
+  const handleRevertAll = () => {
+    // `items` is the untouched prop the modal seeded from — reusing it
+    // directly restores both edited values and any deleted rows in one
+    // shot, rather than reconstructing objects from the snapshot Map.
+    setLocalItems(items)
+    setEditingItemId(null)
+    setConfirmingRevert(false)
+    setConfirmingDelete(false)
+    setConfirmingRevertAll(false)
+  }
+
+  const handleConfirmEdits = () => {
+    // Placeholder for the real save step (a later prompt) — for now this
+    // just closes the modal, identical to the Close button.
+    onClose()
+  }
 
   const editAmount = editingItem ? (editQty === '' ? 0 : Number(editQty)) * editingItem.unit_price : 0
 
@@ -271,10 +296,10 @@ export function EditItemsModal({ transaction, items, onClose }) {
                 </div>
 
                 {confirmingRevert ? (
-                  <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-3">
-                    <p className="text-sm text-red-800 mb-2">Revert changes for this item?</p>
+                  <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-sm text-amber-800 mb-2">Revert changes for this item?</p>
                     <div className="flex gap-2">
-                      <Button type="button" variant="danger" className="flex-1" onClick={handleRevert}>
+                      <Button type="button" variant="amber" className="flex-1" onClick={handleRevert}>
                         Yes, Revert
                       </Button>
                       <Button
@@ -319,7 +344,7 @@ export function EditItemsModal({ transaction, items, onClose }) {
                     <div className="flex gap-2 mt-2">
                       <Button
                         type="button"
-                        variant="danger"
+                        variant="amber"
                         className="flex-1"
                         disabled={!isItemModified(editingItem)}
                         onClick={() => setConfirmingRevert(true)}
@@ -328,7 +353,7 @@ export function EditItemsModal({ transaction, items, onClose }) {
                       </Button>
                       <Button
                         type="button"
-                        variant="dangerOutline"
+                        variant="danger"
                         className="flex-1"
                         disabled={!canDeleteEditingItem}
                         onClick={() => setConfirmingDelete(true)}
@@ -343,10 +368,53 @@ export function EditItemsModal({ transaction, items, onClose }) {
           </div>
         </div>
 
-        <div className="flex-shrink-0 flex justify-end mt-4">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Close
-          </Button>
+        <div className="flex-shrink-0 mt-4">
+          {confirmingRevertAll ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 flex items-center justify-between gap-3">
+              <p className="text-sm text-amber-800">Revert ALL changes made in this session?</p>
+              <div className="flex gap-2 flex-shrink-0">
+                <Button type="button" variant="amber" onClick={handleRevertAll}>
+                  Yes, Revert All
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setConfirmingRevertAll(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : confirmingConfirmEdits ? (
+            <div className="rounded-md border border-green-200 bg-green-50 p-3 flex items-center justify-between gap-3">
+              <p className="text-sm text-green-800">Confirm all changes made in this session?</p>
+              <div className="flex gap-2 flex-shrink-0">
+                <Button type="button" onClick={handleConfirmEdits}>
+                  Yes, Confirm
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setConfirmingConfirmEdits(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="amber"
+                disabled={!hasAnySessionChanges}
+                onClick={() => setConfirmingRevertAll(true)}
+              >
+                Revert All
+              </Button>
+              <Button
+                type="button"
+                disabled={!hasAnySessionChanges}
+                onClick={() => setConfirmingConfirmEdits(true)}
+              >
+                Confirm Edits
+              </Button>
+              <Button type="button" variant="outline" onClick={onClose}>
+                Close
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </Modal>
