@@ -17,7 +17,7 @@ export function EditItemsModal({ transaction, items, onClose }) {
     <Modal open onClose={onClose} title={`Edit Items — ${transaction.order_number}`} size="lg">
       <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex-1 min-h-0 grid grid-cols-[3fr_2fr] gap-4">
-          <div className="min-h-0 flex flex-col border border-gray-200 rounded-md overflow-hidden">
+          <div className="h-full min-h-0 flex flex-col border border-gray-200 rounded-md overflow-hidden">
             <div className="flex-1 min-h-0 overflow-y-auto pt-0 px-3 pb-3">
               <table className="w-full table-fixed text-sm">
                 <thead className="sticky top-0 bg-white">
@@ -53,7 +53,7 @@ export function EditItemsModal({ transaction, items, onClose }) {
             </div>
           </div>
 
-          <div className="min-h-0 border border-gray-200 rounded-md" />
+          <div className="h-full min-h-0 border border-gray-200 rounded-md" />
         </div>
 
         <div className="flex-shrink-0 flex justify-end mt-4">
