@@ -52,6 +52,7 @@ export function EditItemsModal({ transaction, items, onClose }) {
   const [editUnitCount, setEditUnitCount] = useState('')
   const [editQty, setEditQty] = useState('')
   const [confirmingRevert, setConfirmingRevert] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   const editingItem = localItems.find((item) => item.id === editingItemId) ?? null
 
@@ -71,11 +72,13 @@ export function EditItemsModal({ transaction, items, onClose }) {
     setEditUnitCount(item.unit_count != null ? String(item.unit_count) : '')
     setEditQty(item.quantity_kg != null ? String(item.quantity_kg) : '')
     setConfirmingRevert(false)
+    setConfirmingDelete(false)
   }
 
   const stopEditing = () => {
     setEditingItemId(null)
     setConfirmingRevert(false)
+    setConfirmingDelete(false)
   }
 
   const handleWeightChange = (value) => {
@@ -135,6 +138,18 @@ export function EditItemsModal({ transaction, items, onClose }) {
     setEditQty(original.quantity_kg != null ? String(original.quantity_kg) : '')
     setConfirmingRevert(false)
   }
+
+  // A transaction can't end up with zero product items, so deleting the
+  // last remaining row is blocked (see canDeleteEditingItem below) — this
+  // never fires with a single-item list.
+  const handleDeleteItem = () => {
+    if (!editingItem) return
+    setLocalItems((prev) => prev.filter((item) => item.id !== editingItemId))
+    setEditingItemId(null)
+    setConfirmingDelete(false)
+  }
+
+  const canDeleteEditingItem = localItems.length > 1
 
   const editAmount = editingItem ? (editQty === '' ? 0 : Number(editQty)) * editingItem.unit_price : 0
 
@@ -272,6 +287,25 @@ export function EditItemsModal({ transaction, items, onClose }) {
                       </Button>
                     </div>
                   </div>
+                ) : confirmingDelete ? (
+                  <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-3">
+                    <p className="text-sm text-red-800 mb-2">
+                      Remove {editingItem.product_name} from this order?
+                    </p>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="danger" className="flex-1" onClick={handleDeleteItem}>
+                        Yes, Delete
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => setConfirmingDelete(false)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
                 ) : (
                   <>
                     <div className="flex gap-2 mt-2">
@@ -282,15 +316,24 @@ export function EditItemsModal({ transaction, items, onClose }) {
                         Cancel
                       </Button>
                     </div>
-                    <div className="mt-2">
+                    <div className="flex gap-2 mt-2">
                       <Button
                         type="button"
-                        variant="dangerOutline"
-                        className="w-full"
+                        variant="danger"
+                        className="flex-1"
                         disabled={!isItemModified(editingItem)}
                         onClick={() => setConfirmingRevert(true)}
                       >
                         Revert
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="dangerOutline"
+                        className="flex-1"
+                        disabled={!canDeleteEditingItem}
+                        onClick={() => setConfirmingDelete(true)}
+                      >
+                        Delete
                       </Button>
                     </div>
                   </>
