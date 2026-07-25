@@ -18,7 +18,7 @@ export function EditItemsModal({ transaction, items, onClose }) {
       <div className="flex-1 min-h-0 flex flex-col">
         <div className="flex-1 min-h-0 grid grid-cols-[3fr_2fr] gap-4">
           <div className="min-h-0 flex flex-col border border-gray-200 rounded-md overflow-hidden">
-            <div className="flex-1 min-h-0 overflow-y-auto p-3">
+            <div className="flex-1 min-h-0 overflow-y-auto pt-0 px-3 pb-3">
               <table className="w-full table-fixed text-sm">
                 <thead className="sticky top-0 bg-white">
                   <tr className="text-left text-gray-500 border-b border-gray-200">

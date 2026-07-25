@@ -4,7 +4,7 @@
 // flex-shrink-0 header/footer around a flex-1 min-h-0 scrollable body.
 const SIZE_CLASSES = {
   md: 'max-w-md',
-  lg: 'max-w-4xl max-h-[88vh] flex flex-col',
+  lg: 'max-w-5xl max-h-[94vh] flex flex-col',
 }
 
 export function Modal({ open, onClose, title, children, size = 'md' }) {
