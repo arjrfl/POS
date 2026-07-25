@@ -4,6 +4,7 @@ import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
 import { OrderSummaryPanel } from '../walkin/OrderSummaryPanel'
 import { ArticleRows } from './ArticleRows'
+import { EditItemsModal } from './EditItemsModal'
 import { OriginalTransactionLink } from './OriginalTransactionLink'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useProducts } from '../../hooks/useProducts'
@@ -15,6 +16,7 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCre
   const { data: products } = useProducts()
   const [confirmAction, setConfirmAction] = useState(null) // null | 'park'
   const [savingCredit, setSavingCredit] = useState(false)
+  const [showEditItemsModal, setShowEditItemsModal] = useState(false)
 
   const handleSaveAsCredit = async () => {
     setSavingCredit(true)
@@ -119,6 +121,14 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCre
                     </p>
                   )}
                 </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowEditItemsModal(true)}
+                >
+                  Edit Items
+                </Button>
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmAction('park')}>
                   Park
                 </Button>
@@ -148,6 +158,10 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCre
           </div>
         </div>
       </Modal>
+
+      {showEditItemsModal && (
+        <EditItemsModal transaction={transaction} items={displayItems} onClose={() => setShowEditItemsModal(false)} />
+      )}
     </>
   )
 }
