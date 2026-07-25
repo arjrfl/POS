@@ -28,7 +28,6 @@ class TransactionStatusEnum(str, enum.Enum):
     pending_handover = "pending_handover"
     completed = "completed"
     voided = "voided"
-    pending_edit = "pending_edit"
 
 
 class TransactionTypeEnum(str, enum.Enum):

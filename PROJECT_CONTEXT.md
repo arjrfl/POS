@@ -80,17 +80,6 @@ Receiver → Payment → completed (Releasing skipped entirely)
 - Always goes to Payment regardless of customer_type (walk_in or online)
 - Must be paid in full — no partial payment allowed
 
-### Return to Receiver Flow (walk_in only)
-
-```
-Payment → Receiver (edit) → Payment → Releasing
-```
-
-- Payment returns transaction when customer wants to change their order
-- Only walk_in transactions can be returned (online cannot)
-- Receiver can only edit ITEMS — not customer or customer_type
-- transaction_status: `pending_edit` while at Receiver
-
 ---
 
 ## 4. Transaction Status Values
@@ -99,7 +88,6 @@ Payment → Receiver (edit) → Payment → Releasing
 |---|---|
 | `pending_payment` | walk_in: Walk-In done, waiting for Team Payment. online: Releasing done, waiting for Team Payment |
 | `pending_settlement` | walk_in: Payment done, waiting for Team Releasing to confirm weight. online: Walk-In done, goes DIRECTLY to Releasing (skips Payment first) |
-| `pending_edit` | Returned from Payment to Receiver for item editing (walk_in only) |
 | `pending_adjustment` | Releasing found variance, child adjustment/refund sent to Payment queue, waiting for resolution |
 | `settled` | Payment has resolved the adjustment/refund child (paid, partially paid, or saved as credit). Parent is waiting for Releasing's final handover confirmation (`POST /confirm-handover`) before moving to `completed` |
 | `pending_handover` | online only, no substandard variance: Payment has confirmed payment for the order. Waiting on Releasing's final confirmation (`POST /complete-online`) before moving to `completed`. Distinct from `settled`, which is reserved for substandard adjustment/refund resolution |
@@ -113,12 +101,6 @@ Payment → Receiver (edit) → Payment → Releasing
 The queue is a filtered view of `sales_transaction` by status:
 
 ```sql
--- Receiver queue (returned for editing)
-SELECT * FROM sales_transaction
-WHERE transaction_status = 'pending_edit'
-AND queue_status = 'waiting'
-ORDER BY updated_at ASC;
-
 -- Payment queue
 SELECT * FROM sales_transaction
 WHERE transaction_status = 'pending_payment'
@@ -234,20 +216,13 @@ Payment handles ALL financial decisions:
 - Saves draft entries first, then parks
 - Any payment member can unpark (not just the one who parked)
 
-### Return to Receiver
-- [ Return to Receiver ] button in Order Details (walk_in transactions only)
-- Asks confirmation before returning
-- Transaction disappears from Payment queue, appears in Receiver queue
-
 ---
 
 ## 8. Receiver Screen
 
 ### Layout
-- Single queue view (not two-panel)
+- No queue view — Receiver has no queue of its own
 - One [ + Create Transaction ] button opens Create modal (full-screen)
-- Queue shows only `pending_edit` transactions (returned from Payment)
-- Receiver's own created transactions do NOT appear in receiver queue
 
 ### Create Transaction Modal
 - Customer selector with "Add Customer" option when not found
@@ -260,13 +235,6 @@ Payment handles ALL financial decisions:
 - QTY auto-fills from last-touched field (Estimated Weight OR Unit Count)
 - Order Summary table: QTY | UNIT | ARTICLES | UNIT PRICE | AMOUNT | [🗑]
 - Change-guard modal when customer/type is changed with items present
-
-### Edit Transaction Modal (pending_edit)
-- Opens when Receiver grabs a returned transaction
-- Items pre-populated, can add/remove items only
-- Customer and customer_type are read-only (cannot change)
-- [ Save & Send to Payment ] → PATCH items + resubmit
-- [ Cancel ] → releases grab
 
 ---
 

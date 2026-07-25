@@ -9,7 +9,6 @@ const MAX_RECONNECT_DELAY_MS = 30000
 const ROLE_ROOM = {
   payment: 'payment-queue',
   releasing: 'releasing-queue',
-  receiver: 'receiver-queue',
   admin: 'admin',
 }
 

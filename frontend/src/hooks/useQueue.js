@@ -62,27 +62,3 @@ export function useAdminQueue(status) {
 
   return query
 }
-
-// The receiver queue is centralized: every receiver member sees the same
-// pending_edit/waiting transactions regardless of who created them — no
-// walkin_user_id filter here. (The backend's role-based branch for
-// "receiver" still ORs in the caller's own transactions server-side so
-// GET /transactions stays useful for reference elsewhere, but constraining
-// status+queue_status here narrows the result back down to just the queue.)
-export function useReceiverQueue() {
-  const queryClient = useQueryClient()
-  const lastEvent = useNotificationStore((state) => state.lastEvent)
-
-  const query = useQuery({
-    queryKey: ['transactions', { status: 'pending_edit', queueStatus: 'waiting' }],
-    queryFn: () => get('/transactions?status=pending_edit&queue_status=waiting&page_size=100'),
-    refetchOnWindowFocus: true,
-  })
-
-  useEffect(() => {
-    if (!lastEvent) return
-    queryClient.invalidateQueries({ queryKey: ['transactions'] })
-  }, [lastEvent, queryClient])
-
-  return query
-}

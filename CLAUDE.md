@@ -103,7 +103,6 @@ dependency not listed above without explicit instruction.
 - Payment queue: `transaction_status = 'pending_payment'`
 - Releasing queue: `transaction_status IN ('pending_settlement', 'pending_adjustment', 'settled', 'pending_handover')`
   — `settled` and `pending_handover` cards are read-only/awaiting-handover, not grabbable
-- Receiver queue: `transaction_status = 'pending_edit' AND queue_status = 'waiting'` (returned from Payment for editing)
 - Payment/Releasing queues are NOT additionally filtered by `queue_status = 'waiting'` at the API
   level — processing/parked transactions still come back in the list (rendered with the
   processing/parked card styling) so teammates can see who's working on what; only the Receiver
@@ -126,17 +125,9 @@ dependency not listed above without explicit instruction.
 2. `queue_status` change → broadcast to **current team's** room
 
 ### WebSocket Rooms
-- `receiver-queue` → receiver role only
 - `payment-queue` → payment role only
 - `releasing-queue` → releasing role only
 - `admin` → admin role only
-
-### Return to Receiver Flow (walk_in only)
-- Payment can return a walk_in transaction to Receiver for item editing
-- `transaction_status → 'pending_edit'`, broadcasts to `receiver-queue`
-- Receiver can only edit ITEMS (not customer or customer type)
-- After editing: Receiver resubmits → `pending_payment` → back to Payment queue
-- Online transactions CANNOT be returned to Receiver
 
 ### Customer Balance/Credit — Role Separation
 - `customer.net_balance`: positive = credit, negative = balance/utang
@@ -293,9 +284,6 @@ dependency not listed above without explicit instruction.
     transaction (plain online flow, no variance) → `completed` (releasing)
   - `POST /{id}/resolve-as-credit` — resolve a `refund`-type child as customer
     credit (payment only, `pending_payment` only, no payment method involved)
-  - `POST /{id}/return-to-receiver` — send back for editing (payment only, walk_in only)
-  - `PATCH /{id}/items` — edit items (receiver only, `pending_edit` only)
-  - `POST /{id}/resubmit` — resubmit to payment after editing (receiver)
 
   **Products** (`products.py`, prefix `/api/products`)
   - `GET /` — list (active-only unless caller is releasing/admin)
@@ -371,7 +359,7 @@ dependency not listed above without explicit instruction.
 ## Frontend Rules
 
 - Role-based routing — each team sees only their screen on login
-- Receiver screen (`/walkin`): queue of `pending_edit` + create modal + edit modal
+- Receiver screen (`/walkin`): create modal only — no queue (Return-to-Receiver flow removed)
 - Payment screen (`/payment`): queue of `pending_payment`, payment modal with drafts
 - Releasing screen (`/releasing`): queue of `pending_settlement` + `pending_adjustment`
   + `settled` + `pending_handover` (see Queue = Status Filter above), plus an Inventory
@@ -474,8 +462,7 @@ lash-meatshop-pos/
     │   │   │                     ItemEditModal, SubstandardResolution, HandoverOutcomeModal,
     │   │   │                     PaymentConfirmedModal
     │   │   ├── ui/            ← Badge, Button, Card, FullScreenModal, Input, Modal, Toast
-    │   │   ├── walkin/        ← QueuePanel, ReceiverQueueRow, CreateTransactionModal,
-    │   │   │                     EditOrderModal, CustomerSelector, AddCustomerModal,
+    │   │   ├── walkin/        ← CreateTransactionModal, CustomerSelector, AddCustomerModal,
     │   │   │                     ProductSelector, OrderSummaryPanel
     │   │   ├── ErrorBoundary.jsx
     │   │   └── ProtectedRoute.jsx

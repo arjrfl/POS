@@ -19,7 +19,6 @@ STATUS_TEAM_ROOM: dict[str, str] = {
     # 'settled', which is the substandard-adjustment counterpart of this same
     # "one more step" idea.
     "pending_handover": "releasing-queue",
-    "pending_edit": "receiver-queue",
 }
 
 

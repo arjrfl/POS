@@ -10,10 +10,10 @@ import { useProducts } from '../../hooks/useProducts'
 import { formatCurrency } from '../../utils/format'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
 
-export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToReceiver, onSaveAsCredit }) {
+export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCredit }) {
   const { data: customer } = useCustomer(transaction?.customer_id)
   const { data: products } = useProducts()
-  const [confirmAction, setConfirmAction] = useState(null) // null | 'return' | 'park'
+  const [confirmAction, setConfirmAction] = useState(null) // null | 'park'
   const [savingCredit, setSavingCredit] = useState(false)
 
   const handleSaveAsCredit = async () => {
@@ -119,18 +119,6 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
                     </p>
                   )}
                 </div>
-                {transaction.customer_type === 'walk_in' &&
-                  transaction.transaction_type === 'original' &&
-                  transaction.parent_transaction_id === null && (
-                  <Button
-                    type="button"
-                    variant="warning"
-                    className="flex-1"
-                    onClick={() => setConfirmAction('return')}
-                  >
-                    Return to Receiver
-                  </Button>
-                )}
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmAction('park')}>
                   Park
                 </Button>
@@ -139,30 +127,6 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onReturnToR
           </div>
         }
       />
-
-      <Modal open={confirmAction === 'return'} onClose={() => setConfirmAction(null)} title="Return to Receiver?">
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-gray-700">
-            This will send the order back to the Receiver team for editing. The customer will need to return to the
-            counter.
-          </p>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              className="flex-1"
-              onClick={() => {
-                setConfirmAction(null)
-                onReturnToReceiver()
-              }}
-            >
-              Yes, Return
-            </Button>
-            <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmAction(null)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Modal>
 
       <Modal open={confirmAction === 'park'} onClose={() => setConfirmAction(null)} title="Park Transaction?">
         <div className="flex flex-col gap-4">

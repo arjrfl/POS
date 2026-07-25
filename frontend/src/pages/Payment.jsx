@@ -130,17 +130,6 @@ export default function Payment() {
     showToast('Transaction parked with payment entries saved', 'success')
   }
 
-  const handleReturnToReceiver = async () => {
-    try {
-      await post(`/transactions/${selectedTransaction.id}/return-to-receiver`)
-      setSelectedTransaction(null)
-      refreshQueue()
-      showToast('Order returned to Receiver team', 'success')
-    } catch (err) {
-      showToast(err.message, 'error')
-    }
-  }
-
   const handlePaid = () => {
     setPayModalOpen(false)
     setSelectedTransaction(null)
@@ -223,7 +212,6 @@ export default function Payment() {
                 transaction={selectedTransaction}
                 onPay={() => setPayModalOpen(true)}
                 onPark={handlePark}
-                onReturnToReceiver={handleReturnToReceiver}
                 onSaveAsCredit={handleSaveAsCredit}
               />
             </div>

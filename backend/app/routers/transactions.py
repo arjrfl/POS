@@ -18,7 +18,6 @@ from app.schemas.transaction import (
     PaymentProcessRequest,
     SubstandardOutcomeRequest,
     TransactionCreate,
-    TransactionItemsEditRequest,
     WeightConfirmRequest,
 )
 from app.services import transaction_service
@@ -72,7 +71,6 @@ async def list_transactions(
 ):
     role_name = current_user.get("role_name")
     walkin_user_id = None
-    include_pending_edit = False
     processing_by_user_id = None
 
     if processing_by == "me":
@@ -84,10 +82,8 @@ async def list_transactions(
     if role_name == "admin":
         pass  # no forced filter — admin sees everything
     elif role_name == "receiver":
-        # own transactions, plus anything returned by Payment for editing —
-        # visible to every receiver, not just whoever created it
+        # own transactions only — Receiver has no queue of its own
         walkin_user_id = current_user["user_id"]
-        include_pending_edit = True
     elif role_name in transaction_service.ROLE_QUEUE_LIST_STATUSES:
         # a list even for single-status roles — list_transactions accepts either
         # and this keeps one code path for the "releasing also sees
@@ -118,7 +114,6 @@ async def list_transactions(
         search=search,
         payment_user_id=payment_user_id,
         walkin_user_id=walkin_user_id,
-        include_pending_edit=include_pending_edit,
         processing_by_user_id=processing_by_user_id,
         walkin_at_from=walkin_at_from,
         walkin_at_to=walkin_at_to,
@@ -420,55 +415,3 @@ async def resolve_refund_as_credit(
     return {"data": transaction, "error": None}
 
 
-@router.post("/{transaction_id}/return-to-receiver", dependencies=[Depends(require_role("payment"))])
-async def return_to_receiver(
-    transaction_id: int,
-    current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        transaction = await transaction_service.return_to_receiver(db, transaction_id, current_user["user_id"])
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-    except transaction_service.QueuePermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
-    except transaction_service.TransactionEditFlowError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    return {"data": transaction, "error": None}
-
-
-@router.patch("/{transaction_id}/items", dependencies=[Depends(require_role("receiver"))])
-async def edit_transaction_items(
-    transaction_id: int,
-    payload: TransactionItemsEditRequest,
-    current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        transaction = await transaction_service.edit_transaction_items(
-            db, transaction_id, payload.items, current_user["user_id"]
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-    except transaction_service.QueuePermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
-    except transaction_service.TransactionEditFlowError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    return {"data": transaction, "error": None}
-
-
-@router.post("/{transaction_id}/resubmit", dependencies=[Depends(require_role("receiver"))])
-async def resubmit_to_payment(
-    transaction_id: int,
-    current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    try:
-        transaction = await transaction_service.resubmit_to_payment(db, transaction_id, current_user["user_id"])
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
-    except transaction_service.QueuePermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
-    except transaction_service.TransactionEditFlowError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    return {"data": transaction, "error": None}

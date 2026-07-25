@@ -324,10 +324,6 @@ class WeightConfirmRequest(BaseModel):
     items: list[WeightConfirmItem]
 
 
-class TransactionItemsEditRequest(BaseModel):
-    items: list[TransactionItemCreate]
-
-
 class SubstandardOutcomeRequest(BaseModel):
     # Releasing makes no financial decision anymore — the only action is to
     # hand the variance to Payment, which then decides how to collect/refund it.

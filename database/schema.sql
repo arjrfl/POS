@@ -61,10 +61,8 @@ CREATE TYPE transaction_status_enum AS ENUM (
     -- which is reserved for substandard adjustment/refund resolution.
     'completed',
     -- Fully done, no pending actions
-    'voided',
+    'voided'
     -- Cancelled
-    'pending_edit'
-    -- walk_in only: returned from Payment to Receiver for item editing
 );
 
 CREATE TYPE transaction_type_enum AS ENUM (

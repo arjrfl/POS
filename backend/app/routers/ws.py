@@ -12,7 +12,6 @@ router = APIRouter()
 ROOM_ALLOWED_ROLES: dict[str, set[str]] = {
     "payment-queue": {"payment", "admin"},
     "releasing-queue": {"releasing", "admin"},
-    "receiver-queue": {"receiver", "admin"},
     "admin": {"admin"},
 }
 
