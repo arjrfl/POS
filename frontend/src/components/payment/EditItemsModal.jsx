@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
+import { Input } from '../ui/Input'
 import { formatCurrency } from '../../utils/format'
 
 // Local to this table only — ArticleRows' own ARTICLE_ROW_COLUMN_WIDTHS is a
@@ -8,11 +10,76 @@ import { formatCurrency } from '../../utils/format'
 // ACTION column, so it isn't reused here.
 const COLUMN_WIDTHS = ['w-[12%]', 'w-[14%]', 'w-[24%]', 'w-[18%]', 'w-[18%]', 'w-[14%]']
 
+// "Last touched wins" — whichever of Estimated Weight / Unit Count the user
+// edited most recently recomputes QTY as weight * count. If the other field
+// is still empty/0 (not yet entered), QTY falls back to the raw new value
+// instead of multiplying to zero. QTY itself is always freely editable and
+// never re-derived once the user types into it directly — same calculation
+// as ProductSelector.jsx / ItemEditModal.jsx.
+const multiplyKg = (weight, count) => Math.round(weight * count * 1000) / 1000
+
 // `items` is the same product-joined display list TransactionDetailPanel
 // already computes for its own article table (displayItems) — reused as-is
 // here rather than re-deriving it (which would mean a second useProducts()
 // call and a redundant /api/products refetch on every modal open).
+//
+// Edits here are local-only: `localItems` seeds from `items` once (the modal
+// is remounted on every open, so it always starts from the real transaction
+// data) and Apply/Cancel only ever touch that local copy — nothing here
+// calls the API or reaches back into the transaction behind the modal.
 export function EditItemsModal({ transaction, items, onClose }) {
+  const [localItems, setLocalItems] = useState(items)
+  const [editingItemId, setEditingItemId] = useState(null)
+  const [editWeight, setEditWeight] = useState('')
+  const [editUnitCount, setEditUnitCount] = useState('')
+  const [editQty, setEditQty] = useState('')
+
+  const editingItem = localItems.find((item) => item.id === editingItemId) ?? null
+
+  const startEditing = (item) => {
+    setEditingItemId(item.id)
+    setEditWeight(item.estimated_weight_kg != null ? String(item.estimated_weight_kg) : '')
+    setEditUnitCount(item.unit_count != null ? String(item.unit_count) : '')
+    setEditQty(item.quantity_kg != null ? String(item.quantity_kg) : '')
+  }
+
+  const stopEditing = () => setEditingItemId(null)
+
+  const handleWeightChange = (value) => {
+    setEditWeight(value)
+    const count = editUnitCount === '' ? 0 : Number(editUnitCount)
+    setEditQty(value === '' || !count ? value : String(multiplyKg(Number(value), count)))
+  }
+
+  const handleUnitCountChange = (value) => {
+    setEditUnitCount(value)
+    const weight = editWeight === '' ? 0 : Number(editWeight)
+    setEditQty(value === '' || !weight ? value : String(multiplyKg(weight, Number(value))))
+  }
+
+  const handleQtyChange = (value) => setEditQty(value)
+
+  const handleApply = () => {
+    if (!editingItem) return
+    const parsedQty = editQty === '' ? 0 : Number(editQty)
+    setLocalItems((prev) =>
+      prev.map((item) =>
+        item.id !== editingItemId
+          ? item
+          : {
+              ...item,
+              estimated_weight_kg: editWeight === '' ? null : Number(editWeight),
+              unit_count: editUnitCount === '' ? 0 : Number(editUnitCount),
+              quantity_kg: parsedQty,
+              subtotal: parsedQty * item.unit_price,
+            },
+      ),
+    )
+    stopEditing()
+  }
+
+  const editAmount = editingItem ? (editQty === '' ? 0 : Number(editQty)) * editingItem.unit_price : 0
+
   return (
     <Modal open onClose={onClose} title={`Edit Items — ${transaction.order_number}`} size="lg">
       <div className="flex-1 min-h-0 flex flex-col">
@@ -27,12 +94,17 @@ export function EditItemsModal({ transaction, items, onClose }) {
                     <th className={`py-2 pr-2 font-medium ${COLUMN_WIDTHS[2]}`}>ARTICLES</th>
                     <th className={`py-2 pr-2 font-medium ${COLUMN_WIDTHS[3]}`}>UNIT PRICE</th>
                     <th className={`py-2 pr-2 font-medium ${COLUMN_WIDTHS[4]}`}>AMOUNT</th>
-                    <th className={`py-2 pr-2 font-medium ${COLUMN_WIDTHS[5]}`}>ACTION</th>
+                    <th className={`py-2 pr-2 font-medium text-center ${COLUMN_WIDTHS[5]}`}>ACTION</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id} className="border-b border-gray-100 last:border-b-0 align-top">
+                  {localItems.map((item) => (
+                    <tr
+                      key={item.id}
+                      className={`border-b border-gray-100 last:border-b-0 align-top ${
+                        item.id === editingItemId ? 'bg-blue-50' : ''
+                      }`}
+                    >
                       <td className="py-2 pr-2 text-gray-700">{item.quantity_kg.toFixed(3)}</td>
                       <td className="py-2 pr-2 text-gray-700">{item.unit_count}</td>
                       <td className="py-2 pr-2">
@@ -41,10 +113,15 @@ export function EditItemsModal({ transaction, items, onClose }) {
                       </td>
                       <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
                       <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
-                      <td className="py-2 pr-2">
-                        <span className="inline-flex text-gray-500" aria-label={`Edit ${item.product_name}`}>
+                      <td className="py-2 pr-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => startEditing(item)}
+                          className="inline-flex text-gray-500 hover:text-gray-700"
+                          aria-label={`Edit ${item.product_name}`}
+                        >
                           <Pencil size={16} />
-                        </span>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -53,7 +130,75 @@ export function EditItemsModal({ transaction, items, onClose }) {
             </div>
           </div>
 
-          <div className="h-full min-h-0 border border-gray-200 rounded-md" />
+          <div className="h-full min-h-0 border border-gray-200 rounded-md overflow-y-auto p-4">
+            {!editingItem ? (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-sm text-gray-400 text-center">Select an item's edit icon to modify it</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <div className="font-medium text-gray-900">{editingItem.product_name}</div>
+                  {editingItem.brand_name && (
+                    <div className="text-xs text-gray-500">{editingItem.brand_name}</div>
+                  )}
+                </div>
+
+                <Input
+                  id="edit-item-weight"
+                  label="Estimated Weight (kg)"
+                  type="number"
+                  step="0.001"
+                  placeholder="0.000"
+                  value={editWeight}
+                  onChange={(e) => handleWeightChange(e.target.value)}
+                />
+
+                <Input
+                  id="edit-item-unit-count"
+                  label="Unit Count"
+                  type="number"
+                  step="1"
+                  placeholder="0"
+                  value={editUnitCount}
+                  onChange={(e) => handleUnitCountChange(e.target.value)}
+                />
+
+                <Input
+                  id="edit-item-qty"
+                  label="QTY (kg)"
+                  type="number"
+                  step="0.001"
+                  placeholder="0.000"
+                  value={editQty}
+                  onChange={(e) => handleQtyChange(e.target.value)}
+                />
+
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Unit Price</span>
+                  <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900">
+                    {formatCurrency(editingItem.unit_price)}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="text-sm font-medium text-gray-700">Amount</span>
+                  <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900 font-semibold">
+                    {formatCurrency(editAmount)}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mt-2">
+                  <Button type="button" className="flex-1" onClick={handleApply}>
+                    Apply
+                  </Button>
+                  <Button type="button" variant="outline" className="flex-1" onClick={stopEditing}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex-shrink-0 flex justify-end mt-4">

@@ -37,6 +37,7 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCre
         id: item.id,
         product_name: product?.product_name ?? `Product #${item.product_id}`,
         brand_name: product?.brand_name ?? null,
+        estimated_weight_kg: item.estimated_weight_kg != null ? Number(item.estimated_weight_kg) : null,
         unit_count: item.unit_count,
         quantity_kg: Number(item.quantity_kg),
         unit_price: Number(item.unit_price),
