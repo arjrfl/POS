@@ -808,7 +808,7 @@ function OrderItemsUpdateLogsModal({ transactionId, open, onClose }) {
   }, [open, transactionId])
 
   return (
-    <Modal open={open} onClose={onClose} title="Order Items Update Logs" size="lg">
+    <Modal open={open} onClose={onClose} title="Order Items Update Logs" size="xl">
       <div className="flex-1 min-h-0 flex flex-col">
         {loading && (
           <div className="flex-1 min-h-0 flex items-center justify-center">

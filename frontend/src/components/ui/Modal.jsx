@@ -7,9 +7,14 @@ import { useEffect, useRef } from 'react'
 // max-h-[94vh] alongside it is just a safety cap for viewports shorter than
 // 94vh would otherwise allow. flex flex-col lets that fixed height be
 // divided into a flex-shrink-0 header/footer around a flex-1 min-h-0 body.
+// 'xl' is 'lg' widened ~15% (max-w-5xl's 64rem -> 74rem) for modals with two
+// five-column tables side by side (e.g. Order Items Update Logs) that feel
+// cramped at 'lg' — kept as its own variant rather than widening 'lg' itself,
+// since EditItemsModal also uses 'lg' and doesn't need the extra width.
 const SIZE_CLASSES = {
   md: 'max-w-md',
   lg: 'max-w-5xl h-[94vh] max-h-[94vh] flex flex-col',
+  xl: 'max-w-[74rem] h-[94vh] max-h-[94vh] flex flex-col',
 }
 
 // Module-level stack of currently-open Modal instances (by mount order), so
