@@ -1,4 +1,4 @@
-export function FullScreenModal({ open, onClose, title, children, closeLabel, centerLabel }) {
+export function FullScreenModal({ open, onClose, title, children, closeLabel, centerLabel, headerActions }) {
   if (!open) return null
 
   return (
@@ -10,7 +10,9 @@ export function FullScreenModal({ open, onClose, title, children, closeLabel, ce
             {centerLabel}
           </span>
         )}
-        {closeLabel ? (
+        {headerActions ? (
+          headerActions
+        ) : closeLabel ? (
           <button
             type="button"
             onClick={onClose}

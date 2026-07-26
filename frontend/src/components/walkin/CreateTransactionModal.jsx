@@ -5,6 +5,7 @@ import { Button } from '../ui/Button'
 import { CustomerSelector } from './CustomerSelector'
 import { ProductSelector } from './ProductSelector'
 import { OrderSummaryPanel } from './OrderSummaryPanel'
+import { ProductReferenceTable } from './ProductReferenceTable'
 import { post } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
@@ -47,7 +48,11 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
   const hasBalance = !!customer && absBalance > 0
 
   const total = settleOnly ? absBalance : items.reduce((sum, item) => sum + item.subtotal, 0)
-  const hasData = !!customer || items.length > 0 || settleOnly
+  // Drives Cancel's confirm-before-discard gate — customerType is included
+  // (not just customer/items/settleOnly) since a user can pick a customer
+  // type before ever selecting a customer, and that alone still counts as
+  // "entered information" worth confirming before discarding.
+  const hasData = !!customer || !!customerType || items.length > 0 || settleOnly
   const canSubmit = settleOnly
     ? !!customer && !!customerType
     : !!customer && !!customerType && items.length > 0
@@ -197,7 +202,23 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
     onClose()
   }
 
-  const requestClose = () => {
+  // Back — non-destructive close. Draft state lives in this component's own
+  // React state (CreateTransactionModal never unmounts when the modal is
+  // "closed" — FullScreenModal just stops rendering its contents), so simply
+  // closing without calling resetForm()/clearReceiverDraft() is enough for
+  // everything entered to still be there next time this modal is opened.
+  const requestBack = () => {
+    if (confirmation) {
+      handleCloseConfirmation()
+      return
+    }
+    setError('')
+    onClose()
+  }
+
+  // Cancel — destructive close, gated behind a confirm popup whenever any
+  // meaningful data has been entered (see hasData above).
+  const requestCancel = () => {
     if (confirmation) {
       handleCloseConfirmation()
       return
@@ -217,9 +238,27 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
 
   return (
     <>
-      <FullScreenModal open={open} onClose={requestClose} title="New Transaction">
-        <div className="grid grid-cols-2 gap-6 h-full min-h-0">
-          <div className="h-full min-h-0 overflow-y-auto flex flex-col gap-6 pr-2">
+      <FullScreenModal
+        open={open}
+        onClose={requestCancel}
+        title="New Transaction"
+        headerActions={
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="outline" onClick={requestBack}>
+              Back
+            </Button>
+            <Button type="button" variant="outline" onClick={requestCancel}>
+              Cancel
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex gap-6 h-full min-h-0">
+          <div className="flex-1 min-w-0 h-full min-h-0">
+            <ProductReferenceTable />
+          </div>
+
+          <div className="w-80 shrink-0 h-full min-h-0 overflow-y-auto flex flex-col gap-6 pr-2">
             <div>
               <CustomerSelector value={customer} onSelect={handleSelectCustomer} onClear={requestClearCustomer} />
 
@@ -290,27 +329,29 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
             </div>
           </div>
 
-          <OrderSummaryPanel
-            customer={customer}
-            customerType={customerType}
-            items={items}
-            total={total}
-            onRemoveItem={handleRemoveItem}
-            balanceSettlementRow={settleOnly}
-            footer={
-              <>
-                {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
-                <Button
-                  type="button"
-                  className="w-full mt-3"
-                  disabled={submitting || !canSubmit}
-                  onClick={handleSubmit}
-                >
-                  {submitting ? 'Submitting...' : settleOnly ? 'Submit Balance Settlement' : 'Submit Transaction'}
-                </Button>
-              </>
-            }
-          />
+          <div className="w-1/2 shrink-0 h-full min-h-0">
+            <OrderSummaryPanel
+              customer={customer}
+              customerType={customerType}
+              items={items}
+              total={total}
+              onRemoveItem={handleRemoveItem}
+              balanceSettlementRow={settleOnly}
+              footer={
+                <>
+                  {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+                  <Button
+                    type="button"
+                    className="w-full mt-3"
+                    disabled={submitting || !canSubmit}
+                    onClick={handleSubmit}
+                  >
+                    {submitting ? 'Submitting...' : settleOnly ? 'Submit Balance Settlement' : 'Submit Transaction'}
+                  </Button>
+                </>
+              }
+            />
+          </div>
         </div>
       </FullScreenModal>
 
@@ -349,15 +390,15 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
         </div>
       </Modal>
 
-      <Modal open={discardGuard} onClose={() => setDiscardGuard(false)} title="Discard Transaction?">
+      <Modal open={discardGuard} onClose={() => setDiscardGuard(false)} title="Discard this transaction?">
         <div className="flex flex-col gap-4">
-          <p className="text-sm text-gray-700">Discard this transaction? All entered data will be lost.</p>
+          <p className="text-sm text-gray-700">All entered information will be lost.</p>
           <div className="flex gap-2">
             <Button type="button" variant="danger" className="flex-1" onClick={handleConfirmDiscard}>
               Yes, Discard
             </Button>
             <Button type="button" variant="outline" className="flex-1" onClick={() => setDiscardGuard(false)}>
-              Keep Editing
+              No, Keep Editing
             </Button>
           </div>
         </div>
