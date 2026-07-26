@@ -11,7 +11,7 @@ import { useProducts } from '../../hooks/useProducts'
 import { formatCurrency } from '../../utils/format'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
 
-export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCredit, onItemsUpdated }) {
+export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCredit, onItemsUpdated, onItemsReverted }) {
   const { data: customer } = useCustomer(transaction?.customer_id)
   const { data: products } = useProducts()
   const [confirmAction, setConfirmAction] = useState(null) // null | 'park'
@@ -166,6 +166,7 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCre
         items={displayItems}
         onClose={() => setShowEditItemsModal(false)}
         onItemsUpdated={onItemsUpdated}
+        onItemsReverted={onItemsReverted}
       />
     </>
   )

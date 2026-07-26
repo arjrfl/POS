@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Pencil } from 'lucide-react'
+import { Pencil, Undo2 } from 'lucide-react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { formatCurrency } from '../../utils/format'
-import { patch } from '../../services/api'
+import { patch, post } from '../../services/api'
 
 // Local to this table only — ArticleRows' own ARTICLE_ROW_COLUMN_WIDTHS is a
 // 5-column layout shared by several other consumers, and doesn't have an
@@ -29,7 +29,7 @@ const multiplyKg = (weight, count) => Math.round(weight * count * 1000) / 1000
 // confirmation popup can stack visually on top of it. Because of that, its
 // working state can't rely on mount-time initializers to start fresh each
 // time — the reset effect below does that explicitly, keyed only on `open`.
-export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdated }) {
+export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdated, onItemsReverted }) {
   // The baseline this modal diffs and reverts against — snapshotted fresh
   // every time the modal transitions closed→open, not just on first mount.
   // Both the amber "modified" highlight and Revert/Revert All restore
@@ -47,6 +47,8 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
   const [confirmingConfirmEdits, setConfirmingConfirmEdits] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
+  const [reverting, setReverting] = useState(false)
+  const [revertError, setRevertError] = useState(null)
 
   // Re-derive the working list AND the baseline from `items` as it stands
   // right now, every time this modal opens — `items` reflects whatever
@@ -69,6 +71,8 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
     setConfirmingConfirmEdits(false)
     setSaving(false)
     setSaveError(null)
+    setReverting(false)
+    setRevertError(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -163,10 +167,40 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
   const hasAnySessionChanges =
     localItems.length !== originalItems.length || localItems.some((item) => isItemModified(item))
 
-  const handleRevertAll = () => {
-    // originalItems is this session's fresh baseline (captured on open) —
-    // restoring to it undoes both edited values and any deleted rows in one
-    // shot, rather than reconstructing objects field by field.
+  // Deleted-but-not-yet-confirmed rows — anything in the fresh baseline no
+  // longer present in localItems. Derived rather than tracked separately so
+  // it can't drift from the set handleConfirmEdits below actually submits.
+  const deletedItems = originalItems.filter(
+    (original) => !localItems.some((item) => item.id === original.id),
+  )
+
+  const handleRestoreItem = (itemId) => {
+    const original = originalItems.find((o) => o.id === itemId)
+    if (!original) return
+    // Rebuild in original baseline order so the restored row lands back in
+    // its original position; items still present keep their current
+    // (possibly edited) values rather than reverting to baseline.
+    const localById = new Map(localItems.map((item) => [item.id, item]))
+    setLocalItems(
+      originalItems
+        .filter((o) => localById.has(o.id) || o.id === itemId)
+        .map((o) => localById.get(o.id) ?? o),
+    )
+  }
+
+  // Enabled whenever there's anything to revert to: either this session made
+  // changes (local-only revert, no persisted snapshot yet), or a snapshot
+  // already exists from a prior Confirm Edits this Payment-phase visit (even
+  // if nothing changed THIS session — that prior confirm already diverged
+  // from Receiver's original list).
+  const canRevertAll = hasAnySessionChanges || transaction.has_items_snapshot
+
+  // Local-only revert — no persisted snapshot exists yet, so there's nothing
+  // for the backend to restore from. originalItems is this session's fresh
+  // baseline (captured on open); restoring to it undoes both edited values
+  // and any deleted rows in one shot, rather than reconstructing objects
+  // field by field. No network call.
+  const performLocalRevertAll = () => {
     setLocalItems(originalItems)
     setEditingItemId(null)
     setConfirmingRevert(false)
@@ -174,13 +208,35 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
     setConfirmingRevertAll(false)
   }
 
+  // True revert-to-original — a snapshot exists (from a prior Confirm Edits
+  // this Payment-phase visit), so Revert All has to go all the way back to
+  // Receiver's original list server-side, not just undo this session's edits.
+  const handleConfirmRevertAll = async () => {
+    if (!transaction.has_items_snapshot) {
+      performLocalRevertAll()
+      return
+    }
+    setRevertError(null)
+    setReverting(true)
+    try {
+      const updated = await post(`/transactions/${transaction.id}/revert-items`)
+      onItemsReverted(updated)
+      setConfirmingRevertAll(false)
+      onClose()
+    } catch (err) {
+      // Keep the modal open and session state intact — only a successful
+      // revert closes.
+      setRevertError(err.message)
+    } finally {
+      setReverting(false)
+    }
+  }
+
   const handleConfirmEdits = async () => {
     setSaveError(null)
     setSaving(true)
     try {
-      const deletedItemIds = originalItems
-        .filter((original) => !localItems.some((item) => item.id === original.id))
-        .map((original) => original.id)
+      const deletedItemIds = deletedItems.map((original) => original.id)
       const updated = await patch(`/transactions/${transaction.id}/items`, {
         items: localItems.map((item) => ({
           id: item.id,
@@ -261,6 +317,35 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
                         </tr>
                       )
                     })}
+                    {deletedItems.length > 0 && (
+                      <tr>
+                        <td colSpan={6} className="pt-3 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wide">
+                          Deleted this session
+                        </td>
+                      </tr>
+                    )}
+                    {deletedItems.map((item) => (
+                      <tr key={item.id} className="border-b border-gray-100 last:border-b-0 align-top text-gray-400">
+                        <td className="py-2 pr-2 line-through">{item.quantity_kg.toFixed(3)}</td>
+                        <td className="py-2 pr-2 line-through">{item.unit_count}</td>
+                        <td className="py-2 pr-2">
+                          <div className="font-medium line-through">{item.product_name}</div>
+                          {item.brand_name && <div className="text-xs line-through">{item.brand_name}</div>}
+                        </td>
+                        <td className="py-2 pr-2 line-through">{formatCurrency(item.unit_price)}</td>
+                        <td className="py-2 pr-2 font-medium line-through">{formatCurrency(item.subtotal)}</td>
+                        <td className="py-2 pr-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => handleRestoreItem(item.id)}
+                            className="inline-flex text-gray-500 hover:text-gray-700"
+                            aria-label={`Restore ${item.product_name}`}
+                          >
+                            <Undo2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -361,7 +446,7 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
             <Button
               type="button"
               variant="amber"
-              disabled={!hasAnySessionChanges}
+              disabled={!canRevertAll}
               onClick={() => setConfirmingRevertAll(true)}
             >
               Revert All
@@ -409,24 +494,45 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
         </div>
       </Modal>
 
-      <Modal open={confirmingRevertAll} onClose={() => setConfirmingRevertAll(false)} title="Revert all changes?">
+      <Modal
+        open={confirmingRevertAll}
+        onClose={() => {
+          // Don't let a backdrop click/Esc dismiss this mid-revert — same
+          // guard as the Confirm Edits popup below, for the same reason.
+          if (reverting) return
+          setConfirmingRevertAll(false)
+          setRevertError(null)
+        }}
+        title="Revert all items?"
+      >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-gray-700">
-            This will discard every edit and deletion made in this session and restore the original items.
+            This will restore all items back to what was originally listed for this transaction.
           </p>
           <div className="flex gap-2">
-            <Button type="button" variant="amber" className="flex-1" onClick={handleRevertAll}>
-              Yes, Revert All
+            <Button
+              type="button"
+              variant="amber"
+              className="flex-1"
+              disabled={reverting}
+              onClick={handleConfirmRevertAll}
+            >
+              {reverting ? 'Reverting...' : 'Yes, Revert All'}
             </Button>
             <Button
               type="button"
               variant="outline"
               className="flex-1"
-              onClick={() => setConfirmingRevertAll(false)}
+              disabled={reverting}
+              onClick={() => {
+                setConfirmingRevertAll(false)
+                setRevertError(null)
+              }}
             >
               Cancel
             </Button>
           </div>
+          {revertError && <p className="text-sm text-red-600">{revertError}</p>}
         </div>
       </Modal>
 

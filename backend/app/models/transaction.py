@@ -174,6 +174,14 @@ class SalesTransaction(Base):
     parked_by_user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"))
     parked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
+    # JSON-serialized list of this transaction's product-type transaction_item rows,
+    # captured ONCE — the very first time Payment's Edit Items feature is confirmed
+    # for this transaction. Lets "Revert All" restore all the way back to what
+    # Receiver originally listed, even across multiple Confirm Edits calls and modal
+    # reopens. Cleared back to NULL once the transaction successfully completes
+    # payment (POST /{id}/pay).
+    original_items_snapshot: Mapped[Optional[str]] = mapped_column(Text)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

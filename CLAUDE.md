@@ -270,7 +270,13 @@ dependency not listed above without explicit instruction.
   - `POST /{id}/release` — release a grabbed transaction back to waiting (payment, releasing, receiver)
   - `PUT /{id}/payment-drafts` — save draft payment entries (payment)
   - `PATCH /{id}/items` — edit items during Payment phase, walk_in +
-    original transactions only, must be grabbed by requester (payment)
+    original transactions only, must be grabbed by requester (payment).
+    Also triggers a one-time capture of `original_items_snapshot` the first
+    time this is confirmed for a transaction (never overwritten afterward)
+  - `POST /{id}/revert-items` — restore items to Receiver's original list,
+    walk_in + original transactions only, must be grabbed by requester
+    (payment). Requires an existing snapshot (i.e. at least one prior Edit
+    Items confirm this Payment-phase visit)
   - `POST /{id}/pay` — process payment (payment); still fully supports `refund`-type
     transactions server-side, but Payment's UI no longer opens the payment modal
     for those — see `/resolve-as-credit`

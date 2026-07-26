@@ -356,6 +356,16 @@ CREATE TABLE sales_transaction (
     -- admin can flag transactions parked beyond a threshold (e.g. 30 mins)
     -- reset to NULL when transaction is unparked
 
+    original_items_snapshot TEXT                   NULL,
+    -- JSON-serialized list of this transaction's product-type transaction_item
+    -- rows, captured ONCE — the very first time Payment's Edit Items feature is
+    -- confirmed for this transaction. Exists so "Revert All" can restore all the
+    -- way back to what Receiver originally listed, even across multiple Confirm
+    -- Edits calls and modal reopens.
+    -- Cleared back to NULL once the transaction successfully completes payment
+    -- (POST /{id}/pay) — no longer needed once Payment phase is done for this
+    -- transaction.
+
     created_at            TIMESTAMPTZ              NOT NULL DEFAULT NOW(),
     updated_at            TIMESTAMPTZ              NOT NULL DEFAULT NOW()
 );

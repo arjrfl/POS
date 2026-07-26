@@ -257,6 +257,27 @@ async def edit_transaction_items(
     return {"data": transaction, "error": None}
 
 
+@router.post("/{transaction_id}/revert-items", dependencies=[Depends(require_role("payment"))])
+async def revert_transaction_items(
+    transaction_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        transaction = await transaction_service.revert_transaction_items(
+            db, transaction_id, current_user["user_id"]
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except transaction_service.ItemEditValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    except transaction_service.QueuePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except transaction_service.QueueConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return {"data": transaction, "error": None}
+
+
 # This endpoint still fully supports transaction_type == 'refund' transactions
 # (cash/online payout through the normal payment flow) — intentionally left in
 # place, but Payment's UI no longer opens PaymentModal for refund children

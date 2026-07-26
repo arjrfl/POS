@@ -200,6 +200,12 @@ class TransactionResponse(BaseModel):
     # filled in by _build_transaction_response afterward. None for everything
     # else (originals have no parent).
     parent: TransactionParentResponse | None = None
+    # Whether a Receiver-original items snapshot exists for this transaction
+    # (original_items_snapshot IS NOT NULL) — drives Edit Items' Revert All
+    # enabled state and branching. The raw snapshot JSON itself is never
+    # exposed; no matching ORM attribute for this derived flag, filled in by
+    # _build_transaction_response.
+    has_items_snapshot: bool = False
     transaction_type: TransactionTypeEnum
     transaction_status: TransactionStatusEnum
     customer_type: CustomerTypeEnum

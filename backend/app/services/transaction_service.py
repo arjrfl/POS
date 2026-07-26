@@ -199,6 +199,9 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
         response.draft_credit_sources_json = response.payment_drafts[0].draft_credit_sources_json
     response.parent_order_number = transaction.parent.order_number if transaction.parent else None
     response.parent = _build_parent_summary(transaction.parent) if transaction.parent else None
+    # Presence only — the raw snapshot JSON itself is never exposed to the
+    # frontend; revert_transaction_items reads it server-side only.
+    response.has_items_snapshot = transaction.original_items_snapshot is not None
 
     # Admin Transaction Details modal fields — joins across relationships already
     # eager-loaded (lazy="selectin") on SalesTransaction, so no extra queries here.
@@ -1092,6 +1095,30 @@ async def edit_transaction_items(
         raise ItemEditValidationError("A transaction must have at least one item remaining")
 
     try:
+        # Captured ONCE per transaction — the very first time this feature is
+        # confirmed — and never overwritten afterward, so it always reflects
+        # Receiver's original list rather than any intermediate Payment-edited
+        # version. Lets Revert All restore all the way back, even across
+        # multiple Confirm Edits calls and modal reopens (see
+        # revert_transaction_items).
+        if transaction.original_items_snapshot is None:
+            transaction.original_items_snapshot = json.dumps(
+                [
+                    {
+                        "product_id": item.product_id,
+                        "quantity_kg": str(item.quantity_kg) if item.quantity_kg is not None else None,
+                        "estimated_weight_kg": (
+                            str(item.estimated_weight_kg) if item.estimated_weight_kg is not None else None
+                        ),
+                        "unit_count": item.unit_count,
+                        "unit_price": str(item.unit_price) if item.unit_price is not None else None,
+                        "subtotal": str(item.subtotal),
+                    }
+                    for item in items_by_id.values()
+                    if item.item_type == ItemTypeEnum.product
+                ]
+            )
+
         for item_id in deleted_ids:
             await db.delete(items_by_id[item_id])
 
@@ -1111,6 +1138,77 @@ async def edit_transaction_items(
         # balance_settled/credit_applied are staged separately by the Pay modal,
         # not touched by this feature — total_due is recomputed off the same
         # formula create_transaction/process_payment already use for walk_in.
+        transaction.estimated_amount = estimated_amount
+        transaction.total_due = estimated_amount + transaction.balance_settled - transaction.credit_applied
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    rooms, event = transaction_items_changed(
+        transaction_id=transaction.id, transaction_status=transaction.transaction_status.value
+    )
+    await manager.broadcast_multi(rooms, event)
+
+    return await get_transaction(db, transaction.id)
+
+
+# Same gating as edit_transaction_items (only original/walk_in/pending_payment,
+# grabbed by the requesting user) plus one extra check: a snapshot must actually
+# exist to revert to. No audit log entry — item edits at Payment are still
+# deferred (see the TODO above edit_transaction_items).
+async def revert_transaction_items(
+    db: AsyncSession, transaction_id: int, payment_user_id: int
+) -> TransactionResponse:
+    transaction = await db.get(SalesTransaction, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    if transaction.transaction_type != TransactionTypeEnum.original:
+        raise ItemEditValidationError("Only original transactions can have items reverted at Payment")
+    if transaction.customer_type != CustomerTypeEnum.walk_in:
+        raise ItemEditValidationError("Only walk_in transactions can have items reverted at Payment")
+    if transaction.transaction_status != TransactionStatusEnum.pending_payment:
+        raise QueueConflictError(f"transaction {transaction_id} is not pending payment")
+    if transaction.queue_status != QueueStatusEnum.processing:
+        raise QueueConflictError(f"transaction {transaction_id} has not been grabbed for payment")
+    if transaction.processing_by_user_id != payment_user_id:
+        raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
+
+    if transaction.original_items_snapshot is None:
+        raise ItemEditValidationError("No edits have been made yet — nothing to revert.")
+
+    snapshot_items = json.loads(transaction.original_items_snapshot)
+    product_items = [item for item in transaction.items if item.item_type == ItemTypeEnum.product]
+
+    try:
+        for item in product_items:
+            await db.delete(item)
+
+        estimated_amount = Decimal("0.00")
+        for entry in snapshot_items:
+            subtotal = Decimal(entry["subtotal"])
+            db.add(
+                TransactionItem(
+                    transaction_id=transaction.id,
+                    item_type=ItemTypeEnum.product,
+                    product_id=entry["product_id"],
+                    unit_count=entry["unit_count"],
+                    estimated_weight_kg=(
+                        Decimal(entry["estimated_weight_kg"]) if entry["estimated_weight_kg"] is not None else None
+                    ),
+                    quantity_kg=Decimal(entry["quantity_kg"]) if entry["quantity_kg"] is not None else None,
+                    unit_price=Decimal(entry["unit_price"]) if entry["unit_price"] is not None else None,
+                    subtotal=subtotal,
+                )
+            )
+            estimated_amount += subtotal
+
+        # Same recompute formula edit_transaction_items uses — original_items_snapshot
+        # is deliberately left intact (not cleared) here; the transaction may still be
+        # edited again before payment completes (see process_payment for where it's
+        # finally cleared).
         transaction.estimated_amount = estimated_amount
         transaction.total_due = estimated_amount + transaction.balance_settled - transaction.credit_applied
 
@@ -1412,6 +1510,12 @@ async def process_payment(
         transaction.change_given = cash_tendered - cash_portion
         transaction.payment_user_id = payment_user_id
         transaction.payment_at = datetime.now(timezone.utc)
+
+        # Payment phase is done for this transaction (covers both full and
+        # partial payment) — the snapshot backing Edit Items' Revert All is no
+        # longer needed. Safe no-op if it was never set (transaction was never
+        # edited during Payment).
+        transaction.original_items_snapshot = None
 
         if transaction.change_given > 0 and not data.change_claimed:
             transaction.change_claimed = False

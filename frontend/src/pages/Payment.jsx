@@ -143,6 +143,12 @@ export default function Payment() {
     showToast('Items updated', 'success')
   }
 
+  const handleItemsReverted = (updatedTransaction) => {
+    setSelectedTransaction(updatedTransaction)
+    refreshQueue()
+    showToast('Items reverted to original', 'success')
+  }
+
   const handleSaveAsCredit = async () => {
     try {
       await post(`/transactions/${selectedTransaction.id}/resolve-as-credit`)
@@ -220,6 +226,7 @@ export default function Payment() {
                 onPark={handlePark}
                 onSaveAsCredit={handleSaveAsCredit}
                 onItemsUpdated={handleItemsUpdated}
+                onItemsReverted={handleItemsReverted}
               />
             </div>
           </div>
