@@ -118,6 +118,12 @@ class TransactionItemResponse(BaseModel):
     reference_order_number: str | None = None
     subtotal: Decimal
     actual_subtotal: Decimal
+    # Diffed against original_items_snapshot at read time (see
+    # _apply_items_snapshot_diff) — only ever true for product items on an
+    # original/walk_in transaction that has a snapshot; False for everything
+    # else, including while has_items_snapshot is False (nothing to diff yet).
+    is_new_since_snapshot: bool = False
+    is_updated_since_snapshot: bool = False
 
 
 class TransactionParentItemResponse(BaseModel):
@@ -210,6 +216,11 @@ class TransactionResponse(BaseModel):
     # exposed; no matching ORM attribute for this derived flag, filled in by
     # _build_transaction_response.
     has_items_snapshot: bool = False
+    # True when any current product item differs from (or is missing/added
+    # relative to) original_items_snapshot — see _apply_items_snapshot_diff.
+    # Always False when has_items_snapshot is False. Drives Edit Items' Revert
+    # All enabled state alongside local session changes.
+    items_modified_since_snapshot: bool = False
     transaction_type: TransactionTypeEnum
     transaction_status: TransactionStatusEnum
     customer_type: CustomerTypeEnum

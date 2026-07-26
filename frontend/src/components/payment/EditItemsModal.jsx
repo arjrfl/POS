@@ -57,6 +57,11 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
   // in `originalItems`, so the "which baseline rows are missing" diff that
   // derives deletedItems can't see them.
   const [removedNewItems, setRemovedNewItems] = useState([])
+  // ids of existing items Applied or Reverted (per-item, not Revert All) this
+  // session — lets isItemUpdated ignore the backend's is_updated_since_snapshot
+  // once a row has actually been edited locally, so editing a value back to
+  // match correctly clears the amber highlight (see isItemUpdated above).
+  const [touchedItemIds, setTouchedItemIds] = useState(new Set())
 
   // Re-derive the working list AND the baseline from `items` as it stands
   // right now, every time this modal opens — `items` reflects whatever
@@ -83,6 +88,7 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
     setRevertError(null)
     setShowAddItemModal(false)
     setRemovedNewItems([])
+    setTouchedItemIds(new Set())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -97,6 +103,30 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
       item.quantity_kg !== original.quantity_kg
     )
   }
+
+  // Green "added" takes precedence over amber "updated" — a row added this
+  // session (isNewItem, purely local) or one the backend reports as added
+  // since the snapshot (is_new_since_snapshot, survives reopen/reload) is
+  // never also shown as merely "updated".
+  const isItemNew = (item) => Boolean(item.isNewItem || item.is_new_since_snapshot)
+
+  // Amber "updated": either a local pre-confirm edit this session
+  // (isItemModified, diffed against this session's own load-time baseline),
+  // or the backend's own diff of the persisted values against
+  // original_items_snapshot (is_updated_since_snapshot) — the latter is what
+  // keeps the highlight visible after Confirm Edits + reopen, since local
+  // diffing alone only ever sees THIS session's baseline.
+  //
+  // is_updated_since_snapshot is a fixed snapshot of "was this different when
+  // the modal opened" — it never recomputes as the user types. Once a row has
+  // actually been edited this session (touchedItemIds), isItemModified alone
+  // decides amber, so editing a value back to match this session's own
+  // baseline correctly clears the highlight instead of the stale backend flag
+  // keeping it stuck on forever. Untouched rows still fall back to the
+  // backend flag (isItemModified is always false for those anyway).
+  const isItemUpdated = (item) =>
+    !isItemNew(item) &&
+    (touchedItemIds.has(item.id) ? isItemModified(item) : isItemModified(item) || item.is_updated_since_snapshot)
 
   const startEditing = (item) => {
     setEditingItemId(item.id)
@@ -143,6 +173,9 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
             },
       ),
     )
+    if (!editingItem.isNewItem) {
+      setTouchedItemIds((prev) => new Set(prev).add(editingItemId))
+    }
     stopEditing()
   }
 
@@ -151,6 +184,15 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
     const original = originalItems.find((o) => o.id === editingItem.id)
     if (!original) return
     setLocalItems((prev) => prev.map((item) => (item.id !== editingItemId ? item : original)))
+    // Back to exactly this session's baseline — no longer "touched" for
+    // amber purposes, so a row the backend flagged as updated-since-snapshot
+    // correctly goes back to showing that (rather than looking unmodified
+    // just because this session's own edit was undone).
+    setTouchedItemIds((prev) => {
+      const next = new Set(prev)
+      next.delete(editingItemId)
+      return next
+    })
     // Panel stays open on this item, showing the just-reverted values —
     // unlike Apply/Cancel, Revert doesn't close back to the placeholder.
     setEditWeight(original.estimated_weight_kg != null ? String(original.estimated_weight_kg) : '')
@@ -220,12 +262,15 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
     )
   }
 
-  // Enabled whenever there's anything to revert to: either this session made
-  // changes (local-only revert, no persisted snapshot yet), or a snapshot
-  // already exists from a prior Confirm Edits this Payment-phase visit (even
-  // if nothing changed THIS session — that prior confirm already diverged
-  // from Receiver's original list).
-  const canRevertAll = hasAnySessionChanges || transaction.has_items_snapshot
+  // Enabled whenever there's actually something to revert: either this
+  // session made local changes (not yet sent to the backend), or a snapshot
+  // exists AND the persisted items currently differ from it
+  // (items_modified_since_snapshot, computed server-side — see
+  // _apply_items_snapshot_diff). has_items_snapshot alone is NOT enough:
+  // right after a revert (or on a fresh reopen where persisted items already
+  // match the snapshot), there's nothing left to revert even though a
+  // snapshot exists.
+  const canRevertAll = hasAnySessionChanges || (transaction.has_items_snapshot && transaction.items_modified_since_snapshot)
 
   // Local-only revert — no persisted snapshot exists yet, so there's nothing
   // for the backend to restore from. originalItems is this session's fresh
@@ -325,14 +370,16 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
                   <tbody>
                     {localItems.map((item) => {
                       // "Currently editing" takes visual precedence over the
-                      // persistent "modified" highlight when both apply to the
-                      // same row.
+                      // persistent added/updated highlight when both apply to
+                      // the same row.
                       const isEditing = item.id === editingItemId
                       const rowHighlight = isEditing
                         ? 'bg-blue-50'
-                        : isItemModified(item)
-                          ? 'bg-amber-50 border-l-4 border-l-amber-400'
-                          : ''
+                        : isItemNew(item)
+                          ? 'bg-green-50 border-l-4 border-l-green-400'
+                          : isItemUpdated(item)
+                            ? 'bg-amber-50 border-l-4 border-l-amber-400'
+                            : ''
                       return (
                         <tr
                           key={item.id}

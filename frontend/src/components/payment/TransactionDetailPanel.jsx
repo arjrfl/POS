@@ -42,6 +42,8 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCre
         quantity_kg: Number(item.quantity_kg),
         unit_price: Number(item.unit_price),
         subtotal: Number(item.subtotal),
+        is_new_since_snapshot: item.is_new_since_snapshot,
+        is_updated_since_snapshot: item.is_updated_since_snapshot,
       }
     })
   }, [transaction, productsById])

@@ -182,6 +182,63 @@ def _credit_usage_source_order_numbers(
     return order_numbers
 
 
+def _apply_items_snapshot_diff(transaction: SalesTransaction, response: TransactionResponse) -> None:
+    """Diffs current product items against original_items_snapshot (if any) so the
+    Edit Items modal can highlight rows added/changed since the snapshot was taken —
+    without the raw snapshot ever reaching the frontend (same rule as
+    has_items_snapshot). Snapshot entries captured before "id" was added to the
+    snapshot shape (see edit_transaction_items) simply won't match anything by id,
+    so those older rows just don't get highlighted — nothing here rewrites them.
+    """
+    for item_response in response.items:
+        item_response.is_new_since_snapshot = False
+        item_response.is_updated_since_snapshot = False
+
+    if not response.has_items_snapshot:
+        response.items_modified_since_snapshot = False
+        return
+
+    snapshot_by_id = {
+        entry["id"]: entry for entry in json.loads(transaction.original_items_snapshot) if "id" in entry
+    }
+
+    any_modified = False
+    current_ids = set()
+    for item_response in response.items:
+        if item_response.item_type != ItemTypeEnum.product:
+            continue
+        current_ids.add(item_response.id)
+        snapshot_entry = snapshot_by_id.get(item_response.id)
+        if snapshot_entry is None:
+            item_response.is_new_since_snapshot = True
+            any_modified = True
+            continue
+
+        snapshot_unit_count = snapshot_entry.get("unit_count")
+        snapshot_weight = (
+            Decimal(snapshot_entry["estimated_weight_kg"])
+            if snapshot_entry.get("estimated_weight_kg") is not None
+            else None
+        )
+        snapshot_qty = (
+            Decimal(snapshot_entry["quantity_kg"]) if snapshot_entry.get("quantity_kg") is not None else None
+        )
+        if (
+            item_response.unit_count != snapshot_unit_count
+            or item_response.estimated_weight_kg != snapshot_weight
+            or item_response.quantity_kg != snapshot_qty
+        ):
+            item_response.is_updated_since_snapshot = True
+            any_modified = True
+
+    # A snapshot id missing from the current items means it was deleted in a
+    # prior confirmed edit — no current row to highlight, but it still counts
+    # as "modified since snapshot" at the transaction level.
+    deleted_since_snapshot = bool(set(snapshot_by_id) - current_ids)
+
+    response.items_modified_since_snapshot = any_modified or deleted_since_snapshot
+
+
 def _build_transaction_response(transaction: SalesTransaction) -> TransactionResponse:
     # payment_details (the relationship) loads every payment_detail row regardless
     # of is_draft — split it here so confirmed and draft entries are always kept
@@ -202,6 +259,7 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
     # Presence only — the raw snapshot JSON itself is never exposed to the
     # frontend; revert_transaction_items reads it server-side only.
     response.has_items_snapshot = transaction.original_items_snapshot is not None
+    _apply_items_snapshot_diff(transaction, response)
 
     # Admin Transaction Details modal fields — joins across relationships already
     # eager-loaded (lazy="selectin") on SalesTransaction, so no extra queries here.
@@ -1106,6 +1164,11 @@ async def edit_transaction_items(
             transaction.original_items_snapshot = json.dumps(
                 [
                     {
+                        # kept so a later read-time diff (_apply_items_snapshot_diff)
+                        # can tell which current rows are the same physical item vs.
+                        # added afterward — revert_transaction_items itself doesn't
+                        # need this (it deletes-and-reinserts wholesale by product_id).
+                        "id": item.id,
                         "product_id": item.product_id,
                         "quantity_kg": str(item.quantity_kg) if item.quantity_kg is not None else None,
                         "estimated_weight_kg": (
@@ -1214,28 +1277,39 @@ async def revert_transaction_items(
             await db.delete(item)
 
         estimated_amount = Decimal("0.00")
+        reinserted = []
         for entry in snapshot_items:
             subtotal = Decimal(entry["subtotal"])
-            db.add(
-                TransactionItem(
-                    transaction_id=transaction.id,
-                    item_type=ItemTypeEnum.product,
-                    product_id=entry["product_id"],
-                    unit_count=entry["unit_count"],
-                    estimated_weight_kg=(
-                        Decimal(entry["estimated_weight_kg"]) if entry["estimated_weight_kg"] is not None else None
-                    ),
-                    quantity_kg=Decimal(entry["quantity_kg"]) if entry["quantity_kg"] is not None else None,
-                    unit_price=Decimal(entry["unit_price"]) if entry["unit_price"] is not None else None,
-                    subtotal=subtotal,
-                )
+            new_item = TransactionItem(
+                transaction_id=transaction.id,
+                item_type=ItemTypeEnum.product,
+                product_id=entry["product_id"],
+                unit_count=entry["unit_count"],
+                estimated_weight_kg=(
+                    Decimal(entry["estimated_weight_kg"]) if entry["estimated_weight_kg"] is not None else None
+                ),
+                quantity_kg=Decimal(entry["quantity_kg"]) if entry["quantity_kg"] is not None else None,
+                unit_price=Decimal(entry["unit_price"]) if entry["unit_price"] is not None else None,
+                subtotal=subtotal,
             )
+            db.add(new_item)
+            reinserted.append((new_item, entry))
             estimated_amount += subtotal
 
-        # Same recompute formula edit_transaction_items uses — original_items_snapshot
-        # is deliberately left intact (not cleared) here; the transaction may still be
-        # edited again before payment completes (see process_payment for where it's
-        # finally cleared).
+        # The reinserted rows above get brand new transaction_item ids (delete +
+        # insert, not an update-in-place) — flush to assign them, then re-key the
+        # snapshot to those new ids. Otherwise _apply_items_snapshot_diff would
+        # never find a matching current row for any snapshot entry again (the
+        # old ids are gone), and every item would look "added since snapshot"
+        # forever after a single revert. The snapshot's actual values are
+        # untouched — restoring to it is exactly what just happened — only
+        # which row id maps to which entry needs updating.
+        await db.flush()
+        transaction.original_items_snapshot = json.dumps(
+            [{**entry, "id": new_item.id} for new_item, entry in reinserted]
+        )
+
+        # Same recompute formula edit_transaction_items uses.
         transaction.estimated_amount = estimated_amount
         transaction.total_due = estimated_amount + transaction.balance_settled - transaction.credit_applied
 
