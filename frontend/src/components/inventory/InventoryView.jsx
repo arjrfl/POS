@@ -9,7 +9,7 @@ import { Badge } from '../ui/Badge'
 import { AdjustStockModal } from './AdjustStockModal'
 import { ChangeHistoryModal } from './ChangeHistoryModal'
 import { DeleteProductModal } from './DeleteProductModal'
-import { formatCurrency, formatWeight } from '../../utils/format'
+import { formatCurrency, formatWeight, formatStock } from '../../utils/format'
 
 function emptyForm() {
   return { product_name: '', brand_name: '', unit_weight_kg: '', unit_price_php: '', stock_quantity: '0' }
@@ -243,7 +243,7 @@ function ProductRow({ product, onEdit, onAdjustStock, onDelete, confirmingToggle
       <td className="px-4 py-2 text-sm text-right tabular-nums text-gray-800">
         {formatCurrency(product.unit_price_php)}
       </td>
-      <td className="px-4 py-2 text-sm text-right tabular-nums text-gray-800">{Number(product.stock_quantity)}</td>
+      <td className="px-4 py-2 text-sm text-right tabular-nums text-gray-800">{formatStock(product.stock_quantity)}</td>
       <td className="px-4 py-2 text-center">
         <Badge status={product.product_status} />
       </td>

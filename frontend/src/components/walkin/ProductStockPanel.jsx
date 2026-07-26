@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useProducts } from '../../hooks/useProducts'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
-import { formatCurrency, formatWeight } from '../../utils/format'
+import { formatCurrency, formatStock, formatWeight } from '../../utils/format'
 
 export function ProductStockPanel() {
   const [searchInput, setSearchInput] = useState('')
@@ -44,22 +44,23 @@ export function ProductStockPanel() {
           <table className="w-full table-fixed text-sm">
             <thead className="sticky top-0 z-10 bg-gray-100">
               <tr className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-300">
-                <th className="w-2/5 py-2 px-2">Product Name</th>
-                <th className="w-1/5 py-2 px-2">Brand</th>
-                <th className="w-1/5 py-2 px-2">Unit Price</th>
-                <th className="w-1/5 py-2 px-2">Stock</th>
+                <th className="w-[30%] py-2 px-2">Product Name</th>
+                <th className="w-[18%] py-2 px-2">Brand</th>
+                <th className="w-[16%] py-2 px-2">Unit Weight</th>
+                <th className="w-[18%] py-2 px-2">Unit Price</th>
+                <th className="w-[18%] py-2 px-2">Stock</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={4} className="py-4 text-center text-gray-400">
+                  <td colSpan={5} className="py-4 text-center text-gray-400">
                     Loading...
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="py-4 text-center text-gray-400 italic">
+                  <td colSpan={5} className="py-4 text-center text-gray-400 italic">
                     No products found
                   </td>
                 </tr>
@@ -70,9 +71,10 @@ export function ProductStockPanel() {
                     <tr key={product.id} className="border-b border-gray-200 last:border-b-0">
                       <td className="py-2 px-2 align-top font-semibold text-gray-900">{product.product_name}</td>
                       <td className="py-2 px-2 align-top text-gray-500">{product.brand_name}</td>
+                      <td className="py-2 px-2 align-top text-gray-700">{formatWeight(product.unit_weight_kg)}</td>
                       <td className="py-2 px-2 align-top text-gray-700">{formatCurrency(product.unit_price_php)}</td>
                       <td className={`py-2 px-2 align-top ${outOfStock ? 'text-red-600 font-semibold' : 'text-gray-700'}`}>
-                        {formatWeight(product.stock_quantity)}
+                        {formatStock(product.stock_quantity)}
                       </td>
                     </tr>
                   )
