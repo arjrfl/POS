@@ -602,11 +602,11 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
           setConfirmingRevertAll(false)
           setRevertError(null)
         }}
-        title="Revert all items?"
+        title="Revert All Items?"
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-gray-700">
-            This will restore all items back to what was originally listed for this transaction.
+            This will undo all changes and restore the original items for this transaction. This cannot be undone.
           </p>
           <div className="flex gap-2">
             <Button
