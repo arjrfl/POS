@@ -10,6 +10,7 @@ const ROLE_ROOM = {
   payment: 'payment-queue',
   releasing: 'releasing-queue',
   admin: 'admin',
+  receiver: 'receiver',
 }
 
 export function useWebSocket() {

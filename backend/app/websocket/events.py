@@ -66,7 +66,7 @@ def transaction_items_changed(transaction_id: int, transaction_status: str) -> t
     return _rooms_for_status(transaction_status), event
 
 
-PRODUCT_ROOMS = ["releasing-queue", "admin"]
+PRODUCT_ROOMS = ["releasing-queue", "admin", "receiver"]
 
 
 def product_changed(product_id: int, change_type: str) -> tuple[list[str], dict]:
