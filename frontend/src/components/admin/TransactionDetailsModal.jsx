@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { FullScreenModal } from '../ui/FullScreenModal'
+import { Modal } from '../ui/Modal'
 import { Badge } from '../ui/Badge'
 import { get } from '../../services/api'
 import { useCustomer } from '../../hooks/useCustomer'
@@ -166,13 +167,16 @@ function OriginalAmountSummary({ t, hasLinkedAdjustment }) {
 
 // Merged role/name/timestamp row — a phase only ever shows up here once it's
 // actually happened (timestamp not null), so an in-progress or voided-early
-// transaction simply has fewer rows rather than blank ones.
-function RoleRow({ role, name, timestamp }) {
+// transaction simply has fewer rows rather than blank ones. `extra` (optional)
+// renders between the role label and the name — used by HandledByBlock's
+// Payment row to place the "Order Items Update Logs" button.
+function RoleRow({ role, name, timestamp, extra }) {
   if (!timestamp) return null
   return (
     <div className="flex items-center justify-between gap-3 text-sm py-0.5">
       <span className="text-gray-500 shrink-0">{role}</span>
       <span className="flex items-baseline gap-2 min-w-0">
+        {extra}
         <span className="text-gray-900 truncate">{name ?? '—'}</span>
         <span className="text-gray-500 text-xs shrink-0">{formatDateTime(timestamp)}</span>
       </span>
@@ -180,15 +184,35 @@ function RoleRow({ role, name, timestamp }) {
   )
 }
 
+// Small, subtle ghost-style button shown next to the Payment row only, when
+// items_edited_at_payment is true — edits only ever happen at Payment (see
+// edit_transaction_items), never at Receiver or Releasing.
+function OrderItemsUpdateLogsButton({ onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="shrink-0 text-xs text-gray-500 border border-gray-300 rounded px-1.5 py-0.5 hover:bg-gray-100 hover:text-gray-700"
+    >
+      Order Items Update Logs
+    </button>
+  )
+}
+
 // TODO: re-enable when working on Linked Adjustment Transaction details
 const SHOW_LINKED_CHILD_SECTION = false
 
-function HandledByBlock({ t }) {
+function HandledByBlock({ t, onShowItemLogs }) {
   if (!t.walkin_at && !t.payment_at && !t.releasing_at) return null
   return (
     <div className="flex flex-col">
       <RoleRow role="Receiver" name={t.walkin_user_name} timestamp={t.walkin_at} />
-      <RoleRow role="Payment" name={t.payment_user_name} timestamp={t.payment_at} />
+      <RoleRow
+        role="Payment"
+        name={t.payment_user_name}
+        timestamp={t.payment_at}
+        extra={t.items_edited_at_payment && <OrderItemsUpdateLogsButton onClick={onShowItemLogs} />}
+      />
       <RoleRow role="Releasing" name={t.releasing_user_name} timestamp={t.releasing_at} />
     </div>
   )
@@ -254,7 +278,7 @@ function LinkedOrderLabel({ label, targetTxn, onNavigate }) {
 // transaction, always shown) plus Section B (a linked adjustment/refund
 // child, only when one exists in the chain). Separate from the left-side
 // Article Table, which keeps its own existing rendering untouched.
-function DetailsColumn({ originalTxn, linkedChildTxn, onNavigate }) {
+function DetailsColumn({ originalTxn, linkedChildTxn, onNavigate, onShowItemLogs }) {
   const { data: customer } = useCustomer(originalTxn?.customer_id)
   if (!originalTxn) return null
 
@@ -273,7 +297,7 @@ function DetailsColumn({ originalTxn, linkedChildTxn, onNavigate }) {
     </div>,
     <div key="handled-by">
       <SectionHeading>Handled By</SectionHeading>
-      <HandledByBlock t={originalTxn} />
+      <HandledByBlock t={originalTxn} onShowItemLogs={onShowItemLogs} />
     </div>,
     originalTxn.payment_entries?.length > 0 && (
       <div key="payment-entries">
@@ -683,6 +707,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
   const [chain, setChain] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [itemLogsOpen, setItemLogsOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -861,12 +886,21 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                   onNavigate={onNavigate}
                 />
               ) : (
-                <DetailsColumn originalTxn={originalTxn} linkedChildTxn={linkedChildTxn} onNavigate={onNavigate} />
+                <DetailsColumn
+                  originalTxn={originalTxn}
+                  linkedChildTxn={linkedChildTxn}
+                  onNavigate={onNavigate}
+                  onShowItemLogs={() => setItemLogsOpen(true)}
+                />
               )}
             </div>
           </div>
         )}
       </div>
+
+      <Modal open={itemLogsOpen} onClose={() => setItemLogsOpen(false)} title="Order Items Update Logs">
+        <p className="text-sm text-gray-500">Log details coming soon.</p>
+      </Modal>
     </FullScreenModal>
   )
 }

@@ -812,6 +812,7 @@ def _build_history_item(transaction: SalesTransaction) -> TransactionHistoryItem
         parent_order_number=transaction.parent.order_number if transaction.parent else None,
         finished_at=transaction.updated_at,
         created_at=transaction.walkin_at or transaction.created_at,
+        items_edited_at_payment=transaction.items_edited_at_payment,
     )
 
 
@@ -1182,6 +1183,11 @@ async def edit_transaction_items(
                     if item.item_type == ItemTypeEnum.product
                 ]
             )
+
+        # One-way flag — never cleared, even though original_items_snapshot
+        # itself gets nulled out once payment completes (see process_payment).
+        # Fine to set again on every subsequent confirmed edit; idempotent.
+        transaction.items_edited_at_payment = True
 
         for item_id in deleted_ids:
             await db.delete(items_by_id[item_id])

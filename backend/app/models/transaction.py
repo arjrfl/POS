@@ -182,6 +182,13 @@ class SalesTransaction(Base):
     # payment (POST /{id}/pay).
     original_items_snapshot: Mapped[Optional[str]] = mapped_column(Text)
 
+    # Set to TRUE the first time a Payment-phase item edit is confirmed (same
+    # moment original_items_snapshot is first captured). Unlike that snapshot,
+    # this flag is NEVER cleared or reset — a permanent historical marker that
+    # survives /pay, used to show the "Order Items Update Logs" button in Admin
+    # > Transaction History even after the snapshot itself has been nulled out.
+    items_edited_at_payment: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

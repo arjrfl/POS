@@ -221,6 +221,12 @@ class TransactionResponse(BaseModel):
     # Always False when has_items_snapshot is False. Drives Edit Items' Revert
     # All enabled state alongside local session changes.
     items_modified_since_snapshot: bool = False
+    # Permanent marker — TRUE if a Payment-phase item edit was ever confirmed
+    # for this transaction, even after original_items_snapshot/has_items_snapshot
+    # have gone back to None/False post-payment. Maps directly to the ORM
+    # column of the same name, so model_validate populates it automatically.
+    # Drives the "Order Items Update Logs" button in Admin > Transaction History.
+    items_edited_at_payment: bool = False
     transaction_type: TransactionTypeEnum
     transaction_status: TransactionStatusEnum
     customer_type: CustomerTypeEnum
@@ -330,6 +336,10 @@ class TransactionHistoryItem(BaseModel):
     parent_order_number: str | None
     finished_at: datetime
     created_at: datetime
+    # See TransactionResponse.items_edited_at_payment — carried here too since
+    # this is a deliberately stripped-down schema (see class docstring) that
+    # doesn't otherwise inherit from TransactionResponse.
+    items_edited_at_payment: bool = False
 
 
 # =============================================================

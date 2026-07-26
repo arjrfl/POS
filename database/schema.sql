@@ -366,6 +366,14 @@ CREATE TABLE sales_transaction (
     -- (POST /{id}/pay) — no longer needed once Payment phase is done for this
     -- transaction.
 
+    items_edited_at_payment BOOLEAN                NOT NULL DEFAULT FALSE,
+    -- Set to TRUE the first time a Payment-phase item edit is confirmed
+    -- (same moment original_items_snapshot is first captured).
+    -- Unlike original_items_snapshot, this flag is NEVER cleared or reset —
+    -- it is a permanent historical marker that survives /pay, used to show
+    -- the "Order Items Update Logs" button in Admin > Transaction History
+    -- even after the snapshot itself has been nulled out.
+
     created_at            TIMESTAMPTZ              NOT NULL DEFAULT NOW(),
     updated_at            TIMESTAMPTZ              NOT NULL DEFAULT NOW()
 );
