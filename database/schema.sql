@@ -374,6 +374,20 @@ CREATE TABLE sales_transaction (
     -- the "Order Items Update Logs" button in Admin > Transaction History
     -- even after the snapshot itself has been nulled out.
 
+    original_items_snapshot_archive TEXT           NULL,
+    -- Permanent, NEVER-cleared copy of original_items_snapshot's content,
+    -- captured at the exact same moment (first successful Payment-phase
+    -- Confirm Edits), using the same JSON shape.
+    -- Unlike original_items_snapshot (which is cleared to NULL on /pay for
+    -- its own working purpose — Revert Items — untouched by this column),
+    -- this column exists solely so completed transactions can still show
+    -- their pre-edit item list in Admin > Transaction History, long after
+    -- the working snapshot is gone.
+    -- NULL for: transactions with no Payment-phase item edits, AND
+    -- transactions edited before this column existed (pre-migration —
+    -- items_edited_at_payment may be TRUE with this still NULL; frontend
+    -- must handle that gracefully).
+
     created_at            TIMESTAMPTZ              NOT NULL DEFAULT NOW(),
     updated_at            TIMESTAMPTZ              NOT NULL DEFAULT NOW()
 );

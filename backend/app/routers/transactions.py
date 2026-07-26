@@ -148,6 +148,15 @@ async def get_transaction_chain(transaction_id: int, db: AsyncSession = Depends(
     return {"data": chain, "error": None}
 
 
+@router.get("/{transaction_id}/item-edit-history", dependencies=[Depends(require_role("admin"))])
+async def get_item_edit_history(transaction_id: int, db: AsyncSession = Depends(get_db)):
+    try:
+        history = await transaction_service.get_item_edit_history(db, transaction_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    return {"data": history, "error": None}
+
+
 @router.post("/{transaction_id}/grab", dependencies=[Depends(require_role("payment", "releasing", "receiver"))])
 async def grab_transaction(
     transaction_id: int,

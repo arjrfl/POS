@@ -189,6 +189,18 @@ class SalesTransaction(Base):
     # > Transaction History even after the snapshot itself has been nulled out.
     items_edited_at_payment: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
 
+    # Permanent, NEVER-cleared copy of original_items_snapshot's content,
+    # captured at the exact same moment (first successful Payment-phase
+    # Confirm Edits), using the same JSON shape. Unlike original_items_snapshot
+    # (which is cleared to NULL on /pay for its own working purpose — Revert
+    # Items — untouched by this column), this exists solely so completed
+    # transactions can still show their pre-edit item list in Admin >
+    # Transaction History, long after the working snapshot is gone.
+    # NULL for: transactions with no Payment-phase item edits, AND
+    # transactions edited before this column existed (pre-migration —
+    # items_edited_at_payment may be TRUE with this still NULL).
+    original_items_snapshot_archive: Mapped[Optional[str]] = mapped_column(Text)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 

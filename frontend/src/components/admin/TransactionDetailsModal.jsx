@@ -703,6 +703,140 @@ function AdjustedItemsSection({ items }) {
   )
 }
 
+// One product-item row for the Order Items Update Logs modal's two tables —
+// same QTY|UNIT|ARTICLES|UNIT PRICE|AMOUNT convention as ArticleRows, but a
+// plain listing (no id, no actual_* variance fields, no diffing/highlighting
+// — this data has neither), so it's a small dedicated row rather than
+// reusing ArticleRows/useArticleRows.
+function ItemEditHistoryRow({ item }) {
+  return (
+    <tr className="border-b border-gray-100 last:border-b-0 align-top">
+      <td className={`py-2 pr-2 text-gray-700 text-center ${ARTICLE_ROW_COLUMN_WIDTHS[0]}`}>
+        {item.quantity_kg != null ? Number(item.quantity_kg).toFixed(3) : '—'}
+      </td>
+      <td className={`py-2 pr-2 text-gray-700 text-center ${ARTICLE_ROW_COLUMN_WIDTHS[1]}`}>
+        {item.unit_count ?? '—'}
+      </td>
+      <td className={`py-2 pr-2 text-left ${ARTICLE_ROW_COLUMN_WIDTHS[2]}`}>
+        <div className="font-medium text-gray-900">{item.product_name ?? 'Unknown product'}</div>
+        {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
+      </td>
+      <td className={`py-2 pr-2 text-gray-700 text-center ${ARTICLE_ROW_COLUMN_WIDTHS[3]}`}>
+        {formatCurrency(item.unit_price)}
+      </td>
+      <td className={`py-2 pr-2 font-medium text-gray-900 text-center ${ARTICLE_ROW_COLUMN_WIDTHS[4]}`}>
+        {formatCurrency(item.subtotal)}
+      </td>
+    </tr>
+  )
+}
+
+// One side of the two-table comparison — items === null renders the
+// "not recorded" message in place of a table (only reachable for the
+// Original side, on a transaction edited before original_items_snapshot_archive
+// existed — see ItemEditHistoryResponse).
+function ItemEditHistoryTable({ title, items, notRecordedMessage }) {
+  return (
+    <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0">
+      <span className="text-sm font-medium">{title}</span>
+      <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
+        {items === null ? (
+          <p className="text-sm text-gray-500 p-3">{notRecordedMessage}</p>
+        ) : (
+          <table className="w-full table-fixed text-sm">
+            <thead className="sticky top-0 bg-gray-100 border-b border-gray-400">
+              <tr>
+                {ARTICLE_TABLE_COLUMNS.map((column, index) => (
+                  <th
+                    key={column}
+                    className={`px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 ${ARTICLE_ROW_COLUMN_WIDTHS[index]}`}
+                  >
+                    {column}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center text-sm text-gray-500 py-4">
+                    No items.
+                  </td>
+                </tr>
+              ) : (
+                items.map((item, index) => <ItemEditHistoryRow key={index} item={item} />)
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Fetches GET /transactions/{id}/item-edit-history on open — lazy-loaded,
+// no request until the button is actually clicked. transactionId here is
+// always the ORIGINAL transaction's id: this modal is only ever reachable
+// via HandledByBlock's Payment row inside DetailsColumn, which only renders
+// for the original transaction (see TransactionDetailsModal below).
+function OrderItemsUpdateLogsModal({ transactionId, open, onClose }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    let cancelled = false
+    setData(null)
+    setError(null)
+    setLoading(true)
+
+    get(`/transactions/${transactionId}/item-edit-history`)
+      .then((result) => {
+        if (!cancelled) setData(result)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err.message || 'Failed to load item edit history')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, transactionId])
+
+  return (
+    <Modal open={open} onClose={onClose} title="Order Items Update Logs" size="lg">
+      <div className="flex-1 min-h-0 flex flex-col">
+        {loading && (
+          <div className="flex-1 min-h-0 flex items-center justify-center">
+            <p className="text-sm text-gray-500">Loading...</p>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="flex-1 min-h-0 flex items-center justify-center">
+            <p className="text-sm text-red-600">{error}</p>
+          </div>
+        )}
+
+        {!loading && !error && data && (
+          <div className="flex-1 min-h-0 flex gap-[10px]">
+            <ItemEditHistoryTable
+              title="Original Items (from Receiver)"
+              items={data.original_items}
+              notRecordedMessage="Original item list wasn't recorded for this transaction (recorded before this feature was added)."
+            />
+            <ItemEditHistoryTable title="Updated Items (by Payment)" items={data.updated_items} />
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) {
   const [chain, setChain] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -898,9 +1032,11 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
         )}
       </div>
 
-      <Modal open={itemLogsOpen} onClose={() => setItemLogsOpen(false)} title="Order Items Update Logs">
-        <p className="text-sm text-gray-500">Log details coming soon.</p>
-      </Modal>
+      <OrderItemsUpdateLogsModal
+        transactionId={transactionId}
+        open={itemLogsOpen}
+        onClose={() => setItemLogsOpen(false)}
+      />
     </FullScreenModal>
   )
 }

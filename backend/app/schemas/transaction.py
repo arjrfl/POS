@@ -319,6 +319,30 @@ class TransactionListResponse(BaseModel):
     items: list[TransactionResponse]
 
 
+class ItemEditHistoryItem(BaseModel):
+    """One product-item row for the Admin > Transaction History 'Order Items
+    Update Logs' modal's two-table comparison — just enough to render
+    QTY | UNIT | ARTICLES | UNIT PRICE | AMOUNT, nothing else."""
+
+    product_name: str | None = None
+    brand_name: str | None = None
+    unit_count: int | None
+    quantity_kg: Decimal | None
+    unit_price: Decimal | None
+    subtotal: Decimal
+
+
+class ItemEditHistoryResponse(BaseModel):
+    # Deserialized from original_items_snapshot_archive — None when that
+    # column is NULL (no Payment-phase edit ever happened, or the edit
+    # predates this column's migration). The frontend shows a "not recorded"
+    # message in that case rather than an empty table.
+    original_items: list[ItemEditHistoryItem] | None
+    # Always sourced live from the transaction's current product-type
+    # transaction_item rows — no storage needed, this is simply current state.
+    updated_items: list[ItemEditHistoryItem]
+
+
 class TransactionHistoryItem(BaseModel):
     """Flat, read-only row for the completed/voided transaction history list —
     deliberately not TransactionResponse (no items/payment_details/children),

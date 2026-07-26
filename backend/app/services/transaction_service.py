@@ -25,6 +25,8 @@ from app.schemas.transaction import (
     BalanceSettlementItem,
     DraftPaymentEntry,
     HandoverOutcomeResponse,
+    ItemEditHistoryItem,
+    ItemEditHistoryResponse,
     PaymentDetailResponse,
     PaymentEntryResponse,
     PaymentProcessRequest,
@@ -832,6 +834,64 @@ async def get_transaction_history(db: AsyncSession) -> list[TransactionHistoryIt
     return [_build_history_item(t) for t in transactions]
 
 
+async def get_item_edit_history(db: AsyncSession, transaction_id: int) -> ItemEditHistoryResponse:
+    """Admin > Transaction History 'Order Items Update Logs' modal data — a
+    dedicated lazy-loaded endpoint (not bolted onto the main transaction GET)
+    since this is only ever needed when that modal is actually opened."""
+    transaction = await db.get(SalesTransaction, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    original_items: list[ItemEditHistoryItem] | None = None
+    if transaction.original_items_snapshot_archive is not None:
+        snapshot_entries = json.loads(transaction.original_items_snapshot_archive)
+        # The archive JSON only ever stored product_id (see edit_transaction_items),
+        # not product_name/brand_name — looked up here at read time instead.
+        # A product referenced only by an item later deleted at Payment could in
+        # theory have since been hard-deleted itself; products_by_id.get(...)
+        # simply falls back to None for those rather than erroring.
+        product_ids = {entry["product_id"] for entry in snapshot_entries if entry.get("product_id") is not None}
+        products_by_id: dict[int, Product] = {}
+        if product_ids:
+            products_result = await db.execute(select(Product).where(Product.id.in_(product_ids)))
+            products_by_id = {product.id: product for product in products_result.scalars().all()}
+
+        original_items = [
+            ItemEditHistoryItem(
+                product_name=(
+                    products_by_id[entry["product_id"]].product_name
+                    if entry.get("product_id") in products_by_id
+                    else None
+                ),
+                brand_name=(
+                    products_by_id[entry["product_id"]].brand_name
+                    if entry.get("product_id") in products_by_id
+                    else None
+                ),
+                unit_count=entry.get("unit_count"),
+                quantity_kg=Decimal(entry["quantity_kg"]) if entry.get("quantity_kg") is not None else None,
+                unit_price=Decimal(entry["unit_price"]) if entry.get("unit_price") is not None else None,
+                subtotal=Decimal(entry["subtotal"]),
+            )
+            for entry in snapshot_entries
+        ]
+
+    updated_items = [
+        ItemEditHistoryItem(
+            product_name=item.product.product_name if item.product else None,
+            brand_name=item.product.brand_name if item.product else None,
+            unit_count=item.unit_count,
+            quantity_kg=item.quantity_kg,
+            unit_price=item.unit_price,
+            subtotal=item.subtotal,
+        )
+        for item in transaction.items
+        if item.item_type == ItemTypeEnum.product
+    ]
+
+    return ItemEditHistoryResponse(original_items=original_items, updated_items=updated_items)
+
+
 async def _finalize_queue_change(
     db: AsyncSession, transaction: SalesTransaction, old_queue_status: str, changed_by_user_id: int
 ) -> TransactionResponse:
@@ -1162,7 +1222,7 @@ async def edit_transaction_items(
         # multiple Confirm Edits calls and modal reopens (see
         # revert_transaction_items).
         if transaction.original_items_snapshot is None:
-            transaction.original_items_snapshot = json.dumps(
+            snapshot_json = json.dumps(
                 [
                     {
                         # kept so a later read-time diff (_apply_items_snapshot_diff)
@@ -1183,6 +1243,14 @@ async def edit_transaction_items(
                     if item.item_type == ItemTypeEnum.product
                 ]
             )
+            transaction.original_items_snapshot = snapshot_json
+            # Permanent archive copy — original_items_snapshot itself gets
+            # nulled out on /pay (see process_payment) for Revert Items' own
+            # working purpose; this column is never cleared, so the Admin >
+            # Transaction History "Order Items Update Logs" modal can still
+            # show the pre-edit list long after that. Same once-only guard as
+            # above — captured here, never overwritten on later edits.
+            transaction.original_items_snapshot_archive = snapshot_json
 
         # One-way flag — never cleared, even though original_items_snapshot
         # itself gets nulled out once payment completes (see process_payment).
