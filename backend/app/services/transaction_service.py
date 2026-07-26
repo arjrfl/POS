@@ -32,6 +32,7 @@ from app.schemas.transaction import (
     TransactionCreate,
     TransactionHistoryItem,
     TransactionItemCreate,
+    TransactionItemEditRequest,
     TransactionItemResponse,
     TransactionListResponse,
     TransactionParentItemResponse,
@@ -41,7 +42,7 @@ from app.schemas.transaction import (
     WeightConfirmRequest,
 )
 from app.services import customer_service
-from app.websocket.events import queue_status_changed, transaction_status_changed
+from app.websocket.events import queue_status_changed, transaction_items_changed, transaction_status_changed
 from app.websocket.manager import manager
 
 
@@ -291,6 +292,11 @@ class SubstandardValidationError(Exception):
 
 class WeightConfirmValidationError(Exception):
     """A confirm-weight item is missing a required actual quantity field."""
+
+
+class ItemEditValidationError(Exception):
+    """The submitted Payment-phase item edit violates a business rule (wrong
+    transaction type/customer type, or would leave zero items)."""
 
 
 def _initial_status(customer_type: CustomerTypeEnum, transaction_type: TransactionTypeEnum) -> TransactionStatusEnum:
@@ -1045,6 +1051,80 @@ async def save_draft_payments(
         raise
 
     return [PaymentDetailResponse.model_validate(d) for d in drafts]
+
+
+# TODO: item-edit audit trail — no transaction_audit_log/product_audit_log entry
+# is written for item edits made here yet; explicitly deferred per Arjay until a
+# later prompt wires the real audit trail for this feature.
+async def edit_transaction_items(
+    db: AsyncSession, transaction_id: int, data: TransactionItemEditRequest, payment_user_id: int
+) -> TransactionResponse:
+    transaction = await db.get(SalesTransaction, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    # Adjustment/refund/balance_settlement transactions aren't editable here —
+    # only a plain original order's own items are. Online items are already
+    # stock-decremented by Releasing's confirm-ready step before reaching
+    # Payment, so they're never editable at this phase either.
+    if transaction.transaction_type != TransactionTypeEnum.original:
+        raise ItemEditValidationError("Only original transactions can have items edited at Payment")
+    if transaction.customer_type != CustomerTypeEnum.walk_in:
+        raise ItemEditValidationError("Only walk_in transactions can have items edited at Payment")
+    if transaction.transaction_status != TransactionStatusEnum.pending_payment:
+        raise QueueConflictError(f"transaction {transaction_id} is not pending payment")
+    if transaction.queue_status != QueueStatusEnum.processing:
+        raise QueueConflictError(f"transaction {transaction_id} has not been grabbed for payment")
+    if transaction.processing_by_user_id != payment_user_id:
+        raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
+
+    items_by_id = {item.id: item for item in transaction.items}
+    edited_by_id = {entry.id: entry for entry in data.items}
+    deleted_ids = set(data.deleted_item_ids)
+
+    for item_id in set(edited_by_id) | deleted_ids:
+        if item_id not in items_by_id:
+            raise ItemEditValidationError(
+                f"transaction_item {item_id} does not belong to transaction {transaction_id}"
+            )
+
+    if not (set(items_by_id) - deleted_ids):
+        raise ItemEditValidationError("A transaction must have at least one item remaining")
+
+    try:
+        for item_id in deleted_ids:
+            await db.delete(items_by_id[item_id])
+
+        estimated_amount = Decimal("0.00")
+        for item_id, item in items_by_id.items():
+            if item_id in deleted_ids:
+                continue
+            entry = edited_by_id.get(item_id)
+            if entry is not None:
+                item.quantity_kg = entry.quantity_kg
+                item.estimated_weight_kg = entry.estimated_weight_kg
+                item.unit_count = entry.unit_count
+                item.subtotal = (entry.quantity_kg * item.unit_price).quantize(Decimal("0.01"))
+            if item.item_type == ItemTypeEnum.product:
+                estimated_amount += item.subtotal
+
+        # balance_settled/credit_applied are staged separately by the Pay modal,
+        # not touched by this feature — total_due is recomputed off the same
+        # formula create_transaction/process_payment already use for walk_in.
+        transaction.estimated_amount = estimated_amount
+        transaction.total_due = estimated_amount + transaction.balance_settled - transaction.credit_applied
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    rooms, event = transaction_items_changed(
+        transaction_id=transaction.id, transaction_status=transaction.transaction_status.value
+    )
+    await manager.broadcast_multi(rooms, event)
+
+    return await get_transaction(db, transaction.id)
 
 
 def _record_status_change_audit(

@@ -43,6 +43,18 @@ class TransactionCreate(BaseModel):
     balance_settled: Decimal = Decimal("0")
 
 
+class TransactionItemEditEntry(BaseModel):
+    id: int  # existing transaction_item.id
+    quantity_kg: Decimal  # QTY, drives subtotal
+    estimated_weight_kg: Decimal | None = None
+    unit_count: int | None = None
+
+
+class TransactionItemEditRequest(BaseModel):
+    items: list[TransactionItemEditEntry]
+    deleted_item_ids: list[int] = []
+
+
 class DraftPaymentEntry(BaseModel):
     payment_method_id: int
     amount: Decimal

@@ -269,6 +269,8 @@ dependency not listed above without explicit instruction.
   - `POST /{id}/unpark` — unpark transaction (payment, releasing)
   - `POST /{id}/release` — release a grabbed transaction back to waiting (payment, releasing, receiver)
   - `PUT /{id}/payment-drafts` — save draft payment entries (payment)
+  - `PATCH /{id}/items` — edit items during Payment phase, walk_in +
+    original transactions only, must be grabbed by requester (payment)
   - `POST /{id}/pay` — process payment (payment); still fully supports `refund`-type
     transactions server-side, but Payment's UI no longer opens the payment modal
     for those — see `/resolve-as-credit`

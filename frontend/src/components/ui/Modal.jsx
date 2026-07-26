@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 // 'md' (default) preserves the original compact confirm-dialog size exactly.
 // 'lg' is for content-heavy modals (tables, multi-column layouts) that need
 // a fixed, predictable height — h-[94vh] makes the box that tall regardless
@@ -10,12 +12,44 @@ const SIZE_CLASSES = {
   lg: 'max-w-5xl h-[94vh] max-h-[94vh] flex flex-col',
 }
 
+// Module-level stack of currently-open Modal instances (by mount order), so
+// that when one Modal is opened on top of another (e.g. a confirmation
+// popup stacked over a parent modal), Escape only dismisses the topmost one
+// instead of cascading through every open Modal's own keydown listener.
+let openModalStack = []
+
 export function Modal({ open, onClose, title, children, size = 'md' }) {
+  const idRef = useRef(null)
+  if (idRef.current === null) idRef.current = Symbol('modal')
+
+  useEffect(() => {
+    if (!open) return undefined
+    const id = idRef.current
+    openModalStack.push(id)
+    return () => {
+      openModalStack = openModalStack.filter((stackId) => stackId !== id)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return undefined
+    const handleKeyDown = (e) => {
+      if (e.key !== 'Escape') return
+      if (openModalStack[openModalStack.length - 1] !== idRef.current) return
+      onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [open, onClose])
+
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className={`bg-white rounded-lg shadow-lg w-full p-6 ${SIZE_CLASSES[size]}`}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div
+        className={`bg-white rounded-lg shadow-lg w-full p-6 ${SIZE_CLASSES[size]}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-4 flex-shrink-0">
           {title && <h2 className="text-lg font-semibold text-gray-900">{title}</h2>}
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Close">

@@ -137,6 +137,12 @@ export default function Payment() {
     showToast('Payment processed successfully', 'success')
   }
 
+  const handleItemsUpdated = (updatedTransaction) => {
+    setSelectedTransaction(updatedTransaction)
+    refreshQueue()
+    showToast('Items updated', 'success')
+  }
+
   const handleSaveAsCredit = async () => {
     try {
       await post(`/transactions/${selectedTransaction.id}/resolve-as-credit`)
@@ -213,6 +219,7 @@ export default function Payment() {
                 onPay={() => setPayModalOpen(true)}
                 onPark={handlePark}
                 onSaveAsCredit={handleSaveAsCredit}
+                onItemsUpdated={handleItemsUpdated}
               />
             </div>
           </div>

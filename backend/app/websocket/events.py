@@ -53,6 +53,19 @@ def transaction_status_changed(
     return _rooms_for_transition(old_status, new_status), event
 
 
+def transaction_items_changed(transaction_id: int, transaction_status: str) -> tuple[list[str], dict]:
+    # No status/queue_status transition here — items were edited in place at
+    # Payment, so this reaches the same room(s) that status already lives in
+    # (payment-queue + admin while pending_payment), just so those terminals'
+    # queue card totals stay in sync with the new total_due.
+    event = {
+        "type": "transaction_items_changed",
+        "transaction_id": transaction_id,
+        "transaction_status": transaction_status,
+    }
+    return _rooms_for_status(transaction_status), event
+
+
 PRODUCT_ROOMS = ["releasing-queue", "admin"]
 
 

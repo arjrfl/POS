@@ -23,7 +23,11 @@ function useStatusQueue(status) {
   useEffect(() => {
     if (!lastEvent) return
 
-    if (lastEvent.type === 'transaction_status_changed' || lastEvent.type === 'queue_status_changed') {
+    if (
+      lastEvent.type === 'transaction_status_changed' ||
+      lastEvent.type === 'queue_status_changed' ||
+      lastEvent.type === 'transaction_items_changed'
+    ) {
       queryClient.invalidateQueries({ queryKey: ['transactions'] })
     }
   }, [lastEvent, queryClient])
