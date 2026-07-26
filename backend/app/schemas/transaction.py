@@ -44,10 +44,14 @@ class TransactionCreate(BaseModel):
 
 
 class TransactionItemEditEntry(BaseModel):
-    id: int  # existing transaction_item.id
+    id: int | None = None  # existing transaction_item.id; None means a newly added item
     quantity_kg: Decimal  # QTY, drives subtotal
     estimated_weight_kg: Decimal | None = None
     unit_count: int | None = None
+    # required when id is None (new item) — ignored for edits to an existing item.
+    # unit_price is deliberately not client-suppliable: the server always snapshots
+    # product.unit_price_php itself at insert time (see edit_transaction_items).
+    product_id: int | None = None
 
 
 class TransactionItemEditRequest(BaseModel):

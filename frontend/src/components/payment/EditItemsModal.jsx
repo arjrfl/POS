@@ -3,7 +3,9 @@ import { Pencil, Undo2 } from 'lucide-react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
+import { ProductSelector } from '../walkin/ProductSelector'
 import { formatCurrency } from '../../utils/format'
+import { generateId } from '../../utils/id'
 import { patch, post } from '../../services/api'
 
 // Local to this table only — ArticleRows' own ARTICLE_ROW_COLUMN_WIDTHS is a
@@ -49,6 +51,12 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
   const [saveError, setSaveError] = useState(null)
   const [reverting, setReverting] = useState(false)
   const [revertError, setRevertError] = useState(null)
+  const [showAddItemModal, setShowAddItemModal] = useState(false)
+  // Items added this session that were then deleted before Confirm Edits —
+  // tracked separately from `deletedItems` below because they never existed
+  // in `originalItems`, so the "which baseline rows are missing" diff that
+  // derives deletedItems can't see them.
+  const [removedNewItems, setRemovedNewItems] = useState([])
 
   // Re-derive the working list AND the baseline from `items` as it stands
   // right now, every time this modal opens — `items` reflects whatever
@@ -73,6 +81,8 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
     setSaveError(null)
     setReverting(false)
     setRevertError(null)
+    setShowAddItemModal(false)
+    setRemovedNewItems([])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -154,6 +164,9 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
   // never fires with a single-item list.
   const handleDeleteItem = () => {
     if (!editingItem) return
+    if (editingItem.isNewItem) {
+      setRemovedNewItems((prev) => [...prev, editingItem])
+    }
     setLocalItems((prev) => prev.filter((item) => item.id !== editingItemId))
     setEditingItemId(null)
     setConfirmingDelete(false)
@@ -161,11 +174,13 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
 
   const canDeleteEditingItem = localItems.length > 1
 
-  // "Any change this session" covers both value edits (Apply) and removed
-  // rows (Delete) — a membership mismatch against the baseline means at
-  // least one item was deleted, since items are never added here.
-  const hasAnySessionChanges =
-    localItems.length !== originalItems.length || localItems.some((item) => isItemModified(item))
+  const handleAddNewItem = (product) => {
+    setLocalItems((prev) => [...prev, { id: generateId(), isNewItem: true, ...product }])
+    setShowAddItemModal(false)
+  }
+
+  // Rows added this session and still present.
+  const newItems = localItems.filter((item) => item.isNewItem)
 
   // Deleted-but-not-yet-confirmed rows — anything in the fresh baseline no
   // longer present in localItems. Derived rather than tracked separately so
@@ -174,7 +189,24 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
     (original) => !localItems.some((item) => item.id === original.id),
   )
 
+  // "Any change this session" covers value edits (Apply), removed baseline
+  // rows (Delete), newly added rows still present, and newly added rows that
+  // were added then deleted again — checked independently rather than via a
+  // single length comparison, since an add + a delete in the same session can
+  // leave localItems.length equal to originalItems.length.
+  const hasAnySessionChanges =
+    newItems.length > 0 ||
+    deletedItems.length > 0 ||
+    removedNewItems.length > 0 ||
+    localItems.some((item) => !item.isNewItem && isItemModified(item))
+
   const handleRestoreItem = (itemId) => {
+    const removedNew = removedNewItems.find((item) => item.id === itemId)
+    if (removedNew) {
+      setRemovedNewItems((prev) => prev.filter((item) => item.id !== itemId))
+      setLocalItems((prev) => [...prev, removedNew])
+      return
+    }
     const original = originalItems.find((o) => o.id === itemId)
     if (!original) return
     // Rebuild in original baseline order so the restored row lands back in
@@ -202,6 +234,7 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
   // field by field. No network call.
   const performLocalRevertAll = () => {
     setLocalItems(originalItems)
+    setRemovedNewItems([])
     setEditingItemId(null)
     setConfirmingRevert(false)
     setConfirmingDelete(false)
@@ -238,12 +271,21 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
     try {
       const deletedItemIds = deletedItems.map((original) => original.id)
       const updated = await patch(`/transactions/${transaction.id}/items`, {
-        items: localItems.map((item) => ({
-          id: item.id,
-          quantity_kg: item.quantity_kg,
-          estimated_weight_kg: item.estimated_weight_kg,
-          unit_count: item.unit_count,
-        })),
+        items: localItems.map((item) =>
+          item.isNewItem
+            ? {
+                product_id: item.product_id,
+                quantity_kg: item.quantity_kg,
+                estimated_weight_kg: item.estimated_weight_kg,
+                unit_count: item.unit_count,
+              }
+            : {
+                id: item.id,
+                quantity_kg: item.quantity_kg,
+                estimated_weight_kg: item.estimated_weight_kg,
+                unit_count: item.unit_count,
+              },
+        ),
         deleted_item_ids: deletedItemIds,
       })
       onItemsUpdated(updated)
@@ -317,14 +359,14 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
                         </tr>
                       )
                     })}
-                    {deletedItems.length > 0 && (
+                    {(deletedItems.length > 0 || removedNewItems.length > 0) && (
                       <tr>
                         <td colSpan={6} className="pt-3 pb-1 text-xs font-medium text-gray-400 uppercase tracking-wide">
                           Deleted this session
                         </td>
                       </tr>
                     )}
-                    {deletedItems.map((item) => (
+                    {[...deletedItems, ...removedNewItems].map((item) => (
                       <tr key={item.id} className="border-b border-gray-100 last:border-b-0 align-top text-gray-400">
                         <td className="py-2 pr-2 line-through">{item.quantity_kg.toFixed(3)}</td>
                         <td className="py-2 pr-2 line-through">{item.unit_count}</td>
@@ -348,6 +390,16 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
                     ))}
                   </tbody>
                 </table>
+              </div>
+              <div className="flex-shrink-0 border-t border-gray-200 p-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setShowAddItemModal(true)}
+                >
+                  + Add Item
+                </Button>
               </div>
             </div>
 
@@ -570,6 +622,10 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
           </div>
           {saveError && <p className="text-sm text-red-600">{saveError}</p>}
         </div>
+      </Modal>
+
+      <Modal open={showAddItemModal} onClose={() => setShowAddItemModal(false)} title="Add Item">
+        <ProductSelector onAddItem={handleAddNewItem} />
       </Modal>
     </>
   )

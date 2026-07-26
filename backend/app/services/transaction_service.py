@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.customer import Customer
 from app.models.ledger import AuditChangeTypeEnum, CustomerLedger, LedgerEntryTypeEnum, TransactionAuditLog
-from app.models.product import Product
+from app.models.product import Product, ProductStatusEnum
 from app.models.transaction import (
     CustomerTypeEnum,
     ItemTypeEnum,
@@ -1082,7 +1082,8 @@ async def edit_transaction_items(
         raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
 
     items_by_id = {item.id: item for item in transaction.items}
-    edited_by_id = {entry.id: entry for entry in data.items}
+    new_entries = [entry for entry in data.items if entry.id is None]
+    edited_by_id = {entry.id: entry for entry in data.items if entry.id is not None}
     deleted_ids = set(data.deleted_item_ids)
 
     for item_id in set(edited_by_id) | deleted_ids:
@@ -1091,7 +1092,7 @@ async def edit_transaction_items(
                 f"transaction_item {item_id} does not belong to transaction {transaction_id}"
             )
 
-    if not (set(items_by_id) - deleted_ids):
+    if not (set(items_by_id) - deleted_ids) and not new_entries:
         raise ItemEditValidationError("A transaction must have at least one item remaining")
 
     try:
@@ -1134,6 +1135,32 @@ async def edit_transaction_items(
                 item.subtotal = (entry.quantity_kg * item.unit_price).quantize(Decimal("0.01"))
             if item.item_type == ItemTypeEnum.product:
                 estimated_amount += item.subtotal
+
+        for entry in new_entries:
+            if entry.product_id is None:
+                raise ItemEditValidationError("New items require a product_id")
+            product = await db.get(Product, entry.product_id)
+            if product is None:
+                raise ValueError(f"Product {entry.product_id} not found")
+            if product.product_status != ProductStatusEnum.active:
+                raise ItemEditValidationError(f"Product {entry.product_id} is not active")
+
+            # unit_price is always snapshotted from the product server-side, never
+            # trusted from the client — same rule as create_transaction.
+            subtotal = (entry.quantity_kg * product.unit_price_php).quantize(Decimal("0.01"))
+            db.add(
+                TransactionItem(
+                    transaction_id=transaction.id,
+                    item_type=ItemTypeEnum.product,
+                    product_id=product.id,
+                    unit_count=entry.unit_count,
+                    estimated_weight_kg=entry.estimated_weight_kg,
+                    quantity_kg=entry.quantity_kg,
+                    unit_price=product.unit_price_php,
+                    subtotal=subtotal,
+                )
+            )
+            estimated_amount += subtotal
 
         # balance_settled/credit_applied are staged separately by the Pay modal,
         # not touched by this feature — total_due is recomputed off the same
