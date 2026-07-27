@@ -20,45 +20,47 @@ export function OrderSlipReceipt({ transaction }) {
   const fillerRowCount = Math.max(0, ITEM_TABLE_ROWS - productItems.length)
 
   return (
-    <div className="order-slip bg-white text-black text-[11pt] leading-tight px-3 pt-1 pb-2 w-full">
+    <div className="order-slip bg-white text-black text-[11pt] leading-tight px-3 w-full min-h-[277mm] flex flex-col justify-between">
       <div className="text-center py-1 px-2">
         <div className="font-bold text-[14pt]">LASH FROZEN MEAT TRADING, INC.</div>
         <div className="text-[9pt]">112 Macabagdal St. Brgy. 86 Dist. II 1400 Caloocan City NCR, Third District Philippines</div>
         <div className="text-[9pt]">Non VAT Reg. TIN: 010-561-596-00000</div>
       </div>
 
-      <div className="flex justify-between items-baseline px-2 py-0.5">
-        <span className="font-bold text-[13pt]">ORDER SLIP</span>
-        <span>
-          No. <span className="font-bold text-[13pt]">{transaction.order_number}</span>
-        </span>
-      </div>
+      <div>
+        <div className="flex justify-between items-baseline px-2 py-0.5">
+          <span className="font-bold text-[13pt]">ORDER SLIP</span>
+          <span>
+            No. <span className="font-bold text-[13pt]">{transaction.order_number}</span>
+          </span>
+        </div>
 
-      <table className="w-full table-fixed">
-        <colgroup>
-          <col className="w-[58%]" />
-          <col className="w-[42%]" />
-        </colgroup>
-        <tbody>
-          <tr>
-            <td className="px-2 py-0.5">
-              Customer Name: <span className="font-bold">{transaction.customer_name}</span>
-            </td>
-            <td className="px-2 py-0.5">
-              DATE: <span className="font-bold">{formatReceiptDate(transaction.walkin_at)}</span>
-            </td>
-          </tr>
-          <tr>
-            <td rowSpan={2} className="px-2 py-0.5 align-top">
-              Address: <span className="font-bold">{transaction.customer_address || ''}</span>
-            </td>
-            <td className="px-2 py-0.5">TIN:</td>
-          </tr>
-          <tr>
-            <td className="px-2 py-0.5">BUS. STYLE:</td>
-          </tr>
-        </tbody>
-      </table>
+        <table className="w-full table-fixed">
+          <colgroup>
+            <col className="w-[58%]" />
+            <col className="w-[42%]" />
+          </colgroup>
+          <tbody>
+            <tr>
+              <td className="px-2 py-0.5">
+                Customer Name: <span className="font-bold">{transaction.customer_name}</span>
+              </td>
+              <td className="px-2 py-0.5">
+                DATE: <span className="font-bold">{formatReceiptDate(transaction.walkin_at)}</span>
+              </td>
+            </tr>
+            <tr>
+              <td rowSpan={2} className="px-2 py-0.5 align-top">
+                Address: <span className="font-bold">{transaction.customer_address || ''}</span>
+              </td>
+              <td className="px-2 py-0.5">TIN:</td>
+            </tr>
+            <tr>
+              <td className="px-2 py-0.5">BUS. STYLE:</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       <table className="w-full table-fixed">
         <colgroup>
@@ -118,9 +120,8 @@ export function OrderSlipReceipt({ transaction }) {
           <tr>
             <td className="px-2 py-0.5 h-9 align-top">
               <div>PREPARED BY:</div>
-              <div>{transaction.walkin_user_name}</div>
             </td>
-            <td rowSpan={2} className="px-2 py-0.5 align-bottom">
+            <td rowSpan={2} className="px-2 py-0.5 align-top">
               <div>RECEIVED BY:</div>
               <div className="border-b border-black mt-3"></div>
               <div className="text-[8pt] text-center">Signature Over Printed Name / DATE:</div>
@@ -132,7 +133,7 @@ export function OrderSlipReceipt({ transaction }) {
         </tbody>
       </table>
 
-      <div className="italic text-center text-[9pt] mt-1">Received the above goods in good order &amp; condition</div>
+      <div className="italic text-center text-[9pt]">Received the above goods in good order &amp; condition</div>
     </div>
   )
 }
