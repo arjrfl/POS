@@ -298,6 +298,7 @@ class TransactionResponse(BaseModel):
     # of these (joins across customer/user/payment_detail/transaction_void_log/
     # customer_ledger), so they all need the default here and are filled in by
     # _build_transaction_response afterward, same pattern as parent_order_number.
+    customer_name: str | None = None
     customer_address: str | None = None
     customer_contact_number: str | None = None
     walkin_user_name: str | None = None

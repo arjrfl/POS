@@ -5,6 +5,7 @@ import { get } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 import { Button } from '../ui/Button'
+import { useReceiptPrintStore } from '../../store/receiptPrintStore'
 
 const fetchTransactionHistory = () => get('/transactions/history')
 
@@ -17,6 +18,20 @@ function formatHistoryDateTime(iso) {
 
 function HistoryRow({ transaction }) {
   const typeBadge = CUSTOMER_TYPE_BADGE[transaction.customer_type]
+  const triggerPrint = useReceiptPrintStore((state) => state.triggerPrint)
+  const [printing, setPrinting] = useState(false)
+
+  const canPrint = transaction.transaction_type === 'original'
+
+  const handlePrint = async () => {
+    setPrinting(true)
+    try {
+      const fullTransaction = await get(`/transactions/${transaction.id}`)
+      triggerPrint(fullTransaction)
+    } finally {
+      setPrinting(false)
+    }
+  }
 
   return (
     <tr className="border-b border-gray-200 hover:bg-gray-50">
@@ -39,7 +54,14 @@ function HistoryRow({ transaction }) {
         {formatCurrency(transaction.total_due)}
       </td>
       <td className="px-4 py-2 text-center whitespace-nowrap">
-        <Button type="button" variant="outline" className="!px-3 !py-1 text-xs inline-flex items-center gap-1">
+        <Button
+          type="button"
+          variant="outline"
+          className="!px-3 !py-1 text-xs inline-flex items-center gap-1"
+          disabled={!canPrint || printing}
+          onClick={handlePrint}
+          title={canPrint ? undefined : 'Receipt not available for this transaction type'}
+        >
           <Printer size={14} />
           Print
         </Button>

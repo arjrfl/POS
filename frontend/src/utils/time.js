@@ -30,3 +30,13 @@ export function timeAgoShort(dateString) {
   const diffDay = Math.floor(diffHr / 24)
   return `${diffDay}d ago`
 }
+
+// "YYYY-MM-DD HH:MM:SS", 24-hour, local time — the Order Slip receipt's DATE
+// field, deliberately distinct from timeAgo/timeAgoShort's relative wording.
+export function formatReceiptDate(dateString) {
+  const d = new Date(dateString)
+  const pad = (n) => String(n).padStart(2, '0')
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return `${date} ${time}`
+}

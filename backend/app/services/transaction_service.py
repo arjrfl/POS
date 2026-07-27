@@ -269,6 +269,7 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
     # Admin Transaction Details modal fields — joins across relationships already
     # eager-loaded (lazy="selectin") on SalesTransaction, so no extra queries here.
     if transaction.customer is not None:
+        response.customer_name = transaction.customer.full_name
         response.customer_address = transaction.customer.address
         response.customer_contact_number = transaction.customer.contact_number
     response.walkin_user_name = transaction.walkin_user.full_name if transaction.walkin_user else None
@@ -581,7 +582,12 @@ async def get_transaction(db: AsyncSession, transaction_id: int) -> TransactionR
     transaction = result.scalar_one_or_none()
     if transaction is None:
         raise ValueError(f"Transaction {transaction_id} not found")
-    return _build_transaction_response(transaction)
+    response = _build_transaction_response(transaction)
+    # Same product_name/brand_name enrichment get_transaction_chain already does
+    # for its nodes — needed here too so single-transaction callers (e.g. the
+    # Order Slip receipt) get resolved article names without a second round-trip.
+    _enrich_items_with_product_info(response, transaction)
+    return response
 
 
 def _enrich_items_with_product_info(response: TransactionResponse, transaction: SalesTransaction) -> None:

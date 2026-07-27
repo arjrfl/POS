@@ -16,4 +16,14 @@
     left: 0;
     width: 100%;
   }
+  #receipt-print-root,
+  #receipt-print-root * {
+    visibility: visible;
+  }
+  #receipt-print-root {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
 }
