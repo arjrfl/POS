@@ -189,77 +189,81 @@ export function TransactionsSection() {
     <div className="h-full flex gap-6 min-h-0">
       <div className="w-[300px] shrink-0 h-full min-h-0 flex flex-col">
         <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Filter Fields</span>
-        <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-4 flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="tx-status" className="text-sm font-medium text-gray-700">
-              Status
-            </label>
-            <select
-              id="tx-status"
-              className={SELECT_CLASSES}
-              value={draftFilters.status}
-              onChange={(e) => setDraftField('status', e.target.value)}
-            >
-              <option value="">All statuses</option>
-              {PAYMENT_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {PAYMENT_STATUS_LABELS[s]}
-                </option>
-              ))}
-            </select>
+        <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-4 flex flex-col">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="tx-status" className="text-sm font-medium text-gray-700">
+                Status
+              </label>
+              <select
+                id="tx-status"
+                className={SELECT_CLASSES}
+                value={draftFilters.status}
+                onChange={(e) => setDraftField('status', e.target.value)}
+              >
+                <option value="">All statuses</option>
+                {PAYMENT_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {PAYMENT_STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label htmlFor="tx-customer-type" className="text-sm font-medium text-gray-700">
+                Customer type
+              </label>
+              <select
+                id="tx-customer-type"
+                className={SELECT_CLASSES}
+                value={draftFilters.customerType}
+                onChange={(e) => setDraftField('customerType', e.target.value)}
+              >
+                <option value="">All types</option>
+                <option value="walk_in">Walk-In</option>
+                <option value="online">Online</option>
+              </select>
+            </div>
+
+            <PaymentUserFilter
+              value={draftFilters.paymentUserId}
+              onChange={(value) => setDraftField('paymentUserId', value)}
+            />
+
+            <Input
+              id="tx-date-from"
+              label="From"
+              type="date"
+              className="w-full"
+              value={draftFilters.dateFrom}
+              onChange={(e) => setDraftField('dateFrom', e.target.value)}
+            />
+            <Input
+              id="tx-date-to"
+              label="To"
+              type="date"
+              className="w-full"
+              value={draftFilters.dateTo}
+              onChange={(e) => setDraftField('dateTo', e.target.value)}
+            />
+
+            <CustomerSearchFilter value={draftFilters.search} onChange={(value) => setDraftField('search', value)} />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label htmlFor="tx-customer-type" className="text-sm font-medium text-gray-700">
-              Customer type
-            </label>
-            <select
-              id="tx-customer-type"
-              className={SELECT_CLASSES}
-              value={draftFilters.customerType}
-              onChange={(e) => setDraftField('customerType', e.target.value)}
-            >
-              <option value="">All types</option>
-              <option value="walk_in">Walk-In</option>
-              <option value="online">Online</option>
-            </select>
-          </div>
-
-          <PaymentUserFilter
-            value={draftFilters.paymentUserId}
-            onChange={(value) => setDraftField('paymentUserId', value)}
-          />
-
-          <Input
-            id="tx-date-from"
-            label="From"
-            type="date"
-            className="w-full"
-            value={draftFilters.dateFrom}
-            onChange={(e) => setDraftField('dateFrom', e.target.value)}
-          />
-          <Input
-            id="tx-date-to"
-            label="To"
-            type="date"
-            className="w-full"
-            value={draftFilters.dateTo}
-            onChange={(e) => setDraftField('dateTo', e.target.value)}
-          />
-
-          <CustomerSearchFilter value={draftFilters.search} onChange={(value) => setDraftField('search', value)} />
-
-          <div className="flex gap-2 mt-1">
-            <Button type="button" variant="primary" className="flex-1" onClick={handleRun}>
-              Run
+          <div className="mt-auto flex flex-col gap-3">
+            <div className="flex gap-2 mt-1">
+              <Button type="button" variant="primary" className="flex-1" onClick={handleRun}>
+                Run
+              </Button>
+              <Button type="button" variant="outline" className="flex-1" onClick={handleClear}>
+                Clear
+              </Button>
+            </div>
+            <Button type="button" variant="primary" className="w-full" disabled={isExporting} onClick={handleExport}>
+              {isExporting ? 'Exporting...' : 'Export'}
             </Button>
-            <Button type="button" variant="outline" className="flex-1" onClick={handleClear}>
-              Clear
-            </Button>
           </div>
-          <Button type="button" variant="primary" className="w-full" disabled={isExporting} onClick={handleExport}>
-            {isExporting ? 'Exporting...' : 'Export'}
-          </Button>
         </div>
       </div>
 
