@@ -161,6 +161,33 @@ dependency not listed above without explicit instruction.
 - Releasing does NOT offer: save as balance, save as credit, auto-deduct credit
 - Those decisions belong to Payment team
 
+### Online Pre-Payment Item Correction — Releasing Role
+- Distinct from Substandard Kilo above: this happens BEFORE payment,
+  on `online` transactions only, at Releasing's first touch
+  (`pending_settlement`, before Confirm Items Ready is clicked)
+- Purpose: correct the Receiver's estimated order (customer changed
+  their mind via out-of-system communication) before the order is
+  priced and sent to Payment — not a weight-variance resolution, so
+  it never generates an adjustment/refund child transaction
+- Update-only: no add, no delete, no revert/snapshot mechanism
+  (unlike Payment's Edit Items, which has all of those)
+- UI: per-row pencil icon on the online items table (same visual
+  slot as substandard's pencil), opening a single-item modal with
+  current values (read-only) beside new values (editable) —
+  Est. Weight, Unit Count, QTY. Unit Price is never editable.
+- Confirm Items Ready is disabled until every product item on the
+  transaction has had its edit modal opened and Saved at least once
+  (even with no value changes) — a small checkmark/dot next to the
+  pencil marks an item as checked
+- "Checked" state is tracked in frontend component state only, NOT
+  persisted to the database. It resets whenever the transaction is
+  released/parked and re-grabbed — consistent with the existing
+  rule that a WebSocket disconnect auto-releases an in-progress
+  transaction back to `waiting`
+- `# TODO: item-edit audit trail` — same deferred gap as Payment's
+  item edits; no `transaction_audit_log` entry is written for this
+  yet
+
 ### Substandard Kilo — Payment Resolution
 - `adjustment` children (customer owes more): normal payment flow (cash/online/split), same as any transaction
 - `refund` children (store owes customer): resolved via a single **[ Save as Credit ]**
@@ -283,6 +310,18 @@ dependency not listed above without explicit instruction.
   - `POST /{id}/confirm-weight` — confirm actual weights, walk_in (releasing)
   - `POST /{id}/confirm-ready` — mark online order items ready, no weight variance (releasing)
   - `POST /{id}/resolve` — resolve substandard variance, outcome: "send_to_payment" only (releasing)
+  - `PATCH /{id}/releasing-items` — update-only item correction during
+    Releasing's FIRST touch on an online transaction, before
+    Confirm Items Ready. Scope: `customer_type = 'online'`,
+    `transaction_type = 'original'`, `transaction_status =
+    'pending_settlement'`, must be grabbed by the requester
+    (releasing). No add/delete — only existing `transaction_item`
+    rows' `quantity_kg`/`unit_count`/`estimated_weight_kg` may change.
+    Only item_ids present in the request body are updated; unlisted
+    items are left untouched. `estimated_amount`/`total_due` recompute
+    from ALL items on the transaction afterward, per the locked
+    `total_due` formula. `actual_amount` and all `actual_*` columns
+    stay NULL — this is not the substandard/variance flow.
   - `POST /{id}/complete-exact` — auto-complete when confirmed weight is exact, `balance_due = 0` (releasing)
   - `GET /{id}/handover-outcome` — how a `settled` transaction's adjustment/refund
     child was resolved, for display before handover (releasing)
@@ -372,6 +411,11 @@ dependency not listed above without explicit instruction.
 - Releasing screen (`/releasing`): queue of `pending_settlement` + `pending_adjustment`
   + `settled` + `pending_handover` (see Queue = Status Filter above), plus an Inventory
   tab for product CRUD — shared components with Admin's Products tab
+  - Online transactions at `pending_settlement` (pre-Confirm-Items-
+    Ready) show a per-row pencil icon for item correction (update-only,
+    no add/delete) with a before/after value comparison in the modal.
+    Confirm Items Ready is disabled until every item has been checked
+    at least once (see Online Pre-Payment Item Correction rule above).
 - Admin screen (`/admin`): TabBar navigation — Dashboard, Customers, Products,
   and Transaction History tabs built and wired; Users tab present in the
   TabBar but disabled (no content). `QueueMonitorSection.jsx` exists under
