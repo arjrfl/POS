@@ -59,6 +59,17 @@ class TransactionItemEditRequest(BaseModel):
     deleted_item_ids: list[int] = []
 
 
+class ReleasingItemUpdate(BaseModel):
+    item_id: int
+    quantity_kg: Decimal  # QTY — required, drives subtotal
+    unit_count: int | None = None
+    estimated_weight_kg: Decimal | None = None  # reference only
+
+
+class ReleasingItemsUpdateRequest(BaseModel):
+    items: list[ReleasingItemUpdate]
+
+
 class DraftPaymentEntry(BaseModel):
     payment_method_id: int
     amount: Decimal

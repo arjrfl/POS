@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useProducts } from '../../hooks/useProducts'
 import { ItemEditModal } from './ItemEditModal'
+import { OnlineItemEditModal } from './OnlineItemEditModal'
 import { SubstandardResolution } from './SubstandardResolution'
 import { Card } from '../ui/Card'
 import { Button } from '../ui/Button'
@@ -35,6 +36,8 @@ export function ReleaseProcessor({
   onConfirmWeights,
   onResolve,
   onCompleteExact,
+  onItemsUpdated,
+  showToast,
   submitting,
 }) {
   const { data: customer } = useCustomer(transaction?.customer_id)
@@ -50,6 +53,7 @@ export function ReleaseProcessor({
   const [itemActualValues, setItemActualValues] = useState({})
   const [editingItemId, setEditingItemId] = useState(null)
   const [reEditConfirmId, setReEditConfirmId] = useState(null)
+  const [editingOnlineItemId, setEditingOnlineItemId] = useState(null)
 
   const productsById = useMemo(() => new Map((products ?? []).map((p) => [p.id, p])), [products])
   const displayItems = useMemo(() => {
@@ -73,6 +77,11 @@ export function ReleaseProcessor({
 
   const isOnline = transaction?.customer_type === 'online'
   const weightConfirmed = transaction?.actual_amount != null
+  // Releasing's FIRST touch on an online order only — before Confirm Items
+  // Ready is clicked. Selection here always means the transaction is grabbed
+  // by the current user (handleProcess only sets selectedTransaction on a
+  // successful grab/unpark), so no separate ownership check is needed.
+  const canEditOnlineItems = isOnline && transaction?.transaction_status === 'pending_settlement'
   const balanceDue = weightConfirmed ? Number(transaction.balance_due) : null
   const allItemsConfirmed = displayItems.length > 0 && displayItems.every((item) => itemStatuses[item.id])
 
@@ -110,6 +119,10 @@ export function ReleaseProcessor({
 
   const typeBadge = CUSTOMER_TYPE_BADGE[transaction.customer_type]
   const editingItem = displayItems.find((item) => item.id === editingItemId) ?? null
+  const editingOnlineItem = displayItems.find((item) => item.id === editingOnlineItemId) ?? null
+  // Walk-in always shows its substandard-edit pencil column; online shows its
+  // own plain-edit pencil column only pre-Confirm-Items-Ready.
+  const showActionColumn = !isOnline || canEditOnlineItems
   const creditApplied = Number(transaction.credit_applied) || 0
   // total_due is fixed at Payment time as estimated_amount - credit_applied (+ balance_settled)
   // and is never recomputed from actual_amount once Releasing confirms weights, so adding
@@ -157,7 +170,7 @@ export function ReleaseProcessor({
                 <th className="py-2 pr-2 font-medium">ARTICLES</th>
                 <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
                 <th className="py-2 pr-2 font-medium">AMOUNT</th>
-                {!isOnline && <th className="py-2 pl-1"></th>}
+                {showActionColumn && <th className="py-2 pl-1"></th>}
               </tr>
             </thead>
             <tbody>
@@ -176,49 +189,65 @@ export function ReleaseProcessor({
                     </td>
                     <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
                     <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
-                    {!isOnline && (
+                    {showActionColumn && (
                       <td className="py-2 pl-1 relative">
-                        <div className="flex items-center gap-1.5 justify-end">
-                          {status && (
-                            <span className={`w-2 h-2 rounded-full ${DOT_COLOR[status]}`} aria-hidden="true" />
-                          )}
-                          <button
-                            type="button"
-                            disabled={submitting}
-                            onClick={() => handleEditClick(item)}
-                            className="text-gray-500 hover:text-primary disabled:opacity-40"
-                            aria-label={`Edit ${item.product_name}`}
-                          >
-                            <PencilIcon />
-                          </button>
-                        </div>
-
-                        {reEditConfirmId === item.id && (
-                          <div className="absolute right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-md shadow-lg p-2 text-xs whitespace-nowrap">
-                            <p className="text-gray-700 mb-1.5">
-                              This item is already confirmed.
-                              <br />
-                              Edit it again?
-                            </p>
-                            <div className="flex gap-2 justify-end">
+                        {!isOnline ? (
+                          <>
+                            <div className="flex items-center gap-1.5 justify-end">
+                              {status && (
+                                <span className={`w-2 h-2 rounded-full ${DOT_COLOR[status]}`} aria-hidden="true" />
+                              )}
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setReEditConfirmId(null)
-                                  setEditingItemId(item.id)
-                                }}
-                                className="px-2 py-1 rounded bg-primary text-white hover:bg-primary-dark"
+                                disabled={submitting}
+                                onClick={() => handleEditClick(item)}
+                                className="text-gray-500 hover:text-primary disabled:opacity-40"
+                                aria-label={`Edit ${item.product_name}`}
                               >
-                                Yes, Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setReEditConfirmId(null)}
-                                className="px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
-                              >
-                                Cancel
+                                <PencilIcon />
                               </button>
                             </div>
+
+                            {reEditConfirmId === item.id && (
+                              <div className="absolute right-0 top-full mt-1 z-10 bg-white border border-gray-200 rounded-md shadow-lg p-2 text-xs whitespace-nowrap">
+                                <p className="text-gray-700 mb-1.5">
+                                  This item is already confirmed.
+                                  <br />
+                                  Edit it again?
+                                </p>
+                                <div className="flex gap-2 justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReEditConfirmId(null)
+                                      setEditingItemId(item.id)
+                                    }}
+                                    className="px-2 py-1 rounded bg-primary text-white hover:bg-primary-dark"
+                                  >
+                                    Yes, Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setReEditConfirmId(null)}
+                                    className="px-2 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <button
+                              type="button"
+                              disabled={submitting}
+                              onClick={() => setEditingOnlineItemId(item.id)}
+                              className="text-gray-500 hover:text-primary disabled:opacity-40"
+                              aria-label={`Edit ${item.product_name}`}
+                            >
+                              <PencilIcon />
+                            </button>
                           </div>
                         )}
                       </td>
@@ -251,7 +280,7 @@ export function ReleaseProcessor({
           </div>
         </div>
 
-        <div>
+        <div className="flex flex-col gap-2">
           {isOnline ? (
             <Button type="button" disabled={submitting} onClick={onConfirmReady} className="w-full">
               {submitting ? 'Confirming...' : '✓ Confirm Items Ready'}
@@ -280,6 +309,19 @@ export function ReleaseProcessor({
           initialValues={itemActualValues[editingItem.id]}
           onConfirm={handleConfirmItem}
           onCancel={() => setEditingItemId(null)}
+        />
+      )}
+
+      {editingOnlineItem && (
+        <OnlineItemEditModal
+          transactionId={transaction.id}
+          item={editingOnlineItem}
+          onCancel={() => setEditingOnlineItemId(null)}
+          onSaved={(updated) => {
+            onItemsUpdated(updated)
+            setEditingOnlineItemId(null)
+          }}
+          showToast={showToast}
         />
       )}
     </Card>

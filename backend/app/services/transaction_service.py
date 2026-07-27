@@ -31,6 +31,7 @@ from app.schemas.transaction import (
     PaymentDetailResponse,
     PaymentEntryResponse,
     PaymentProcessRequest,
+    ReleasingItemsUpdateRequest,
     SubstandardOutcomeRequest,
     TransactionCreate,
     TransactionHistoryItem,
@@ -1393,6 +1394,81 @@ async def revert_transaction_items(
         )
 
         # Same recompute formula edit_transaction_items uses.
+        transaction.estimated_amount = estimated_amount
+        transaction.total_due = estimated_amount + transaction.balance_settled - transaction.credit_applied
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    rooms, event = transaction_items_changed(
+        transaction_id=transaction.id, transaction_status=transaction.transaction_status.value
+    )
+    await manager.broadcast_multi(rooms, event)
+
+    return await get_transaction(db, transaction.id)
+
+
+# TODO: item-edit audit trail — same deferred gap as edit_transaction_items
+# above; no transaction_audit_log entry is written for this endpoint's edits.
+async def edit_releasing_items(
+    db: AsyncSession, transaction_id: int, data: ReleasingItemsUpdateRequest, releasing_user_id: int
+) -> TransactionResponse:
+    transaction = await db.get(SalesTransaction, transaction_id)
+    if transaction is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+
+    # Releasing's FIRST touch on an online order — before confirm-ready. Once
+    # Confirm Items Ready has been clicked the transaction has moved past
+    # pending_settlement (to pending_payment, then further), so this is
+    # naturally locked out from then on by the status check below.
+    if transaction.transaction_type != TransactionTypeEnum.original:
+        raise ItemEditValidationError("Only original transactions can have items edited at Releasing")
+    if transaction.customer_type != CustomerTypeEnum.online:
+        raise ItemEditValidationError("Only online transactions can have items edited at Releasing")
+    if transaction.transaction_status != TransactionStatusEnum.pending_settlement:
+        raise QueueConflictError(f"transaction {transaction_id} is not pending settlement")
+    if transaction.queue_status != QueueStatusEnum.processing:
+        raise QueueConflictError(f"transaction {transaction_id} has not been grabbed for releasing")
+    if transaction.processing_by_user_id != releasing_user_id:
+        raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
+    if transaction.actual_amount is not None:
+        raise ItemEditValidationError(
+            f"transaction {transaction_id} has already moved past the item-edit phase"
+        )
+
+    items_by_id = {item.id: item for item in transaction.items}
+    product_item_ids = {item.id for item in items_by_id.values() if item.item_type == ItemTypeEnum.product}
+    request_item_ids = {entry.item_id for entry in data.items}
+
+    # Update-only, no add/delete/restore — every item_id in the request must
+    # already exist on this transaction as a product line, but the request
+    # doesn't have to cover all of them (the per-row edit modal sends just the
+    # one item being edited). Any item_id not in the request is simply left
+    # untouched below.
+    if not request_item_ids.issubset(product_item_ids):
+        raise ItemEditValidationError(
+            "Request contains an item_id that doesn't belong to this transaction as a product item"
+        )
+
+    edited_by_id = {entry.item_id: entry for entry in data.items}
+
+    try:
+        estimated_amount = Decimal("0.00")
+        for item_id, item in items_by_id.items():
+            entry = edited_by_id.get(item_id)
+            if entry is not None:
+                item.quantity_kg = entry.quantity_kg
+                item.estimated_weight_kg = entry.estimated_weight_kg
+                item.unit_count = entry.unit_count
+                item.subtotal = (entry.quantity_kg * item.unit_price).quantize(Decimal("0.01"))
+            if item.item_type == ItemTypeEnum.product:
+                estimated_amount += item.subtotal
+
+        # Same formula edit_transaction_items/revert_transaction_items use —
+        # every line (product, balance_settlement, credit_usage) contributes,
+        # only product lines are editable here.
         transaction.estimated_amount = estimated_amount
         transaction.total_due = estimated_amount + transaction.balance_settled - transaction.credit_applied
 

@@ -239,6 +239,8 @@ export default function Releasing() {
                 onConfirmWeights={handleConfirmWeights}
                 onResolve={handleResolve}
                 onCompleteExact={handleCompleteExact}
+                onItemsUpdated={setSelectedTransaction}
+                showToast={showToast}
                 submitting={submitting}
               />
             </div>
