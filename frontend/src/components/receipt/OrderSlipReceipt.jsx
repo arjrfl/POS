@@ -8,10 +8,16 @@ import { formatReceiptDate } from '../../utils/time'
 // reliably produce continuous grid lines in print. Never rendered on screen;
 // only shown inside #receipt-print-root during window.print() (see
 // ReceiptPrintLayer).
+// Item table always shows this many body rows, padded with blank rows when
+// short — matches the physical paper form's fixed row count. Never
+// truncated: a transaction with more items than this just renders them all.
+const ITEM_TABLE_ROWS = 22
+
 export function OrderSlipReceipt({ transaction }) {
   if (!transaction) return null
 
   const productItems = transaction.items.filter((item) => item.item_type === 'product')
+  const fillerRowCount = Math.max(0, ITEM_TABLE_ROWS - productItems.length)
 
   return (
     <div className="order-slip bg-white text-black text-[11pt] leading-tight p-4 w-full">
@@ -82,6 +88,15 @@ export function OrderSlipReceipt({ transaction }) {
               </td>
               <td className="px-1 py-1 align-top text-right">{formatCurrency(item.unit_price)}</td>
               <td className="px-1 py-1 align-top text-right">{formatCurrency(item.subtotal)}</td>
+            </tr>
+          ))}
+          {Array.from({ length: fillerRowCount }).map((_, i) => (
+            <tr key={`filler-${i}`}>
+              <td className="px-1 py-1">&nbsp;</td>
+              <td className="px-1 py-1">&nbsp;</td>
+              <td className="px-1 py-1">&nbsp;</td>
+              <td className="px-1 py-1 text-right">&nbsp;</td>
+              <td className="px-1 py-1 text-right">&nbsp;</td>
             </tr>
           ))}
         </tbody>
