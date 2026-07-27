@@ -48,13 +48,26 @@ export function OrderSummaryPanel({
   // the same QTY | UNIT | ARTICLES | UNIT PRICE | AMOUNT header as the default
   // table. Leave null for the normal, editable-items behavior (unchanged).
   itemsTable = null,
+  // Optional "Delete All" trigger shown next to the header, right-aligned.
+  // Only rendered when provided AND items.length > 0 — callers that don't pass
+  // it (Payment/Releasing read-only or override-table views) never show it.
+  onDeleteAll = null,
 }) {
   const typeBadge = customerType ? CUSTOMER_TYPE_BADGE[customerType] : null
 
   return (
     <Card className="h-full flex flex-col overflow-hidden">
       <div className="flex-shrink-0 mb-4">
-        {headingLabel && <h2 className="text-sm font-medium text-gray-700 mb-1">{headingLabel}</h2>}
+        {headingLabel && (
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-medium text-gray-700">{headingLabel}</h2>
+            {onDeleteAll && items.length > 0 && (
+              <button type="button" onClick={onDeleteAll} className="text-sm text-red-600 hover:text-red-800">
+                🗑 Delete All
+              </button>
+            )}
+          </div>
+        )}
         {orderNumber && (
           <div className="flex items-center gap-2 mb-1">
             <div className="text-lg font-bold text-gray-900">{orderNumber}</div>

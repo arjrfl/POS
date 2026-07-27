@@ -36,6 +36,7 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
   const [changeGuard, setChangeGuard] = useState(null) // null | 'customer' | 'customer_type'
   const [discardGuard, setDiscardGuard] = useState(false)
   const [settleOnlyGuard, setSettleOnlyGuard] = useState(false)
+  const [deleteAllGuard, setDeleteAllGuard] = useState(false)
 
   // Gross outstanding balance (customer.total_balance — same
   // get_outstanding_balance_total aggregation as Admin's TOTAL BALANCE and
@@ -139,6 +140,17 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
   }
 
   const handleCancelSettleOnlyGuard = () => setSettleOnlyGuard(false)
+
+  const requestDeleteAll = () => {
+    if (items.length > 0) setDeleteAllGuard(true)
+  }
+
+  const handleConfirmDeleteAll = () => {
+    setState((prev) => ({ ...prev, items: [] }))
+    setDeleteAllGuard(false)
+  }
+
+  const handleCancelDeleteAll = () => setDeleteAllGuard(false)
 
   function validate() {
     if (!customer) return 'Please select a customer'
@@ -336,6 +348,7 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
               items={items}
               total={total}
               onRemoveItem={handleRemoveItem}
+              onDeleteAll={requestDeleteAll}
               balanceSettlementRow={settleOnly}
               footer={
                 <>
@@ -385,6 +398,23 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
             </Button>
             <Button type="button" variant="outline" className="flex-1" onClick={handleCancelSettleOnlyGuard}>
               Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={deleteAllGuard} onClose={handleCancelDeleteAll} title="Delete all items?">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-gray-700">
+            This will remove all {items.length} item{items.length === 1 ? '' : 's'} from this order. This cannot be
+            undone.
+          </p>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={handleCancelDeleteAll}>
+              Cancel
+            </Button>
+            <Button type="button" variant="danger" className="flex-1" onClick={handleConfirmDeleteAll}>
+              Delete All
             </Button>
           </div>
         </div>
