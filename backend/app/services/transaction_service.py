@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import delete, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -546,6 +547,14 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
         )
 
         await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        # Given the advisory lock in _next_order_number, a real
+        # order_number collision should not occur in normal operation.
+        # This catch exists as defense-in-depth (e.g. restored backup,
+        # manual row insertion) so it fails as a clean 400 instead of
+        # a raw 500 that breaks the response envelope contract.
+        raise ValueError("Order number conflict, please try submitting again.")
     except Exception:
         await db.rollback()
         raise
