@@ -54,6 +54,12 @@ export function ReleaseProcessor({
   const [editingItemId, setEditingItemId] = useState(null)
   const [reEditConfirmId, setReEditConfirmId] = useState(null)
   const [editingOnlineItemId, setEditingOnlineItemId] = useState(null)
+  // Online items a Releasing user has explicitly re-saved via the pencil modal
+  // at least once this grab session — gates Confirm Items Ready below. Keyed
+  // by transaction_item_id. ReleaseProcessor is remounted (key={transaction.id})
+  // on every transaction switch/release/park in Releasing.jsx, so this resets
+  // for free — no separate reset effect needed.
+  const [checkedItemIds, setCheckedItemIds] = useState(() => new Set())
 
   const productsById = useMemo(() => new Map((products ?? []).map((p) => [p.id, p])), [products])
   const displayItems = useMemo(() => {
@@ -84,6 +90,7 @@ export function ReleaseProcessor({
   const canEditOnlineItems = isOnline && transaction?.transaction_status === 'pending_settlement'
   const balanceDue = weightConfirmed ? Number(transaction.balance_due) : null
   const allItemsConfirmed = displayItems.length > 0 && displayItems.every((item) => itemStatuses[item.id])
+  const allOnlineItemsChecked = displayItems.length > 0 && displayItems.every((item) => checkedItemIds.has(item.id))
 
   // Fires once every row has been confirmed locally, and again any time a
   // confirmed item is re-edited afterward — no permanent lock, so the batch
@@ -239,6 +246,9 @@ export function ReleaseProcessor({
                           </>
                         ) : (
                           <div className="flex items-center gap-1.5 justify-end">
+                            {checkedItemIds.has(item.id) && (
+                              <span className="w-2 h-2 rounded-full bg-green-500" aria-hidden="true" />
+                            )}
                             <button
                               type="button"
                               disabled={submitting}
@@ -282,9 +292,19 @@ export function ReleaseProcessor({
 
         <div className="flex flex-col gap-2">
           {isOnline ? (
-            <Button type="button" disabled={submitting} onClick={onConfirmReady} className="w-full">
-              {submitting ? 'Confirming...' : '✓ Confirm Items Ready'}
-            </Button>
+            <>
+              <Button
+                type="button"
+                disabled={submitting || (canEditOnlineItems && !allOnlineItemsChecked)}
+                onClick={onConfirmReady}
+                className="w-full"
+              >
+                {submitting ? 'Confirming...' : '✓ Confirm Items Ready'}
+              </Button>
+              {canEditOnlineItems && !allOnlineItemsChecked && (
+                <p className="text-xs text-gray-500 text-center">Check all items before confirming</p>
+              )}
+            </>
           ) : weightConfirmed ? (
             balanceDue === 0 ? (
               <Button type="button" variant="success" disabled={submitting} onClick={onCompleteExact} className="w-full">
@@ -319,6 +339,7 @@ export function ReleaseProcessor({
           onCancel={() => setEditingOnlineItemId(null)}
           onSaved={(updated) => {
             onItemsUpdated(updated)
+            setCheckedItemIds((prev) => new Set(prev).add(editingOnlineItem.id))
             setEditingOnlineItemId(null)
           }}
           showToast={showToast}
