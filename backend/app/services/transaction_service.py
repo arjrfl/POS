@@ -387,7 +387,7 @@ async def _get_payment_method_id(db: AsyncSession, payment_method_name: str) -> 
 
 async def _next_order_number(db: AsyncSession) -> str:
     today = datetime.now(timezone.utc)
-    prefix = f"TXN-{today:%Y%m%d}-"
+    prefix = f"LSH-{today:%Y%m%d}-"
 
     # Deriving the next sequence number from row count breaks the moment any
     # row for today is deleted (e.g. test-data cleanup): COUNT(*) drops below
