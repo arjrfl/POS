@@ -2,6 +2,7 @@ import json
 import re
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import NamedTuple
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -657,11 +658,8 @@ def _compute_payment_status(
     return "full"
 
 
-async def list_transactions(
-    db: AsyncSession,
+def build_transaction_history_filters(
     *,
-    page: int = 1,
-    page_size: int = 20,
     transaction_status: TransactionStatusEnum | list[TransactionStatusEnum] | None = None,
     queue_status: QueueStatusEnum | None = None,
     customer_type: CustomerTypeEnum | None = None,
@@ -672,9 +670,11 @@ async def list_transactions(
     processing_by_user_id: int | None = None,
     walkin_at_from: datetime | None = None,
     walkin_at_to: datetime | None = None,
-    include_payment_status: bool = False,
-    payment_status_filter: str | None = None,
-) -> TransactionListResponse:
+) -> tuple[list, bool]:
+    """Shared WHERE-clause builder for GET /transactions (queue views + Admin
+    Transaction History list) and GET /transactions/export — extracted so the
+    two can never drift on what counts as "currently filtered." Returns
+    (filters, needs_customer_join)."""
     filters = []
     if transaction_status is not None:
         if isinstance(transaction_status, list):
@@ -706,6 +706,59 @@ async def list_transactions(
         filters.append(SalesTransaction.walkin_at >= walkin_at_from)
     if walkin_at_to is not None:
         filters.append(SalesTransaction.walkin_at < walkin_at_to)
+    return filters, needs_customer_join
+
+
+async def _payment_status_by_id(
+    db: AsyncSession,
+    rows: list[tuple[int, TransactionStatusEnum, CustomerTypeEnum, int]],
+) -> dict[int, str]:
+    """rows: (id, transaction_status, customer_type, customer_id) tuples. Shared
+    by list_transactions' payment_status bucket and export_transactions so the
+    Status column can never disagree between the two. Reuses the exact same
+    outstanding-amount logic as the Balance tab (get_outstanding_balance_entries),
+    one call per unique customer across every matching row."""
+    unique_customer_ids = {row[3] for row in rows}
+    transactions_with_outstanding_balance: set[int] = set()
+    for cid in unique_customer_ids:
+        outstanding_entries = await customer_service.get_outstanding_balance_entries(db, cid)
+        transactions_with_outstanding_balance.update(entry.transaction_id for entry in outstanding_entries)
+    return {
+        tid: _compute_payment_status(t_status, c_type, tid, transactions_with_outstanding_balance)
+        for tid, t_status, c_type, _customer_id in rows
+    }
+
+
+async def list_transactions(
+    db: AsyncSession,
+    *,
+    page: int = 1,
+    page_size: int = 20,
+    transaction_status: TransactionStatusEnum | list[TransactionStatusEnum] | None = None,
+    queue_status: QueueStatusEnum | None = None,
+    customer_type: CustomerTypeEnum | None = None,
+    customer_id: int | None = None,
+    search: str | None = None,
+    payment_user_id: int | None = None,
+    walkin_user_id: int | None = None,
+    processing_by_user_id: int | None = None,
+    walkin_at_from: datetime | None = None,
+    walkin_at_to: datetime | None = None,
+    include_payment_status: bool = False,
+    payment_status_filter: str | None = None,
+) -> TransactionListResponse:
+    filters, needs_customer_join = build_transaction_history_filters(
+        transaction_status=transaction_status,
+        queue_status=queue_status,
+        customer_type=customer_type,
+        customer_id=customer_id,
+        search=search,
+        payment_user_id=payment_user_id,
+        walkin_user_id=walkin_user_id,
+        processing_by_user_id=processing_by_user_id,
+        walkin_at_from=walkin_at_from,
+        walkin_at_to=walkin_at_to,
+    )
 
     needs_payment_status = include_payment_status or payment_status_filter is not None
 
@@ -757,24 +810,11 @@ async def list_transactions(
         )
     ).all()
 
-    # Reuses the exact same outstanding-amount logic as the Balance tab
-    # (get_outstanding_balance_entries) — not new remaining-amount math. One
-    # call per unique customer across every matching row (not just the
-    # current page — the bucket has to be known before pagination can slice
-    # it). Each outstanding entry already carries the transaction_id it came
-    # from, so per-transaction status falls out directly.
-    unique_customer_ids = {row.customer_id for row in lightweight_rows}
-    transactions_with_outstanding_balance: set[int] = set()
-    for cid in unique_customer_ids:
-        outstanding_entries = await customer_service.get_outstanding_balance_entries(db, cid)
-        transactions_with_outstanding_balance.update(entry.transaction_id for entry in outstanding_entries)
-
-    status_by_id = {
-        row.id: _compute_payment_status(
-            row.transaction_status, row.customer_type, row.id, transactions_with_outstanding_balance
-        )
-        for row in lightweight_rows
-    }
+    # the bucket has to be known before pagination can slice it — not just the
+    # current page (see _payment_status_by_id).
+    status_by_id = await _payment_status_by_id(
+        db, [(row.id, row.transaction_status, row.customer_type, row.customer_id) for row in lightweight_rows]
+    )
 
     matching_ids_ordered = [row.id for row in lightweight_rows]
     if payment_status_filter is not None:
@@ -800,6 +840,80 @@ async def list_transactions(
             response.payment_status = status_by_id[response.id]
 
     return TransactionListResponse(total=total, items=responses)
+
+
+# Mirrors PAYMENT_STATUS_LABELS in frontend/src/utils/transactionStatus.js exactly —
+# the export CSV's Status column must show the identical label the Admin
+# Transaction History table already renders for the same payment_status bucket.
+PAYMENT_STATUS_LABELS: dict[str, str] = {
+    "full": "Fully paid",
+    "partial": "Partially paid",
+    "voided": "Voided",
+    "pending": "Pending",
+}
+
+
+class TransactionExportRow(NamedTuple):
+    order_number: str
+    customer_name: str
+    transaction_type: str
+    payment_status_label: str
+    total_due: Decimal
+    payment_user_name: str
+    created_at: datetime
+
+
+async def export_transactions(
+    db: AsyncSession,
+    *,
+    customer_type: CustomerTypeEnum | None = None,
+    search: str | None = None,
+    payment_user_id: int | None = None,
+    walkin_at_from: datetime | None = None,
+    walkin_at_to: datetime | None = None,
+    payment_status_filter: str | None = None,
+) -> list[TransactionExportRow]:
+    """Admin > Transaction History 'Export' — same filter surface as
+    list_transactions' Admin-facing params (via the shared
+    build_transaction_history_filters), but no pagination: every matching row,
+    ordered by created_at DESC, same as the table."""
+    filters, needs_customer_join = build_transaction_history_filters(
+        customer_type=customer_type,
+        search=search,
+        payment_user_id=payment_user_id,
+        walkin_at_from=walkin_at_from,
+        walkin_at_to=walkin_at_to,
+    )
+
+    def _with_customer_join(stmt):
+        if needs_customer_join:
+            return stmt.join(Customer, SalesTransaction.customer_id == Customer.id)
+        return stmt
+
+    result = await db.execute(
+        _with_customer_join(select(SalesTransaction)).where(*filters).order_by(SalesTransaction.created_at.desc())
+    )
+    transactions = result.scalars().all()
+
+    status_by_id = await _payment_status_by_id(
+        db, [(t.id, t.transaction_status, t.customer_type, t.customer_id) for t in transactions]
+    )
+
+    if payment_status_filter is not None:
+        transactions = [t for t in transactions if status_by_id[t.id] == payment_status_filter]
+
+    return [
+        TransactionExportRow(
+            order_number=t.order_number,
+            customer_name=t.customer.full_name if t.customer else "",
+            transaction_type=t.transaction_type.value,
+            payment_status_label=PAYMENT_STATUS_LABELS[status_by_id[t.id]],
+            total_due=t.total_due,
+            payment_user_name=t.payment_user.full_name if t.payment_user else "",
+            created_at=t.created_at,
+        )
+        for t in transactions
+    ]
 
 
 def _build_history_item(transaction: SalesTransaction) -> TransactionHistoryItem:

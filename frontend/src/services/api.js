@@ -55,3 +55,42 @@ export const post = (path, body) => request(path, { method: 'POST', body })
 export const put = (path, body) => request(path, { method: 'PUT', body })
 export const patch = (path, body) => request(path, { method: 'PATCH', body })
 export const del = (path) => request(path, { method: 'DELETE' })
+
+// For endpoints that return a raw file (e.g. CSV export) instead of the
+// {data, error} envelope — errors still come back envelope-shaped (see
+// http_exception_handler), only the success path differs.
+export async function getFile(path) {
+  const token = useAuthStore.getState().token
+
+  let res
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+  } catch {
+    throw new Error('Network error — check your connection')
+  }
+
+  const refreshedToken = res.headers.get('X-Refreshed-Token')
+  if (refreshedToken) {
+    useAuthStore.getState().setToken(refreshedToken)
+  }
+
+  if (res.status === 401 && token) {
+    useAuthStore.getState().logout()
+    window.location.href = '/'
+    throw new Error('Session expired')
+  }
+
+  if (!res.ok) {
+    const envelope = await res.json().catch(() => null)
+    const error = new Error(envelope?.error || `Request failed with status ${res.status}`)
+    error.status = res.status
+    throw error
+  }
+
+  const disposition = res.headers.get('Content-Disposition') || ''
+  const filenameMatch = disposition.match(/filename="?([^"]+)"?/)
+
+  return { blob: await res.blob(), filename: filenameMatch ? filenameMatch[1] : null }
+}

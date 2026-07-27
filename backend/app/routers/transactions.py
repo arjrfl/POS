@@ -1,7 +1,9 @@
+import csv
+import io
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -129,6 +131,65 @@ async def list_transactions(
 async def get_transaction_history(db: AsyncSession = Depends(get_db)):
     history = await transaction_service.get_transaction_history(db)
     return {"data": history, "error": None}
+
+
+@router.get("/export", dependencies=[Depends(require_role("admin"))])
+async def export_transactions(
+    customer_type: CustomerTypeEnum | None = Query(default=None),
+    search: str | None = Query(default=None),
+    payment_user_id: int | None = Query(default=None),
+    date_from_filter: date | None = Query(default=None, alias="date_from"),
+    date_to_filter: date | None = Query(default=None, alias="date_to"),
+    payment_status_filter: Literal["full", "partial", "voided", "pending"] | None = Query(
+        default=None, alias="payment_status"
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    # Same date_from/date_to -> walkin_at_from/walkin_at_to conversion as the list
+    # endpoint above, so the two can never disagree on which day a row falls in.
+    walkin_at_from = (
+        datetime.combine(date_from_filter, time.min, tzinfo=timezone.utc) if date_from_filter is not None else None
+    )
+    walkin_at_to = (
+        datetime.combine(date_to_filter, time.min, tzinfo=timezone.utc) + timedelta(days=1)
+        if date_to_filter is not None
+        else None
+    )
+
+    rows = await transaction_service.export_transactions(
+        db,
+        customer_type=customer_type,
+        search=search,
+        payment_user_id=payment_user_id,
+        walkin_at_from=walkin_at_from,
+        walkin_at_to=walkin_at_to,
+        payment_status_filter=payment_status_filter,
+    )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Order #", "Customer", "Type", "Status", "Total Due", "Payment", "Created"])
+    for row in rows:
+        writer.writerow(
+            [
+                row.order_number,
+                row.customer_name,
+                row.transaction_type,
+                row.payment_status_label,
+                row.total_due,
+                row.payment_user_name,
+                row.created_at.isoformat(),
+            ]
+        )
+
+    filename = f"transactions_export_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.csv"
+    # Not the {data, error} envelope — file/attachment responses are a standard
+    # exception to that convention, not an oversight.
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{transaction_id}", dependencies=[Depends(get_current_user)])

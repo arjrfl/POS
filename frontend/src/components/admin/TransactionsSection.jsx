@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useTransactions } from '../../hooks/useTransactions'
-import { get } from '../../services/api'
+import { get, getFile } from '../../services/api'
 import { Badge } from '../ui/Badge'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
+import { Toast } from '../ui/Toast'
 import { formatCurrency } from '../../utils/format'
 import { getDisplayStatus, isViewablePaymentStatus, PAYMENT_STATUS_LABELS } from '../../utils/transactionStatus'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
@@ -106,8 +107,17 @@ export function TransactionsSection() {
   const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS)
   const [page, setPage] = useState(1)
   const [viewingTransactionId, setViewingTransactionId] = useState(null)
+  const [isExporting, setIsExporting] = useState(false)
+  const [toast, setToast] = useState(null)
+  const toastTimerRef = useRef(null)
 
   const setDraftField = (field, value) => setDraftFilters((prev) => ({ ...prev, [field]: value }))
+
+  const showToast = (message, variant = 'info') => {
+    window.clearTimeout(toastTimerRef.current)
+    setToast({ message, variant })
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 3500)
+  }
 
   const handleRun = () => {
     setAppliedFilters(draftFilters)
@@ -120,19 +130,60 @@ export function TransactionsSection() {
     setPage(1)
   }
 
-  const { data, isLoading } = useTransactions({
+  // The exact param set driving the ACTIVE table fetch (last-applied "Run"
+  // state) — Export reuses this object as-is so it can never diverge from
+  // what's currently on screen.
+  const activeQueryFilters = {
     paymentStatus: appliedFilters.status || undefined,
     customerType: appliedFilters.customerType || undefined,
     search: appliedFilters.search || undefined,
     paymentUserId: appliedFilters.paymentUserId || undefined,
     dateFrom: appliedFilters.dateFrom || undefined,
     dateTo: appliedFilters.dateTo || undefined,
+  }
+
+  const { data, isLoading } = useTransactions({
+    ...activeQueryFilters,
     page,
     pageSize: 20,
     includePaymentStatus: true,
   })
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / 20)) : 1
+
+  const handleExport = async () => {
+    if (!data || data.total === 0) {
+      showToast('No transactions to export', 'error')
+      return
+    }
+
+    setIsExporting(true)
+    try {
+      const params = new URLSearchParams()
+      if (activeQueryFilters.paymentStatus) params.set('payment_status', activeQueryFilters.paymentStatus)
+      if (activeQueryFilters.customerType) params.set('customer_type', activeQueryFilters.customerType)
+      if (activeQueryFilters.search) params.set('search', activeQueryFilters.search)
+      if (activeQueryFilters.paymentUserId) params.set('payment_user_id', activeQueryFilters.paymentUserId)
+      if (activeQueryFilters.dateFrom) params.set('date_from', activeQueryFilters.dateFrom)
+      if (activeQueryFilters.dateTo) params.set('date_to', activeQueryFilters.dateTo)
+
+      const { blob, filename } = await getFile(`/transactions/export?${params.toString()}`)
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename || `transactions_export_${Date.now()}.csv`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+
+      showToast(`Exported ${data.total} transaction(s)`, 'success')
+    } catch {
+      showToast('Export failed, please try again', 'error')
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   return (
     <div className="h-full flex gap-6 min-h-0">
@@ -206,6 +257,9 @@ export function TransactionsSection() {
               Clear
             </Button>
           </div>
+          <Button type="button" variant="primary" className="w-full" disabled={isExporting} onClick={handleExport}>
+            {isExporting ? 'Exporting...' : 'Export'}
+          </Button>
         </div>
       </div>
 
@@ -272,6 +326,8 @@ export function TransactionsSection() {
           onNavigate={setViewingTransactionId}
         />
       )}
+
+      <Toast toast={toast} />
     </div>
   )
 }
