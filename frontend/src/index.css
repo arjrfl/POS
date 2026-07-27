@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Order Slip receipt grid — scoped to .order-slip so these rules never leak
+   into any other table in the app. Real <table> markup + border-collapse is
+   what reliably produces continuous grid lines in print (div/flex borders
+   do not). */
+.order-slip,
+.order-slip table {
+  border-collapse: collapse;
+}
+.order-slip table,
+.order-slip th,
+.order-slip td {
+  border: 1px solid #000;
+}
+
 @media print {
   body * {
     visibility: hidden;
