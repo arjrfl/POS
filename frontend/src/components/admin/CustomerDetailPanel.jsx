@@ -13,7 +13,7 @@ import { TransactionDetailsModal } from './TransactionDetailsModal'
 const LEDGER_TAB_CLASS = (isActive) =>
   `px-3 py-1.5 text-sm border-b-2 transition-colors ${
     isActive
-      ? 'font-bold text-gray-900 bg-white border-primary'
+      ? 'font-bold text-gray-900 bg-white border-brand-gold'
       : 'font-medium text-gray-500 border-transparent hover:text-gray-700'
   }`
 
@@ -183,7 +183,7 @@ export function CustomerDetailPanel({ customerId }) {
         <div className="flex flex-col gap-4 h-full min-h-0">
           {/* Row 1 — Customer Details (50%) + Balance & Credit (50%), fixed height */}
           <div className="flex gap-4 h-[318px] shrink-0">
-            <div className="flex-1 min-w-0 bg-gray-100 border border-gray-400 rounded-lg p-4 overflow-y-auto">
+            <div className="flex-1 min-w-0 bg-gray-100 border border-brand-black/20 rounded-lg p-4 overflow-y-auto">
               <h3 className="font-bold text-gray-900 mb-3">Customer Details</h3>
               <div className="space-y-2 text-sm">
                 <p>
@@ -221,7 +221,7 @@ export function CustomerDetailPanel({ customerId }) {
               </div>
             </div>
 
-            <div className="flex-1 min-w-0 bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col min-h-0">
+            <div className="flex-1 min-w-0 bg-gray-100 border border-brand-black/20 rounded-lg p-4 flex flex-col min-h-0">
               <h3 className="font-bold text-gray-900 mb-2 shrink-0">Balance & Credit</h3>
               <div className="flex gap-1 border-b border-gray-300 shrink-0">
                 <button type="button" className={LEDGER_TAB_CLASS(ledgerTab === 'balance')} onClick={() => setLedgerTab('balance')}>
@@ -277,7 +277,7 @@ export function CustomerDetailPanel({ customerId }) {
           </div>
 
           {/* Row 2 — Transaction History, full width */}
-          <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col">
+          <div className="flex-1 min-h-0 bg-gray-100 border border-brand-black/20 rounded-lg p-4 flex flex-col">
             <h3 className="font-bold text-gray-900 mb-3 shrink-0">Transaction History</h3>
             {loadingAllTransactions && (
               <div className="flex-1 flex items-center justify-center">

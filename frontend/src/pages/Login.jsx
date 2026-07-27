@@ -26,11 +26,11 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <Card className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-brand-cream px-4">
+      <Card className="w-full max-w-sm !bg-brand-white !border-brand-black/10">
         <div className="flex flex-col items-center mb-6">
           <img src={logo} alt="Lash Meatshop" className="h-16 w-16 object-contain mb-3" />
-          <h1 className="text-xl font-semibold text-primary-dark">Lash Meatshop POS</h1>
+          <h1 className="text-xl font-semibold text-brand-black">Lash Meatshop POS</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">

@@ -55,9 +55,9 @@ export function Modal({ open, onClose, title, children, size = 'md' }) {
         className={`bg-white rounded-lg shadow-lg w-full p-6 ${SIZE_CLASSES[size]}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4 flex-shrink-0">
-          {title && <h2 className="text-lg font-semibold text-gray-900">{title}</h2>}
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+        <div className="flex items-center justify-between mb-4 flex-shrink-0 -mx-6 -mt-6 px-6 py-4 bg-brand-black text-brand-white rounded-t-lg">
+          {title && <h2 className="text-lg font-semibold">{title}</h2>}
+          <button onClick={onClose} className="text-brand-white/70 hover:text-brand-gold" aria-label="Close">
             &#10005;
           </button>
         </div>

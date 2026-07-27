@@ -104,7 +104,7 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-4 flex flex-col">
       <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <p className="text-sm font-semibold text-gray-700">
           {editingProduct ? `Editing #${editingProduct.id}` : 'Add New Product'}
@@ -252,7 +252,7 @@ function ProductRow({ product, onEdit, onAdjustStock, onDelete, confirmingToggle
           <button
             type="button"
             onClick={() => onEdit(product)}
-            className="p-1.5 rounded-md text-gray-500 hover:text-primary hover:bg-primary/10"
+            className="p-1.5 rounded-md text-gray-500 hover:text-brand-gold hover:bg-brand-gold/10"
             aria-label={`Edit ${product.product_name}`}
             title="Edit"
           >
@@ -261,7 +261,7 @@ function ProductRow({ product, onEdit, onAdjustStock, onDelete, confirmingToggle
           <button
             type="button"
             onClick={() => onAdjustStock(product)}
-            className="p-1.5 rounded-md text-gray-500 hover:text-primary hover:bg-primary/10"
+            className="p-1.5 rounded-md text-gray-500 hover:text-brand-gold hover:bg-brand-gold/10"
             aria-label={`Adjust stock for ${product.product_name}`}
             title="Adjust Stock"
           >
@@ -363,14 +363,14 @@ export function InventoryView({ showToast }) {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-              className="w-64 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light"
+              className="w-64 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-gold"
             />
             <Button type="button" variant="primary" className="!px-4 !py-1.5 text-sm" onClick={runSearch}>
               Search
             </Button>
           </div>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
+        <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg">
           <table className="table-auto w-full border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-50 border-b border-gray-300">

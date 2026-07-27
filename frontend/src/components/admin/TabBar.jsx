@@ -29,8 +29,8 @@ export function TabBar({ active, onSelect }) {
             onClick={() => onSelect(tab.id)}
             className={`px-1 py-3 text-sm border-b-2 transition-colors ${
               isActive
-                ? 'font-bold text-gray-900 border-primary'
-                : 'font-medium text-gray-500 border-transparent hover:text-gray-700'
+                ? 'font-semibold text-brand-black border-brand-gold'
+                : 'font-medium text-gray-500 border-transparent hover:text-brand-black'
             }`}
           >
             {tab.label}

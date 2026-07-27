@@ -169,7 +169,7 @@ export default function Payment() {
       actions={
         <Button
           variant="secondary"
-          className="hover:!bg-primary-dark hover:!text-white"
+          className="!border-brand-gold !text-brand-gold hover:!bg-brand-gold hover:!text-brand-black"
           onClick={toggleView}
         >
           {view === 'history' ? 'Back to Queue' : 'History'}
@@ -194,7 +194,7 @@ export default function Payment() {
                     onClick={() => setQueueFilter(option.value)}
                     className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
                       queueFilter === option.value
-                        ? 'bg-primary text-white'
+                        ? 'bg-brand-black text-brand-gold'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
                   >
@@ -204,7 +204,7 @@ export default function Payment() {
               </div>
             </div>
             <div
-              className={`flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 ${
+              className={`flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-4 ${
                 selectedTransaction ? 'opacity-50 pointer-events-none' : ''
               }`}
             >
@@ -219,7 +219,7 @@ export default function Payment() {
 
           <div className="flex-[40] h-full min-h-0 flex flex-col">
             <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Order Details</span>
-            <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg p-3">
+            <div className="flex-1 min-h-0 bg-gray-100 border border-brand-black/20 rounded-lg p-3">
               <TransactionDetailPanel
                 transaction={selectedTransaction}
                 onPay={() => setPayModalOpen(true)}

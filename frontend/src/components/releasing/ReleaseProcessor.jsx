@@ -208,7 +208,7 @@ export function ReleaseProcessor({
                                 type="button"
                                 disabled={submitting}
                                 onClick={() => handleEditClick(item)}
-                                className="text-gray-500 hover:text-primary disabled:opacity-40"
+                                className="text-gray-500 hover:text-brand-gold disabled:opacity-40"
                                 aria-label={`Edit ${item.product_name}`}
                               >
                                 <PencilIcon />
@@ -229,7 +229,7 @@ export function ReleaseProcessor({
                                       setReEditConfirmId(null)
                                       setEditingItemId(item.id)
                                     }}
-                                    className="px-2 py-1 rounded bg-primary text-white hover:bg-primary-dark"
+                                    className="px-2 py-1 rounded bg-brand-black text-brand-gold border border-brand-gold hover:bg-brand-gold hover:text-brand-black"
                                   >
                                     Yes, Edit
                                   </button>
@@ -253,7 +253,7 @@ export function ReleaseProcessor({
                               type="button"
                               disabled={submitting}
                               onClick={() => setEditingOnlineItemId(item.id)}
-                              className="text-gray-500 hover:text-primary disabled:opacity-40"
+                              className="text-gray-500 hover:text-brand-gold disabled:opacity-40"
                               aria-label={`Edit ${item.product_name}`}
                             >
                               <PencilIcon />

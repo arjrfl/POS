@@ -260,7 +260,7 @@ function LinkedOrderLabel({ label, targetTxn, onNavigate }) {
         <button
           type="button"
           onClick={() => onNavigate(targetTxn.id)}
-          className="text-primary font-bold underline cursor-pointer"
+          className="text-brand-gold-dark font-bold underline cursor-pointer"
         >
           {targetTxn.order_number}
         </button>
@@ -312,7 +312,7 @@ function DetailsColumn({ originalTxn, linkedChildTxn, onNavigate, onShowItemLogs
   ].filter(Boolean)
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col gap-4">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-4 flex flex-col gap-4">
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-gray-900">{originalTxn.order_number}</span>
@@ -490,7 +490,7 @@ function AdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate }) {
   ].filter(Boolean)
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col gap-4">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-4 flex flex-col gap-4">
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-gray-900">{childTxn.order_number}</span>
@@ -571,7 +571,7 @@ function CreditAdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate })
   ].filter(Boolean)
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col gap-4">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-4 flex flex-col gap-4">
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-semibold text-gray-900">{childTxn.order_number}</span>
@@ -604,7 +604,7 @@ function CreditAdjustmentChildDetailsColumn({ childTxn, parentTxn, onNavigate })
 // "Adjusted Items" section, which isn't itself table-row content.
 function ArticleTable({ children, footer }) {
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg">
       <table className="w-full table-fixed text-sm">
         <thead className="sticky top-0 bg-gray-100 border-b border-gray-400">
           <tr>
@@ -739,7 +739,7 @@ function ItemEditHistoryTable({ title, items, notRecordedMessage }) {
   return (
     <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0">
       <span className="text-sm font-medium">{title}</span>
-      <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
+      <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg">
         {items === null ? (
           <p className="text-sm text-gray-500 p-3">{notRecordedMessage}</p>
         ) : (

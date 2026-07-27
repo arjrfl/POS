@@ -137,13 +137,13 @@ export function PaymentConfirmationModal({
         <button
           type="button"
           onClick={onBack}
-          className="flex-shrink-0 self-start text-sm text-primary hover:underline mb-3"
+          className="flex-shrink-0 self-start text-sm text-brand-gold-dark hover:underline mb-3"
         >
           &larr; Back
         </button>
 
         <div className="print-receipt flex-1 min-h-0 flex flex-row gap-4 overflow-hidden">
-          <div className="w-3/5 min-h-0 flex flex-col gap-3 bg-gray-100 border border-gray-400 rounded-lg p-3">
+          <div className="w-3/5 min-h-0 flex flex-col gap-3 bg-gray-100 border border-brand-black/20 rounded-lg p-3">
           <div className="flex-shrink-0">
             {isAdjustmentChild && (
               <div className="flex flex-col gap-1 pb-2 mb-2 border-b border-gray-200">
@@ -379,7 +379,7 @@ export function PaymentConfirmationModal({
                 type="button"
                 onClick={onBack}
                 disabled={submitting}
-                className="flex-1 text-sm text-primary hover:underline disabled:opacity-50"
+                className="flex-1 text-sm text-brand-gold-dark hover:underline disabled:opacity-50"
               >
                 Back
               </button>

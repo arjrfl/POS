@@ -80,6 +80,43 @@ dependency not listed above without explicit instruction.
 
 ---
 
+## Brand Theme
+
+Chrome-only color tokens, defined in `tailwind.config.js` under
+`theme.extend.colors.brand`:
+
+| Token | Hex |
+|---|---|
+| `brand-black` | `#0A0A0A` |
+| `brand-charcoal` | `#1C1C1C` |
+| `brand-gold` | `#D4AF37` |
+| `brand-gold-light` | `#E5C766` |
+| `brand-gold-dark` | `#B8952C` |
+| `brand-white` | `#FFFFFF` |
+| `brand-cream` | `#FAF9F4` |
+
+These tokens style **chrome only**: Navbar, primary/secondary buttons, modal
+headers (`Modal`/`FullScreenModal`), the Admin TabBar, Queue/Order Details
+panel borders, focus rings, checkboxes, and plain text links. They do NOT
+apply to functional status colors, which remain gray/blue/yellow/green/amber/
+purple/red as documented elsewhere in this file (Number Formatting section
+notwithstanding — see Frontend Rules for card/badge status colors).
+
+Explicitly excluded from the brand palette — leave these exactly as-is:
+- Item Edit Modal (Releasing) variance row colors: green (exact), amber
+  (heavier), blue (lighter)
+- Queue card processing (`bg-blue-50`) / parked (`bg-yellow-50`) styling,
+  and the "Unpark" amber action button
+- `pending_adjustment` "Awaiting Payment" purple pill (Releasing queue)
+- `pending_handover`/`settled` queue-card entry buttons in Releasing
+  (indigo "Confirm Handover", green "Review & Confirm") — tied to their
+  card's status color, not general chrome
+- Admin Customers tab "Balance & Credit" red/green amount coloring
+- Toast success (green) / error (red) colors
+- Substandard ADJUSTMENT/REFUND badges in Payment UI
+
+---
+
 ## Critical Business Rules
 
 ### Transactions — Never Mutate, Always Extend
@@ -440,7 +477,8 @@ dependency not listed above without explicit instruction.
     `product_changed` WebSocket broadcast
 - No page scroll on any screen — panels scroll internally only
 - All screens: 60% left (queue) / 40% right (order details) split
-- Queue panels: `bg-gray-100 border border-gray-400 rounded-lg`
+- Queue panels: `bg-gray-100 border border-brand-black/20 rounded-lg`
+  (chrome border color — see Brand Theme above)
 - Queue cards: compact two-line cards, NOT table layout
 - "Queue" label above left panel, "Order Details" label above right panel
 - PWA service worker handles LAN reconnect — rehydrate queue on reconnect

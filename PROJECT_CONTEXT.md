@@ -270,10 +270,14 @@ Payment handles ALL financial decisions:
 
 ## 9. UI Standards (All Screens)
 
+Chrome colors (nav, buttons, panel borders, modals) follow the Brand Theme
+in CLAUDE.md (black/gold/white). Status colors below are unaffected and
+remain locked.
+
 ### Layout
 - No whole-page scroll on any screen
 - 60% left panel (queue) / 40% right panel (order details)
-- Both panels: `bg-gray-100 border border-gray-400 rounded-lg`
+- Both panels: `bg-gray-100 border border-brand-black/20 rounded-lg`
 - "Queue" label above left panel, "Order Details" label above right panel
 
 ### Queue Cards (compact, not table)

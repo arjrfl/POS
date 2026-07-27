@@ -16,7 +16,7 @@ export function Navbar({ title, actions }) {
   const [confirmLogout, setConfirmLogout] = useState(false)
 
   return (
-    <header className="grid grid-cols-3 items-center gap-4 px-6 py-3 bg-primary text-white">
+    <header className="grid grid-cols-3 items-center gap-4 px-6 py-3 bg-brand-black text-brand-white">
       <div className="flex items-center gap-3">
         <img src={logo} alt="Lash Meatshop" className="h-8 w-8 object-contain" />
         <span className="font-semibold">Lash Meatshop POS</span>
@@ -38,7 +38,7 @@ export function Navbar({ title, actions }) {
         {actions}
         <Button
           variant="secondary"
-          className="hover:!bg-primary-dark hover:!text-white"
+          className="!border-brand-gold !text-brand-gold hover:!bg-brand-gold hover:!text-brand-black"
           onClick={() => setConfirmLogout(true)}
         >
           Log out

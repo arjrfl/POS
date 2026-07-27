@@ -15,7 +15,7 @@ import { TransactionDetailsModal } from './TransactionDetailsModal'
 // renders via getDisplayStatus — filtering and display always agree.
 const PAYMENT_STATUSES = ['pending', 'full', 'partial', 'voided']
 const SELECT_CLASSES =
-  'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light text-sm'
+  'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-gold text-sm'
 
 function CustomerSearchFilter({ value, onChange }) {
   return (
@@ -138,7 +138,7 @@ export function TransactionsSection() {
     <div className="h-full flex gap-6 min-h-0">
       <div className="w-[300px] shrink-0 h-full min-h-0 flex flex-col">
         <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Filter Fields</span>
-        <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 flex flex-col gap-3">
+        <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-4 flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <label htmlFor="tx-status" className="text-sm font-medium text-gray-700">
               Status
@@ -211,7 +211,7 @@ export function TransactionsSection() {
 
       <div className="flex-1 h-full min-h-0 flex flex-col">
         <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Transaction History</span>
-        <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
+        <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg">
           <table className="table-auto w-full border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-gray-50 border-b border-gray-300 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">

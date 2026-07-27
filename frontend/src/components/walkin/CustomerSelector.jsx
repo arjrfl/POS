@@ -120,7 +120,7 @@ export function CustomerSelector({ value, onSelect, onClear }) {
             <button
               type="button"
               onMouseDown={() => setShowAddModal(true)}
-              className="w-full text-left px-3 py-2 border-t border-gray-200 bg-primary text-white font-medium hover:bg-primary-dark"
+              className="w-full text-left px-3 py-2 border-t border-gray-200 bg-brand-black text-brand-gold font-medium hover:bg-brand-gold hover:text-brand-black"
             >
               No customer found — + Add Customer
             </button>

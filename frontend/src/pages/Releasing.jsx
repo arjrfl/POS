@@ -196,7 +196,7 @@ export default function Releasing() {
       actions={
         <Button
           variant="secondary"
-          className="hover:!bg-primary-dark hover:!text-white"
+          className="!border-brand-gold !text-brand-gold hover:!bg-brand-gold hover:!text-brand-black"
           onClick={toggleActiveView}
         >
           {activeView === 'inventory' ? 'Back to Queue' : 'Inventory'}
@@ -210,7 +210,7 @@ export default function Releasing() {
           <div className="flex-[60] h-full min-h-0 flex flex-col">
             <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Queue</span>
             <div
-              className={`flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg p-4 ${
+              className={`flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-4 ${
                 selectedTransaction ? 'opacity-50 pointer-events-none' : ''
               }`}
             >
@@ -231,7 +231,7 @@ export default function Releasing() {
 
           <div className="flex-[40] h-full min-h-0 flex flex-col">
             <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Order Details</span>
-            <div className="flex-1 min-h-0 bg-gray-100 border border-gray-400 rounded-lg p-3 flex flex-col">
+            <div className="flex-1 min-h-0 bg-gray-100 border border-brand-black/20 rounded-lg p-3 flex flex-col">
               <ReleaseProcessor
                 key={selectedTransaction?.id ?? 'empty'}
                 transaction={selectedTransaction}

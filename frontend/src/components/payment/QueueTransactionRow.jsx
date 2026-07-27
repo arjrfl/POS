@@ -74,7 +74,7 @@ export function QueueTransactionRow({ transaction, onProcess }) {
           <button
             type="button"
             onClick={() => onProcess(transaction)}
-            className="px-4 py-1.5 text-sm rounded-md bg-primary text-white hover:bg-primary-dark"
+            className="px-4 py-1.5 text-sm rounded-md bg-brand-black text-brand-gold border border-brand-gold hover:bg-brand-gold hover:text-brand-black"
           >
             Process
           </button>

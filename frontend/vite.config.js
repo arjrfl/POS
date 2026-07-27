@@ -11,8 +11,8 @@ export default defineConfig({
       manifest: {
         name: 'Lash Meatshop POS',
         short_name: 'LM POS',
-        theme_color: '#166534',
-        background_color: '#ffffff',
+        theme_color: '#0A0A0A',
+        background_color: '#FAF9F4',
         display: 'standalone',
         icons: [
           {

@@ -281,7 +281,7 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
                       type="checkbox"
                       checked={settleOnly}
                       onChange={(e) => requestToggleSettleOnly(e.target.checked)}
-                      className="accent-green-800 mt-0.5"
+                      className="accent-brand-gold mt-0.5"
                     />
                     <div>
                       <div className="text-sm font-medium text-red-800">Balance Settlement Only</div>
@@ -317,7 +317,7 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
                 value={customerType ?? ''}
                 disabled={!!customerType}
                 onChange={(e) => handleCustomerTypeChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light disabled:bg-gray-100 disabled:text-gray-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-gold disabled:bg-gray-100 disabled:text-gray-500"
               >
                 <option value="" disabled>
                   Select Customer Type

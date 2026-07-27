@@ -80,18 +80,18 @@ export function TransactionHistory() {
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && runSearch()}
             placeholder="Search order number or customer..."
-            className="w-72 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary/50"
+            className="w-72 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-gold"
           />
           <button
             type="button"
             onClick={runSearch}
-            className="px-4 py-1.5 text-sm font-medium bg-primary text-white rounded-md hover:bg-primary/90"
+            className="px-4 py-1.5 text-sm font-medium bg-brand-black text-brand-gold border border-brand-gold rounded-md hover:bg-brand-gold hover:text-brand-black"
           >
             Search
           </button>
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-gray-400 rounded-lg">
+      <div className="flex-1 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg">
         <table className="table-auto w-full border-collapse">
           <thead className="sticky top-0 z-10 bg-gray-50">
             <tr className="bg-gray-50 border-b border-gray-300">

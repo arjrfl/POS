@@ -108,7 +108,7 @@ function UserRow({
           <button
             type="button"
             onClick={() => onEdit(user)}
-            className="p-1.5 rounded-md text-gray-500 hover:text-primary hover:bg-primary/10"
+            className="p-1.5 rounded-md text-gray-500 hover:text-brand-gold hover:bg-brand-gold/10"
             aria-label={`Edit ${user.full_name}`}
             title="Edit"
           >
@@ -135,7 +135,7 @@ function UserRow({
           <button
             type="button"
             onClick={() => onHistory(user)}
-            className="p-1.5 rounded-md text-gray-500 hover:text-primary hover:bg-primary/10"
+            className="p-1.5 rounded-md text-gray-500 hover:text-brand-gold hover:bg-brand-gold/10"
             aria-label={`History for ${user.full_name}`}
             title="History"
           >
@@ -221,7 +221,7 @@ export function UsersSection() {
               id="user-role-filter"
               value={roleInput}
               onChange={(e) => setRoleInput(e.target.value)}
-              className="w-40 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light capitalize"
+              className="w-40 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-gold capitalize"
             >
               <option value="">All roles</option>
               {ROLE_FILTER_OPTIONS.map((r) => (
@@ -239,7 +239,7 @@ export function UsersSection() {
               id="user-status-filter"
               value={statusInput}
               onChange={(e) => setStatusInput(e.target.value)}
-              className="w-40 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light"
+              className="w-40 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-gold"
             >
               <option value="">All statuses</option>
               <option value="active">Active</option>

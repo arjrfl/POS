@@ -498,7 +498,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
     <>
       <FullScreenModal open={open} onClose={requestClose} title={`Process Payment — ${transaction.order_number}`}>
         <div className="h-[80vh] flex flex-col min-h-0 max-w-6xl mx-auto">
-        <div className="flex-1 min-h-0 flex flex-col bg-gray-100 border border-gray-400 rounded-lg p-4">
+        <div className="flex-1 min-h-0 flex flex-col bg-gray-100 border border-brand-black/20 rounded-lg p-4">
           <div className="flex-1 min-h-0 flex flex-row gap-4 overflow-hidden">
             <div className="flex-[21] min-w-0 h-full flex flex-col">
               <span className="text-sm font-semibold text-gray-600 mb-2">BALANCE / CREDIT</span>
@@ -531,7 +531,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                           <label key={entry.ledger_entry_id} className="flex items-center gap-2 py-1">
                             <input
                               type="checkbox"
-                              className="accent-green-800"
+                              className="accent-brand-gold"
                               checked={!!checkedBalances[entry.ledger_entry_id]}
                               onChange={() => handleToggleBalanceEntry(entry.ledger_entry_id)}
                             />
@@ -570,7 +570,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                             <label key={entry.ledger_entry_id} className="flex items-center gap-2 py-1">
                               <input
                                 type="checkbox"
-                                className="accent-green-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                                className="accent-brand-gold disabled:opacity-40 disabled:cursor-not-allowed"
                                 checked={isChecked}
                                 disabled={checkboxDisabled}
                                 onChange={() => handleToggleCreditEntry(entry.ledger_entry_id)}
@@ -641,7 +641,7 @@ export function PaymentModal({ open, transaction, onClose, onPaid, onParked }) {
                     value={methodId}
                     onChange={(e) => setMethodId(e.target.value)}
                     disabled={isFullyCovered}
-                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-gold disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                   >
                     {selectableMethods.map((m) => (
                       <option key={m.id} value={m.id}>

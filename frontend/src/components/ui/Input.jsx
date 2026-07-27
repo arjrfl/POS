@@ -8,7 +8,7 @@ export function Input({ label, id, className = '', ...props }) {
       )}
       <input
         id={id}
-        className={`px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light ${className}`}
+        className={`px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-gold ${className}`}
         {...props}
       />
     </div>

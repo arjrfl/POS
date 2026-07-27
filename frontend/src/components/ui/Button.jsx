@@ -1,6 +1,6 @@
 const VARIANTS = {
-  primary: 'bg-primary text-white hover:bg-primary-dark',
-  secondary: 'bg-white text-primary border border-primary hover:bg-primary/5',
+  primary: 'bg-brand-black text-brand-gold border border-brand-gold hover:bg-brand-gold hover:text-brand-black',
+  secondary: 'bg-transparent border border-brand-black text-brand-black hover:bg-brand-black hover:text-brand-white',
   outline: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50',
   warning: 'bg-white text-amber-700 border border-amber-400 hover:bg-amber-50',
   amber: 'bg-amber-500 text-white hover:bg-amber-600',
