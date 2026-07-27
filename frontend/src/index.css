@@ -16,6 +16,18 @@
   border: 1px solid #000;
 }
 
+/* Fixed page size/margins for the Order Slip print, and a hint (not a
+   guarantee — content taller than one page will still split) that the
+   receipt should stay on a single page rather than spill across two. */
+@page {
+  size: A4;
+  margin: 10mm;
+}
+.order-slip {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
 @media print {
   body * {
     visibility: hidden;
