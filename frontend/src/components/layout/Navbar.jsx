@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
-import logo from '../../assets/meatshop-logo.png'
+import logo from '../../assets/lash-meatshop-logo-white.png'
 
 const ROLE_BADGE_STYLES = {
   receiver: 'bg-blue-100 text-blue-800',
