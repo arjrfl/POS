@@ -9,6 +9,7 @@ import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
+import { useReceiptPrintStore } from '../../store/receiptPrintStore'
 
 const EPS = 0.005
 
@@ -35,6 +36,7 @@ export function PaymentConfirmationModal({
   // 'confirm' = Popup 2 (confirm change becomes credit)
   const [changeStep, setChangeStep] = useState(null)
   const [pendingAction, setPendingAction] = useState(null) // 'print' | 'done'
+  const triggerPrint = useReceiptPrintStore((state) => state.triggerPrint)
 
   if (!open) return null
 
@@ -94,7 +96,11 @@ export function PaymentConfirmationModal({
     setSubmitting(true)
     try {
       const paid = await submitPayment(changeClaimed)
-      if (action === 'print') window.print()
+      // Fire-and-forget: triggerPrint just updates receiptPrintStore, and the
+      // app-root ReceiptPrintLayer (unaffected by this modal closing) picks
+      // it up and calls window.print() on its own next frame — so closing
+      // via onDone below does not wait on the print dialog being dismissed.
+      if (action === 'print') triggerPrint(paid)
       onDone(paid)
     } catch (err) {
       setError(err.message)
@@ -142,7 +148,7 @@ export function PaymentConfirmationModal({
           &larr; Back
         </button>
 
-        <div className="print-receipt flex-1 min-h-0 flex flex-row gap-4 overflow-hidden">
+        <div className="flex-1 min-h-0 flex flex-row gap-4 overflow-hidden">
           <div className="w-3/5 min-h-0 flex flex-col gap-3 bg-gray-100 border border-brand-black/20 rounded-lg p-3">
           <div className="flex-shrink-0">
             {isAdjustmentChild && (
