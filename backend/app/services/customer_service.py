@@ -41,9 +41,9 @@ def compute_ledger_totals(ledger_entries: list[CustomerLedger]) -> tuple[Decimal
 
 async def _get_outstanding_entries(
     db: AsyncSession,
-    customer_id: int,
     added_type: LedgerEntryTypeEnum,
     consumed_types: tuple[LedgerEntryTypeEnum, ...],
+    customer_id: int | None = None,
 ) -> list[CustomerBalanceEntryResponse]:
     # customer_ledger has no column linking a consuming row (balance_settled /
     # credit_used / credit_auto_used) back to the specific *_added row(s) it
@@ -53,32 +53,40 @@ async def _get_outstanding_entries(
     # outstanding entry first, and can never exceed what's outstanding at the
     # time — enforced in process_payment) — whatever's left over is what's
     # still actually outstanding on that entry.
+    #
+    # customer_id=None computes this across every customer at once (e.g. for
+    # an admin-wide dashboard total) — rows are grouped and consumed per
+    # customer_id below rather than globally, so one customer's settlement
+    # can never net against another customer's outstanding balance.
     stmt = (
         select(CustomerLedger, SalesTransaction.order_number)
         .join(SalesTransaction, CustomerLedger.transaction_id == SalesTransaction.id)
-        .where(
-            CustomerLedger.customer_id == customer_id,
-            CustomerLedger.entry_type.in_([added_type, *consumed_types]),
-        )
-        .order_by(CustomerLedger.created_at.asc())
+        .where(CustomerLedger.entry_type.in_([added_type, *consumed_types]))
     )
+    if customer_id is not None:
+        stmt = stmt.where(CustomerLedger.customer_id == customer_id)
+    stmt = stmt.order_by(CustomerLedger.customer_id.asc(), CustomerLedger.created_at.asc())
+
     result = await db.execute(stmt)
     rows = result.all()
 
-    remaining_consumed = sum(
-        (entry.amount for entry, _ in rows if entry.entry_type in consumed_types),
-        Decimal("0"),
-    )
+    remaining_consumed_by_customer: dict[int, Decimal] = {}
+    for entry, _ in rows:
+        if entry.entry_type in consumed_types:
+            remaining_consumed_by_customer[entry.customer_id] = (
+                remaining_consumed_by_customer.get(entry.customer_id, Decimal("0")) + entry.amount
+            )
 
     entries = []
     for entry, order_number in rows:
         if entry.entry_type != added_type:
             continue
+        remaining_consumed = remaining_consumed_by_customer.get(entry.customer_id, Decimal("0"))
         if remaining_consumed >= entry.amount:
-            remaining_consumed -= entry.amount
+            remaining_consumed_by_customer[entry.customer_id] = remaining_consumed - entry.amount
             continue
         outstanding = entry.amount - remaining_consumed
-        remaining_consumed = Decimal("0")
+        remaining_consumed_by_customer[entry.customer_id] = Decimal("0")
         entries.append(
             CustomerBalanceEntryResponse(
                 ledger_entry_id=entry.id,
@@ -93,16 +101,36 @@ async def _get_outstanding_entries(
 
 async def get_outstanding_balance_entries(db: AsyncSession, customer_id: int) -> list[CustomerBalanceEntryResponse]:
     return await _get_outstanding_entries(
-        db, customer_id, LedgerEntryTypeEnum.balance_added, (LedgerEntryTypeEnum.balance_settled,)
+        db, LedgerEntryTypeEnum.balance_added, (LedgerEntryTypeEnum.balance_settled,), customer_id=customer_id
     )
 
 
 async def get_outstanding_credit_entries(db: AsyncSession, customer_id: int) -> list[CustomerBalanceEntryResponse]:
     return await _get_outstanding_entries(
         db,
-        customer_id,
         LedgerEntryTypeEnum.credit_added,
         (LedgerEntryTypeEnum.credit_used, LedgerEntryTypeEnum.credit_auto_used),
+        customer_id=customer_id,
+    )
+
+
+async def get_all_outstanding_balance_entries(db: AsyncSession) -> list[CustomerBalanceEntryResponse]:
+    """Same FIFO netting as get_outstanding_balance_entries, across every customer at
+    once — for admin-wide aggregates (e.g. the Dashboard's Total Unpaid Transaction
+    card) where per-customer calls would mean one query per customer."""
+    return await _get_outstanding_entries(
+        db, LedgerEntryTypeEnum.balance_added, (LedgerEntryTypeEnum.balance_settled,), customer_id=None
+    )
+
+
+async def get_all_outstanding_credit_entries(db: AsyncSession) -> list[CustomerBalanceEntryResponse]:
+    """Same FIFO netting as get_outstanding_credit_entries, across every customer at
+    once — for admin-wide aggregates (e.g. the Dashboard's Total Unused Credit card)."""
+    return await _get_outstanding_entries(
+        db,
+        LedgerEntryTypeEnum.credit_added,
+        (LedgerEntryTypeEnum.credit_used, LedgerEntryTypeEnum.credit_auto_used),
+        customer_id=None,
     )
 
 
