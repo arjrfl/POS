@@ -65,14 +65,18 @@ export function OrderSlipReceipt({ transaction }) {
             <tbody>
               <tr>
                 <td className="px-2 py-0">
-                  <span className="text-[8pt]">Customer Name:</span>{' '}
-                  <span className="font-bold text-[10pt]">{transaction.customer_name}</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[8pt] shrink-0">Customer Name:</span>
+                    <span className="font-bold text-[10pt] truncate min-w-0">{transaction.customer_name}</span>
+                  </div>
                 </td>
               </tr>
               <tr>
                 <td className="px-2 py-0">
-                  <span className="text-[8pt]">Address:</span>{' '}
-                  <span className="font-bold text-[10pt]">{transaction.customer_address || ''}</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[8pt] shrink-0">Address:</span>
+                    <span className="font-bold text-[10pt] truncate min-w-0">{transaction.customer_address || ''}</span>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -86,10 +90,20 @@ export function OrderSlipReceipt({ transaction }) {
                 </td>
               </tr>
               <tr>
-                <td className="px-2 py-[1pt] text-[8pt]">TIN:</td>
+                <td className="px-2 py-[1pt]">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[8pt] shrink-0">TIN:</span>
+                    <span className="font-bold text-[10pt] truncate min-w-0"></span>
+                  </div>
+                </td>
               </tr>
               <tr>
-                <td className="px-2 py-[1pt] text-[8pt]">BUS. STYLE:</td>
+                <td className="px-2 py-[1pt]">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-[8pt] shrink-0">BUS. STYLE:</span>
+                    <span className="font-bold text-[10pt] truncate min-w-0"></span>
+                  </div>
+                </td>
               </tr>
             </tbody>
           </table>
