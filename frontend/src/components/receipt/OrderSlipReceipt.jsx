@@ -25,18 +25,18 @@ export function OrderSlipReceipt({ transaction }) {
   const fillerRowCount = Math.max(0, ITEM_TABLE_ROWS - productItems.length)
 
   return (
-    <div className="order-slip bg-white text-black text-[11pt] leading-tight px-3 w-full min-h-[200mm] flex flex-col justify-between">
+    <div className="order-slip bg-white text-black text-[10pt] leading-tight px-3 w-full">
       <div className="text-center py-0 px-2">
-        <div className="font-bold text-[14pt]">LASH FROZEN MEAT TRADING, INC.</div>
-        <div className="text-[9pt]">112 Macabagdal St. Brgy. 86 Dist. II 1400 Caloocan City NCR, Third District Philippines</div>
-        <div className="text-[9pt]">Non VAT Reg. TIN: 010-561-596-00000</div>
+        <div className="font-bold text-[13pt]">LASH FROZEN MEAT TRADING, INC.</div>
+        <div className="text-[7pt]">112 Macabagdal St. Brgy. 86 Dist. II 1400 Caloocan City NCR, Third District Philippines</div>
+        <div className="text-[7pt]">Non VAT Reg. TIN: 010-561-596-00000</div>
       </div>
 
-      <div>
+      <div className="mt-1">
         <div className="flex justify-between items-baseline px-2 py-0">
-          <span className="font-bold text-[13pt]">ORDER SLIP</span>
-          <span>
-            No. <span className="font-bold text-[13pt]">{transaction.order_number}</span>
+          <span className="font-bold text-[11pt]">ORDER SLIP</span>
+          <span className="text-[10pt] font-bold">
+            No. <span className="text-[12pt]">{transaction.order_number}</span>
           </span>
         </div>
 
@@ -48,26 +48,29 @@ export function OrderSlipReceipt({ transaction }) {
           <tbody>
             <tr>
               <td className="px-2 py-0">
-                Customer Name: <span className="font-bold">{transaction.customer_name}</span>
+                <span className="text-[8pt]">Customer Name:</span>{' '}
+                <span className="font-bold text-[10pt]">{transaction.customer_name}</span>
               </td>
               <td className="px-2 py-0">
-                DATE: <span className="font-bold">{formatReceiptDate(transaction.walkin_at)}</span>
+                <span className="text-[8pt]">DATE:</span>{' '}
+                <span className="font-bold text-[10pt]">{formatReceiptDate(transaction.walkin_at)}</span>
               </td>
             </tr>
             <tr>
               <td rowSpan={2} className="px-2 py-0 align-top">
-                Address: <span className="font-bold">{transaction.customer_address || ''}</span>
+                <span className="text-[8pt]">Address:</span>{' '}
+                <span className="font-bold text-[10pt]">{transaction.customer_address || ''}</span>
               </td>
-              <td className="px-2 py-0">TIN:</td>
+              <td className="px-2 py-0 text-[8pt]">TIN:</td>
             </tr>
             <tr>
-              <td className="px-2 py-0">BUS. STYLE:</td>
+              <td className="px-2 py-0 text-[8pt]">BUS. STYLE:</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <table className="w-full table-fixed">
+      <table className="w-full table-fixed mt-2">
         <colgroup>
           <col className="w-[13%]" />
           <col className="w-[9%]" />
@@ -76,58 +79,58 @@ export function OrderSlipReceipt({ transaction }) {
           <col className="w-[17%]" />
         </colgroup>
         <thead>
-          <tr>
-            <th className="px-1 py-0 text-left font-bold">QTY.</th>
-            <th className="px-1 py-0 text-left font-bold">UNIT</th>
-            <th className="px-1 py-0 text-left font-bold">ARTICLES</th>
-            <th className="px-1 py-0 text-right font-bold whitespace-nowrap">UNIT PRICE</th>
-            <th className="px-1 py-0 text-right font-bold whitespace-nowrap">AMOUNT</th>
+          <tr className="text-[8pt]">
+            <th className="px-1 py-[1.5pt] text-left font-bold">QTY.</th>
+            <th className="px-1 py-[1.5pt] text-left font-bold">UNIT</th>
+            <th className="px-1 py-[1.5pt] text-left font-bold">ARTICLES</th>
+            <th className="px-1 py-[1.5pt] text-right font-bold whitespace-nowrap">UNIT PRICE</th>
+            <th className="px-1 py-[1.5pt] text-right font-bold whitespace-nowrap">AMOUNT</th>
           </tr>
         </thead>
         <tbody>
           {productItems.map((item) => (
             <tr key={item.id}>
-              <td className="px-1 py-0 align-top">{Number(item.quantity_kg).toFixed(3)}</td>
-              <td className="px-1 py-0 align-top">{item.unit_count}</td>
-              <td className="px-1 py-0 align-top break-words">
+              <td className="px-1 py-[1.5pt] align-top">{Number(item.quantity_kg).toFixed(3)}</td>
+              <td className="px-1 py-[1.5pt] align-top">{item.unit_count}</td>
+              <td className="px-1 py-[1.5pt] align-top break-words">
                 <div>{item.brand_name ? `${item.product_name} ${item.brand_name}` : item.product_name}</div>
               </td>
-              <td className="px-1 py-0 align-top text-right">{formatPlainAmount(item.unit_price)}</td>
-              <td className="px-1 py-0 align-top text-right">{formatPlainAmount(item.subtotal)}</td>
+              <td className="px-1 py-[1.5pt] align-top text-right">{formatPlainAmount(item.unit_price)}</td>
+              <td className="px-1 py-[1.5pt] align-top text-right">{formatPlainAmount(item.subtotal)}</td>
             </tr>
           ))}
           {Array.from({ length: fillerRowCount }).map((_, i) => (
             <tr key={`filler-${i}`}>
-              <td className="px-1 py-0">&nbsp;</td>
-              <td className="px-1 py-0">&nbsp;</td>
-              <td className="px-1 py-0">&nbsp;</td>
-              <td className="px-1 py-0 text-right">&nbsp;</td>
-              <td className="px-1 py-0 text-right">&nbsp;</td>
+              <td className="px-1 py-[1.5pt]">&nbsp;</td>
+              <td className="px-1 py-[1.5pt]">&nbsp;</td>
+              <td className="px-1 py-[1.5pt]">&nbsp;</td>
+              <td className="px-1 py-[1.5pt] text-right">&nbsp;</td>
+              <td className="px-1 py-[1.5pt] text-right">&nbsp;</td>
             </tr>
           ))}
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan={4} className="px-1 py-0 text-right font-bold">
+            <td colSpan={4} className="px-1 py-[1.5pt] text-right font-bold text-[8pt]">
               TOTAL AMOUNT DUE
             </td>
-            <td className="px-1 py-0 text-right font-bold">{formatPlainAmount(transaction.total_due)}</td>
+            <td className="px-1 py-[1.5pt] text-right font-bold text-[10pt]">{formatPlainAmount(transaction.total_due)}</td>
           </tr>
         </tfoot>
       </table>
 
-      <table className="w-full table-fixed">
+      <table className="w-full table-fixed mt-2">
         <colgroup>
           <col className="w-1/2" />
           <col className="w-1/2" />
         </colgroup>
-        <tbody>
+        <tbody className="text-[9pt]">
           <tr>
             <td className="px-2 py-0 h-9 align-top">PREPARED BY:</td>
             <td rowSpan={2} className="px-2 py-0 align-top">
               <div>RECEIVED BY:</div>
               <div className="border-b border-black mt-3"></div>
-              <div className="text-[8pt] flex justify-between">
+              <div className="text-[7pt] flex justify-between">
                 <span>Signature Over printed Name</span>
                 <span>DATE:</span>
               </div>
@@ -139,7 +142,7 @@ export function OrderSlipReceipt({ transaction }) {
         </tbody>
       </table>
 
-      <div className="italic text-center text-[9pt]">Received the above goods in good order &amp; condition</div>
+      <div className="italic font-bold text-center text-[8pt] mt-1">Received the above goods in good order &amp; condition</div>
     </div>
   )
 }
