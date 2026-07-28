@@ -18,6 +18,18 @@ const ITEM_TABLE_ROWS = 22
 const formatPlainAmount = (amount) =>
   Number(amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// Order numbers are PREFIX-YYYYMMDD-NNNN (e.g. TXN-20260726-0003). The
+// printed slip drops the date segment (PREFIX-NNNN) since the DATE field
+// already shows it — only strips when that middle segment is really an
+// 8-digit date, so shorter formats (e.g. ONE-00020) print unchanged.
+const formatOrderNumberForSlip = (orderNumber) => {
+  const parts = orderNumber.split('-')
+  if (parts.length === 3 && /^\d{8}$/.test(parts[1])) {
+    return `${parts[0]}-${parts[2]}`
+  }
+  return orderNumber
+}
+
 export function OrderSlipReceipt({ transaction }) {
   if (!transaction) return null
 
@@ -36,41 +48,52 @@ export function OrderSlipReceipt({ transaction }) {
         <div className="flex justify-between items-baseline px-2 py-0">
           <span className="font-bold text-[11pt]">ORDER SLIP</span>
           <span className="text-[10pt] font-bold">
-            No. <span className="text-[12pt]">{transaction.order_number}</span>
+            No. <span className="text-[12pt]">{formatOrderNumberForSlip(transaction.order_number)}</span>
           </span>
         </div>
 
-        <table className="w-full table-fixed">
-          <colgroup>
-            <col className="w-[58%]" />
-            <col className="w-[42%]" />
-          </colgroup>
-          <tbody>
-            <tr>
-              <td className="px-2 py-0">
-                <span className="text-[8pt]">Customer Name:</span>{' '}
-                <span className="font-bold text-[10pt]">{transaction.customer_name}</span>
-              </td>
-              <td className="px-2 py-0">
-                <span className="text-[8pt]">DATE:</span>{' '}
-                <span className="font-bold text-[10pt]">{formatReceiptDate(transaction.walkin_at)}</span>
-              </td>
-            </tr>
-            <tr>
-              <td rowSpan={2} className="px-2 py-0 align-top">
-                <span className="text-[8pt]">Address:</span>{' '}
-                <span className="font-bold text-[10pt]">{transaction.customer_address || ''}</span>
-              </td>
-              <td className="px-2 py-0 text-[8pt]">TIN:</td>
-            </tr>
-            <tr>
-              <td className="px-2 py-0 text-[8pt]">BUS. STYLE:</td>
-            </tr>
-          </tbody>
-        </table>
+        {/* Two independent tables (not one table with a rowSpan) so the
+            2-row left column and 3-row right column each get their own
+            equal row-height distribution — a shared rowSpan cell would
+            force Address's row to inherit the combined height of TIN +
+            BUS. STYLE, making it visibly taller than Customer Name's row. */}
+        <div className="grid items-stretch" style={{ gridTemplateColumns: '58% 42%' }}>
+          <table className="table-fixed w-full h-full">
+            <tbody>
+              <tr>
+                <td className="px-2 py-0">
+                  <span className="text-[8pt]">Customer Name:</span>{' '}
+                  <span className="font-bold text-[10pt]">{transaction.customer_name}</span>
+                </td>
+              </tr>
+              <tr>
+                <td className="px-2 py-0">
+                  <span className="text-[8pt]">Address:</span>{' '}
+                  <span className="font-bold text-[10pt]">{transaction.customer_address || ''}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <table className="table-fixed w-full h-full" style={{ borderLeft: 'none' }}>
+            <tbody>
+              <tr>
+                <td className="px-2 py-[1pt]">
+                  <span className="text-[8pt]">DATE:</span>{' '}
+                  <span className="font-bold text-[10pt]">{formatReceiptDate(transaction.walkin_at)}</span>
+                </td>
+              </tr>
+              <tr>
+                <td className="px-2 py-[1pt] text-[8pt]">TIN:</td>
+              </tr>
+              <tr>
+                <td className="px-2 py-[1pt] text-[8pt]">BUS. STYLE:</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <table className="w-full table-fixed mt-[8pt]">
+      <table className="w-full table-fixed mt-[4pt]">
         <colgroup>
           <col className="w-[13%]" />
           <col className="w-[9%]" />
@@ -92,8 +115,8 @@ export function OrderSlipReceipt({ transaction }) {
             <tr key={item.id}>
               <td className="px-1 py-[1.5pt] align-top text-center">{Number(item.quantity_kg).toFixed(3)}</td>
               <td className="px-1 py-[1.5pt] align-top text-center">{item.unit_count}</td>
-              <td className="px-1 py-[1.5pt] align-top break-words">
-                <div>{item.brand_name ? `${item.product_name} ${item.brand_name}` : item.product_name}</div>
+              <td className="px-1 py-[1.5pt] align-top truncate">
+                {item.brand_name ? `${item.product_name} ${item.brand_name}` : item.product_name}
               </td>
               <td className="px-1 py-[1.5pt] align-top text-right">{formatPlainAmount(item.unit_price)}</td>
               <td className="px-1 py-[1.5pt] align-top text-right">{formatPlainAmount(item.subtotal)}</td>
@@ -129,10 +152,7 @@ export function OrderSlipReceipt({ transaction }) {
             <td className="px-2 py-0 h-9 align-top">PREPARED BY:</td>
             <td rowSpan={2} className="px-2 py-0 align-top relative">
               <div>RECEIVED BY:</div>
-              <div className="text-[7pt] flex justify-between absolute bottom-0 left-0 right-0">
-                <span>Signature Over printed Name</span>
-                <span>DATE:</span>
-              </div>
+              <div className="text-[7pt] absolute bottom-0 left-0 right-0">Signature Over printed Name</div>
             </td>
           </tr>
           <tr>
