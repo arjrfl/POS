@@ -6,6 +6,7 @@ import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 import { Button } from '../ui/Button'
 import { useReceiptPrintStore } from '../../store/receiptPrintStore'
+import { PrintDetailsModal } from '../receipt/PrintDetailsModal'
 
 const fetchTransactionHistory = () => get('/transactions/history')
 
@@ -20,14 +21,15 @@ function HistoryRow({ transaction }) {
   const typeBadge = CUSTOMER_TYPE_BADGE[transaction.customer_type]
   const triggerPrint = useReceiptPrintStore((state) => state.triggerPrint)
   const [printing, setPrinting] = useState(false)
+  const [showPrintDetails, setShowPrintDetails] = useState(false)
 
   const canPrint = transaction.transaction_type === 'original'
 
-  const handlePrint = async () => {
+  const handlePrintConfirm = async (tin, busStyle) => {
     setPrinting(true)
     try {
       const fullTransaction = await get(`/transactions/${transaction.id}`)
-      triggerPrint(fullTransaction)
+      triggerPrint(fullTransaction, tin, busStyle)
     } finally {
       setPrinting(false)
     }
@@ -59,12 +61,17 @@ function HistoryRow({ transaction }) {
           variant="outline"
           className="!px-3 !py-1 text-xs inline-flex items-center gap-1"
           disabled={!canPrint || printing}
-          onClick={handlePrint}
+          onClick={() => setShowPrintDetails(true)}
           title={canPrint ? undefined : 'Receipt not available for this transaction type'}
         >
           <Printer size={14} />
           Print
         </Button>
+        <PrintDetailsModal
+          open={showPrintDetails}
+          onClose={() => setShowPrintDetails(false)}
+          onConfirm={handlePrintConfirm}
+        />
       </td>
     </tr>
   )

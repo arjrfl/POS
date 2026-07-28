@@ -6,6 +6,8 @@ import { OrderSlipReceipt } from './OrderSlipReceipt'
 // receiptPrintStore and drives window.print() whenever a transaction is set.
 export function ReceiptPrintLayer() {
   const transaction = useReceiptPrintStore((state) => state.transaction)
+  const tin = useReceiptPrintStore((state) => state.tin)
+  const busStyle = useReceiptPrintStore((state) => state.busStyle)
   const clearPrint = useReceiptPrintStore((state) => state.clearPrint)
 
   useEffect(() => {
@@ -19,7 +21,7 @@ export function ReceiptPrintLayer() {
 
   return (
     <div id="receipt-print-root" className="hidden print:block">
-      <OrderSlipReceipt transaction={transaction} />
+      <OrderSlipReceipt transaction={transaction} tin={tin} busStyle={busStyle} />
     </div>
   )
 }

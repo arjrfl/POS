@@ -65,7 +65,7 @@ function computePaymentSummary(transaction) {
   }
 }
 
-export function OrderSlipReceipt({ transaction }) {
+export function OrderSlipReceipt({ transaction, tin, busStyle }) {
   if (!transaction) return null
 
   const productItems = transaction.items.filter((item) => item.item_type === 'product')
@@ -126,7 +126,7 @@ export function OrderSlipReceipt({ transaction }) {
                 <td className="px-2 py-[1pt]">
                   <div className="flex items-baseline gap-1">
                     <span className="text-[8pt] shrink-0">TIN:</span>
-                    <span className="font-bold text-[10pt] truncate min-w-0"></span>
+                    <span className="font-bold text-[10pt] truncate min-w-0">{tin || ''}</span>
                   </div>
                 </td>
               </tr>
@@ -134,7 +134,7 @@ export function OrderSlipReceipt({ transaction }) {
                 <td className="px-2 py-[1pt]">
                   <div className="flex items-baseline gap-1">
                     <span className="text-[8pt] shrink-0">BUS. STYLE:</span>
-                    <span className="font-bold text-[10pt] truncate min-w-0"></span>
+                    <span className="font-bold text-[10pt] truncate min-w-0">{busStyle || ''}</span>
                   </div>
                 </td>
               </tr>
