@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Printer } from 'lucide-react'
 import { FullScreenModal } from '../ui/FullScreenModal'
 import { Modal } from '../ui/Modal'
 import { Badge } from '../ui/Badge'
+import { Button } from '../ui/Button'
 import { get } from '../../services/api'
 import { useCustomer } from '../../hooks/useCustomer'
+import { useReceiptPrint } from '../../hooks/useReceiptPrint'
 import { ArticleRows, ARTICLE_ROW_COLUMN_WIDTHS } from '../payment/ArticleRows'
+import { PrintDetailsModal } from '../receipt/PrintDetailsModal'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
@@ -625,6 +629,37 @@ function ArticleTable({ children, footer }) {
   )
 }
 
+// Print button shown directly below the Original transaction's item table —
+// same eligibility (transaction_type === 'original') and same shared
+// useReceiptPrint flow as the Payment History tab's Print button. Always
+// targets the ORIGINAL transaction, even when viewing a linked
+// adjustment/refund child's own page, since only the original carries real
+// items + payment_entries suitable for the Order Slip form.
+function PrintReceiptButton({ transaction }) {
+  const { printing, showPrintDetails, openPrintDetails, closePrintDetails, handlePrintConfirm } = useReceiptPrint()
+  if (!transaction || transaction.transaction_type !== 'original') return null
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        className="self-start !px-3 !py-1 text-xs inline-flex items-center gap-1"
+        disabled={printing}
+        onClick={openPrintDetails}
+      >
+        <Printer size={14} />
+        Print
+      </Button>
+      <PrintDetailsModal
+        open={showPrintDetails}
+        onClose={closePrintDetails}
+        onConfirm={(tin, busStyle) => handlePrintConfirm(transaction.id, tin, busStyle)}
+      />
+    </>
+  )
+}
+
 // Lists each of the original transaction's items that varied (quantity_kg
 // and/or unit_count — see adjustedItemRows above), only shown on the
 // standalone Adjustment child view alongside the highlighted rows in the
@@ -974,6 +1009,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                       preferActual={isStandaloneChild}
                     />
                   </ArticleTable>
+                  <PrintReceiptButton transaction={originalTxn} />
                 </div>
               ) : hasLinkedAdjustment ? (
                 <>
@@ -991,6 +1027,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                         preferActual={isStandaloneChild}
                       />
                     </ArticleTable>
+                    <PrintReceiptButton transaction={originalTxn} />
                   </div>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
                     <span className="text-sm font-medium">
@@ -1006,6 +1043,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                   <ArticleTable>
                     <ArticleRows transaction={originalAsParent} variant="plain" align="center" preferActual={false} />
                   </ArticleTable>
+                  <PrintReceiptButton transaction={originalTxn} />
                 </div>
               )}
             </div>

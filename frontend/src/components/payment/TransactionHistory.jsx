@@ -5,7 +5,7 @@ import { get } from '../../services/api'
 import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 import { Button } from '../ui/Button'
-import { useReceiptPrintStore } from '../../store/receiptPrintStore'
+import { useReceiptPrint } from '../../hooks/useReceiptPrint'
 import { PrintDetailsModal } from '../receipt/PrintDetailsModal'
 
 const fetchTransactionHistory = () => get('/transactions/history')
@@ -19,21 +19,9 @@ function formatHistoryDateTime(iso) {
 
 function HistoryRow({ transaction }) {
   const typeBadge = CUSTOMER_TYPE_BADGE[transaction.customer_type]
-  const triggerPrint = useReceiptPrintStore((state) => state.triggerPrint)
-  const [printing, setPrinting] = useState(false)
-  const [showPrintDetails, setShowPrintDetails] = useState(false)
+  const { printing, showPrintDetails, openPrintDetails, closePrintDetails, handlePrintConfirm } = useReceiptPrint()
 
   const canPrint = transaction.transaction_type === 'original'
-
-  const handlePrintConfirm = async (tin, busStyle) => {
-    setPrinting(true)
-    try {
-      const fullTransaction = await get(`/transactions/${transaction.id}`)
-      triggerPrint(fullTransaction, tin, busStyle)
-    } finally {
-      setPrinting(false)
-    }
-  }
 
   return (
     <tr className="border-b border-gray-200 hover:bg-gray-50">
@@ -61,7 +49,7 @@ function HistoryRow({ transaction }) {
           variant="outline"
           className="!px-3 !py-1 text-xs inline-flex items-center gap-1"
           disabled={!canPrint || printing}
-          onClick={() => setShowPrintDetails(true)}
+          onClick={openPrintDetails}
           title={canPrint ? undefined : 'Receipt not available for this transaction type'}
         >
           <Printer size={14} />
@@ -69,8 +57,8 @@ function HistoryRow({ transaction }) {
         </Button>
         <PrintDetailsModal
           open={showPrintDetails}
-          onClose={() => setShowPrintDetails(false)}
-          onConfirm={handlePrintConfirm}
+          onClose={closePrintDetails}
+          onConfirm={(tin, busStyle) => handlePrintConfirm(transaction.id, tin, busStyle)}
         />
       </td>
     </tr>

@@ -100,7 +100,7 @@ export function PaymentConfirmationModal({
       // app-root ReceiptPrintLayer (unaffected by this modal closing) picks
       // it up and calls window.print() on its own next frame — so closing
       // via onDone below does not wait on the print dialog being dismissed.
-      if (action === 'print') triggerPrint(paid)
+      if (action === 'print') triggerPrint([paid])
       onDone(paid)
     } catch (err) {
       setError(err.message)

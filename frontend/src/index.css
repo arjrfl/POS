@@ -31,6 +31,14 @@
   break-inside: avoid;
 }
 
+/* Forces a fresh page before the next receipt in a multi-page print job
+   (original + its linked adjustment/refund child) — applied to every page
+   except the last, see ReceiptPrintLayer. */
+.receipt-page-break {
+  page-break-after: always;
+  break-after: page;
+}
+
 @media print {
   body * {
     visibility: hidden;
