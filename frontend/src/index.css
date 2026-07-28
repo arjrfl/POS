@@ -20,8 +20,8 @@
    guarantee — content taller than one page will still split) that the
    receipt should stay on a single page rather than spill across two. */
 @page {
-  size: A4;
-  margin: 10mm;
+  size: A5 portrait;
+  margin: 5mm;
 }
 .order-slip {
   page-break-inside: avoid;
