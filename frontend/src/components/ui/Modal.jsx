@@ -11,10 +11,15 @@ import { useEffect, useRef } from 'react'
 // five-column tables side by side (e.g. Order Items Update Logs) that feel
 // cramped at 'lg' — kept as its own variant rather than widening 'lg' itself,
 // since EditItemsModal also uses 'lg' and doesn't need the extra width.
+// 'table' is a shrink-wrapped (not fixed-height) variant for a single table
+// whose row count varies — no h-[94vh]/flex-col, so the modal grows with
+// short content and relies on the table body's own overflow-y-auto for tall
+// content instead (e.g. ChangeHistoryModal).
 const SIZE_CLASSES = {
   md: 'max-w-md',
   lg: 'max-w-5xl h-[94vh] max-h-[94vh] flex flex-col',
   xl: 'max-w-[74rem] h-[94vh] max-h-[94vh] flex flex-col',
+  table: 'max-w-3xl',
 }
 
 // Module-level stack of currently-open Modal instances (by mount order), so
