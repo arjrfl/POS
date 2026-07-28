@@ -10,7 +10,10 @@ import { formatReceiptDate } from '../../utils/time'
 // Item table always shows this many body rows, padded with blank rows when
 // short — matches the physical paper form's fixed row count. Never
 // truncated: a transaction with more items than this just renders them all.
-const ITEM_TABLE_ROWS = 22
+// 17 (not 22) because the tfoot below now carries 5 extra blank label rows
+// (Partial Payment? / Amount Received / Amount Paid / Balance / Change)
+// above TOTAL AMOUNT DUE — 17 + 5 keeps the form's total row budget at 22.
+const ITEM_TABLE_ROWS = 17
 
 // Matches the reference paper form: plain comma-separated number, no ₱
 // symbol — distinct from the app-wide formatCurrency utility, which is for
@@ -133,6 +136,14 @@ export function OrderSlipReceipt({ transaction }) {
           ))}
         </tbody>
         <tfoot>
+          {['Partial Payment?', 'Amount Received:', 'Amount Paid:', 'Balance:', 'Change:'].map((label) => (
+            <tr key={label}>
+              <td colSpan={4} className="px-1 py-[1.5pt] text-right text-[8pt]">
+                {label}
+              </td>
+              <td className="px-1 py-[1.5pt]">&nbsp;</td>
+            </tr>
+          ))}
           <tr>
             <td colSpan={4} className="px-1 py-[1.5pt] text-right font-bold text-[8pt]">
               TOTAL AMOUNT DUE
