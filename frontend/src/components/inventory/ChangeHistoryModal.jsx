@@ -94,6 +94,20 @@ function ActionBadge({ type }) {
   )
 }
 
+// Shared between the fixed header table and the scrollable body table so
+// columns line up — table-fixed needs explicit widths on both, since each
+// <table> otherwise sizes its own columns independently from row content.
+function HistoryColGroup() {
+  return (
+    <colgroup>
+      <col style={{ width: '19%' }} />
+      <col style={{ width: '15%' }} />
+      <col style={{ width: '19%' }} />
+      <col style={{ width: '47%' }} />
+    </colgroup>
+  )
+}
+
 function RoleTag({ role }) {
   return (
     <span
@@ -151,9 +165,10 @@ export function ChangeHistoryModal({ open, product, history, loading, onClose })
         {loading && <p className="text-sm text-gray-500">Loading...</p>}
         {!loading && history?.length === 0 && <p className="text-sm text-gray-500">No changes yet</p>}
         {!loading && history?.length > 0 && (
-          <div className="max-h-[420px] overflow-y-auto pr-1">
-            <table className="w-full text-sm border-collapse">
-              <thead className="sticky top-0 bg-white">
+          <div className="flex flex-col">
+            <table className="w-full text-sm table-fixed border-collapse">
+              <HistoryColGroup />
+              <thead>
                 <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
                   <th className="py-2 pr-3 font-medium">Date/Time</th>
                   <th className="py-2 pr-3 font-medium">Action</th>
@@ -161,28 +176,33 @@ export function ChangeHistoryModal({ open, product, history, loading, onClose })
                   <th className="py-2 font-medium">Changes</th>
                 </tr>
               </thead>
-              <tbody>
-                {history.map((log) => (
-                  <tr key={log.id} className="border-b border-gray-100 last:border-0 align-top">
-                    <td className="py-2 pr-3 text-xs text-gray-500 whitespace-nowrap">
-                      {new Date(log.changed_at).toLocaleString()}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <ActionBadge type={log.change_type} />
-                    </td>
-                    <td className="py-2 pr-3">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-gray-700">{log.changed_by_full_name}</span>
-                        <RoleTag role={log.changed_by_role} />
-                      </div>
-                    </td>
-                    <td className="py-2 text-xs text-gray-600">
-                      <ChangesCell log={log} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
             </table>
+            <div className="max-h-[420px] overflow-y-auto pr-1">
+              <table className="w-full text-sm table-fixed border-collapse">
+                <HistoryColGroup />
+                <tbody>
+                  {history.map((log) => (
+                    <tr key={log.id} className="border-b border-gray-100 last:border-0 align-top">
+                      <td className="py-2 pr-3 text-xs text-gray-500 whitespace-nowrap">
+                        {new Date(log.changed_at).toLocaleString()}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <ActionBadge type={log.change_type} />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-gray-700">{log.changed_by_full_name}</span>
+                          <RoleTag role={log.changed_by_role} />
+                        </div>
+                      </td>
+                      <td className="py-2 text-xs text-gray-600">
+                        <ChangesCell log={log} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
