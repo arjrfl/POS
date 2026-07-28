@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Pencil, ArrowUpDown, Power, Trash2 } from 'lucide-react'
 import { useProducts } from '../../hooks/useProducts'
+import { useAuthStore } from '../../store/authStore'
 import { get, post, patch, del } from '../../services/api'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
@@ -26,7 +27,7 @@ function formFor(product) {
   }
 }
 
-function FieldsPanel({ editingProduct, onSaved, onClear }) {
+function FieldsPanel({ role, editingProduct, onSaved, onClear }) {
   const [form, setForm] = useState(emptyForm)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState('')
@@ -65,7 +66,8 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
   const setField = (field) => (e) => setForm((prev) => ({ ...prev, [field]: e.target.value }))
 
   const canSubmit =
-    form.product_name.trim().length > 0 && form.unit_price_php !== '' && Number(form.unit_price_php) >= 0
+    form.product_name.trim().length > 0 &&
+    (role === 'releasing' || (form.unit_price_php !== '' && Number(form.unit_price_php) >= 0))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -78,7 +80,10 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
       product_name: form.product_name.trim(),
       brand_name: form.brand_name.trim() || null,
       unit_weight_kg: form.unit_weight_kg === '' ? null : Number(form.unit_weight_kg),
-      unit_price_php: Number(form.unit_price_php),
+      // Releasing never sets price — omit entirely rather than send a stale/zero
+      // value; the backend forces/ignores it for this role regardless (defense
+      // in depth), but the frontend shouldn't send it either.
+      ...(role === 'releasing' ? {} : { unit_price_php: Number(form.unit_price_php) }),
     }
 
     try {
@@ -135,17 +140,19 @@ function FieldsPanel({ editingProduct, onSaved, onClear }) {
           value={form.unit_weight_kg}
           onChange={setField('unit_weight_kg')}
         />
-        <Input
-          id="field-unit-price"
-          label="Unit Price (₱/kg)"
-          type="number"
-          step="0.01"
-          min="0"
-          placeholder="0.00"
-          value={form.unit_price_php}
-          onChange={setField('unit_price_php')}
-          required
-        />
+        {role === 'admin' && (
+          <Input
+            id="field-unit-price"
+            label="Unit Price (₱/kg)"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="0.00"
+            value={form.unit_price_php}
+            onChange={setField('unit_price_php')}
+            required
+          />
+        )}
 
         {!editingProduct && (
           <Input
@@ -241,7 +248,11 @@ function ProductRow({ product, onEdit, onAdjustStock, onDelete, confirmingToggle
         {formatWeight(product.unit_weight_kg)}
       </td>
       <td className="px-4 py-2 text-sm text-right tabular-nums text-gray-800">
-        {formatCurrency(product.unit_price_php)}
+        {Number(product.unit_price_php) === 0 ? (
+          <span className="text-gray-400 italic">No price set</span>
+        ) : (
+          formatCurrency(product.unit_price_php)
+        )}
       </td>
       <td className="px-4 py-2 text-sm text-right tabular-nums text-gray-800">{formatStock(product.stock_quantity)}</td>
       <td className="px-4 py-2 text-center">
@@ -294,6 +305,7 @@ function ProductRow({ product, onEdit, onAdjustStock, onDelete, confirmingToggle
 }
 
 export function InventoryView({ showToast }) {
+  const role = useAuthStore((state) => state.user?.role_name)
   const [editingProduct, setEditingProduct] = useState(null)
   const [adjustingProduct, setAdjustingProduct] = useState(null)
   const [deletingProduct, setDeletingProduct] = useState(null)
@@ -347,6 +359,7 @@ export function InventoryView({ showToast }) {
       <div className="w-[300px] shrink-0 h-full min-h-0 flex flex-col">
         <span className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">Fields</span>
         <FieldsPanel
+          role={role}
           editingProduct={editingProduct}
           onSaved={handleSaved}
           onClear={() => setEditingProduct(null)}

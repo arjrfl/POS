@@ -494,6 +494,44 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
     if data.credit_applied > 0 and customer.net_balance < data.credit_applied:
         raise ValueError("Customer does not have enough credit for the amount applied")
 
+    # Stock + price validation, all-or-nothing before any DB writes. Point-in-time
+    # snapshot only, not a reservation — two concurrent Receiver submits can each
+    # pass this individually and jointly still exceed real stock, since stock isn't
+    # decremented until Releasing. Accepted trade-off (confirmed with Arjay); no
+    # Releasing-side block added.
+    product_quantities: dict[int, Decimal] = {}
+    for item in data.items:
+        if item.item_type == ItemTypeEnum.product and item.product_id is not None and item.quantity_kg is not None:
+            product_quantities[item.product_id] = (
+                product_quantities.get(item.product_id, Decimal("0")) + item.quantity_kg
+            )
+
+    if product_quantities:
+        products_result = await db.execute(select(Product).where(Product.id.in_(product_quantities.keys())))
+        products_by_id = {p.id: p for p in products_result.scalars().all()}
+
+        unpriced_errors = []
+        stock_errors = []
+        for product_id, requested_qty in product_quantities.items():
+            product = products_by_id.get(product_id)
+            if product is None:
+                continue  # surfaced later as "Product {id} not found"
+            if product.unit_price_php <= 0:
+                unpriced_errors.append(
+                    f"{product.product_name} has no price set yet. Ask Admin to set a price "
+                    "before ordering this item."
+                )
+            if requested_qty > product.stock_quantity:
+                stock_errors.append(
+                    f"Not enough stock for {product.product_name}: {product.stock_quantity} kg "
+                    f"available, {requested_qty} kg requested."
+                )
+
+        if unpriced_errors:
+            raise ValueError(" ".join(unpriced_errors))
+        if stock_errors:
+            raise ValueError(" ".join(stock_errors))
+
     transaction_type = TransactionTypeEnum(data.transaction_type)
 
     # Receiver's "Balance Settlement Only" checkbox always settles the customer's

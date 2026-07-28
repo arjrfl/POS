@@ -25,7 +25,7 @@ function initialState(draft) {
   return { customer: null, customerType: null, items: [], settleOnly: false }
 }
 
-export function CreateTransactionModal({ open, onClose, onCreated }) {
+export function CreateTransactionModal({ open, onClose, onCreated, showToast }) {
   const username = useAuthStore((state) => state.user?.username)
   const [{ customer, customerType, items, settleOnly }, setState] = useState(() =>
     initialState(loadReceiverDraft(username)),
@@ -203,7 +203,10 @@ export function CreateTransactionModal({ open, onClose, onCreated }) {
       })
       onCreated()
     } catch (err) {
-      setError(err.message)
+      // Backend rejection (e.g. unpriced product, insufficient stock) — surfaced
+      // as a toast, not inline, and the modal stays open with entries intact
+      // (no resetForm call here).
+      showToast?.(err.message, 'error')
     } finally {
       setSubmitting(false)
     }

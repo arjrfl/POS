@@ -130,7 +130,20 @@ async def create_product(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    product = Product(**payload.model_dump())
+    # Price is Admin-only: Releasing-created products are always unpriced
+    # (the 0.00 sentinel) regardless of what was submitted; Admin must set
+    # a real price, since 0.00 is reserved for "unpriced".
+    data = payload.model_dump()
+    if current_user.get("role_name") == "releasing":
+        data["unit_price_php"] = Decimal("0.00")
+    else:
+        if data["unit_price_php"] is None or data["unit_price_php"] <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unit price must be greater than 0",
+            )
+
+    product = Product(**data)
     db.add(product)
     await db.flush()
 
@@ -140,7 +153,7 @@ async def create_product(
         current_user["user_id"],
         ProductChangeTypeEnum.created,
         old_value=None,
-        new_value=payload.model_dump(),
+        new_value=data,
     )
     return {"data": ProductResponse.model_validate(product), "error": None}
 
@@ -154,9 +167,21 @@ async def update_product(
 ):
     product = await _get_product_or_404(product_id, db)
 
+    payload_dict = payload.model_dump(exclude_unset=True)
+    if current_user.get("role_name") == "releasing":
+        # Releasing never modifies price — silently drop it even if present.
+        payload_dict.pop("unit_price_php", None)
+    elif "unit_price_php" in payload_dict:
+        price = payload_dict["unit_price_php"]
+        if price is None or price <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unit price must be greater than 0",
+            )
+
     old_value = {}
     new_value = {}
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    for field, value in payload_dict.items():
         current_value = getattr(product, field)
         if current_value != value:
             old_value[field] = current_value

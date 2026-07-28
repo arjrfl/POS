@@ -10,7 +10,10 @@ class ProductCreate(BaseModel):
     product_name: str
     brand_name: str | None = None
     unit_weight_kg: Decimal | None = None
-    unit_price_php: Decimal
+    # Optional at the schema level so Releasing can omit it entirely — the
+    # router forces it to the 0.00 "unpriced" sentinel for that role
+    # regardless, and requires > 0 for Admin. See routers/products.py.
+    unit_price_php: Decimal | None = None
     stock_quantity: Decimal = Decimal("0")
 
 

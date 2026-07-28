@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
-import { formatCurrency, formatWeight } from '../../utils/format'
+import { formatCurrency, formatWeight, formatStock } from '../../utils/format'
 
 export function ProductSelector({ onAddItem }) {
   const [searchTerm, setSearchTerm] = useState('')
@@ -80,6 +80,9 @@ export function ProductSelector({ onAddItem }) {
   const parsedWeight = estimatedWeight === '' ? null : Number(estimatedWeight)
   const subtotal = (parsedQty || 0) * unitPrice
 
+  const stockAvailable = selectedProduct ? Number(selectedProduct.stock_quantity) : null
+  const exceedsStock = selectedProduct && parsedQty != null && parsedQty > stockAvailable
+
   const handleAdd = () => {
     if (!parsedUnitCount || parsedUnitCount <= 0) {
       setItemError('Unit count is required')
@@ -87,6 +90,10 @@ export function ProductSelector({ onAddItem }) {
     }
     if (!parsedQty || parsedQty <= 0) {
       setItemError('QTY is required')
+      return
+    }
+    if (exceedsStock) {
+      setItemError(`Only ${formatStock(stockAvailable)} kg left in stock`)
       return
     }
 
@@ -124,25 +131,34 @@ export function ProductSelector({ onAddItem }) {
           {isOpen && (
             <div className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg">
               {filtered?.length ? (
-                filtered.map((product) => (
-                  <button
-                    type="button"
-                    key={product.id}
-                    onMouseDown={() => handleSelect(product)}
-                    className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
-                  >
-                    <div className="font-medium text-gray-900">
-                      {product.product_name}
-                      {product.brand_name && (
-                        <span className="text-gray-500 font-normal"> — {product.brand_name}</span>
-                      )}
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      {product.unit_weight_kg && `${formatWeight(product.unit_weight_kg)} · `}
-                      {formatCurrency(product.unit_price_php)}/kg
-                    </div>
-                  </button>
-                ))
+                filtered.map((product) => {
+                  const isUnpriced = Number(product.unit_price_php) === 0
+                  return (
+                    <button
+                      type="button"
+                      key={product.id}
+                      onMouseDown={() => !isUnpriced && handleSelect(product)}
+                      disabled={isUnpriced}
+                      className={`w-full text-left px-3 py-2 border-b border-gray-100 last:border-b-0 ${
+                        isUnpriced ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="font-medium text-gray-900">
+                        {product.product_name}
+                        {product.brand_name && (
+                          <span className="text-gray-500 font-normal"> — {product.brand_name}</span>
+                        )}
+                        {isUnpriced && (
+                          <span className="ml-2 text-xs text-gray-400 italic font-normal">Awaiting price</span>
+                        )}
+                      </div>
+                      <div className="text-sm text-gray-500">
+                        {product.unit_weight_kg && `${formatWeight(product.unit_weight_kg)} · `}
+                        {isUnpriced ? 'No price set' : `${formatCurrency(product.unit_price_php)}/kg`}
+                      </div>
+                    </button>
+                  )
+                })
               ) : (
                 <div className="px-3 py-2 text-sm text-gray-500">No products found.</div>
               )}
@@ -210,6 +226,8 @@ export function ProductSelector({ onAddItem }) {
             />
           </div>
 
+          {exceedsStock && <p className="text-sm text-red-600">Only {formatStock(stockAvailable)} kg left in stock</p>}
+
           <div>
             <span className="text-sm font-medium text-gray-700">Subtotal</span>
             <div className="px-3 py-2 bg-gray-50 rounded-md text-gray-900 font-semibold">
@@ -219,7 +237,7 @@ export function ProductSelector({ onAddItem }) {
 
           {itemError && <p className="text-sm text-red-600">{itemError}</p>}
 
-          <Button type="button" onClick={handleAdd} className="w-full">
+          <Button type="button" onClick={handleAdd} className="w-full" disabled={exceedsStock}>
             + Add to Order
           </Button>
         </div>

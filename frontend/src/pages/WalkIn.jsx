@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { PageLayout } from '../components/layout/PageLayout'
 import { CreateTransactionModal } from '../components/walkin/CreateTransactionModal'
 import { ProductStockPanel } from '../components/walkin/ProductStockPanel'
 import { Button } from '../components/ui/Button'
+import { Toast } from '../components/ui/Toast'
 import { useAuthStore } from '../store/authStore'
 import { loadReceiverDraft } from '../utils/receiverDraft'
 import { useReceiverLiveSync } from '../hooks/useReceiverLiveSync'
@@ -13,8 +14,16 @@ export default function WalkIn() {
   const username = useAuthStore((state) => state.user?.username)
 
   const [createOpen, setCreateOpen] = useState(() => !!loadReceiverDraft(username)?.open)
+  const [toast, setToast] = useState(null)
+  const toastTimerRef = useRef(null)
 
   useReceiverLiveSync()
+
+  const showToast = (message, variant = 'info') => {
+    window.clearTimeout(toastTimerRef.current)
+    setToast({ message, variant })
+    toastTimerRef.current = window.setTimeout(() => setToast(null), 3500)
+  }
 
   const handleCreated = () => {
     queryClient.invalidateQueries({ queryKey: ['transactions'] })
@@ -34,7 +43,14 @@ export default function WalkIn() {
         </div>
       </div>
 
-      <CreateTransactionModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={handleCreated} />
+      <CreateTransactionModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={handleCreated}
+        showToast={showToast}
+      />
+
+      <Toast toast={toast} />
     </PageLayout>
   )
 }
