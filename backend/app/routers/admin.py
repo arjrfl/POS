@@ -180,12 +180,15 @@ async def get_dashboard_summary(
     )
     transactions_today = (await db.execute(transactions_count_stmt)).scalar_one()
 
-    # total_due already nets credit_applied; refund-type excluded per CLAUDE.md
-    # locked rule — resolve-as-credit produces no payment_detail row.
+    # total_due already nets credit_applied. Restricted to original/adjustment
+    # only: balance_settlement's total_due re-collects value already counted in
+    # the original transaction's total_due, so including both would double-count
+    # the same sale (refund is excluded too, structurally, by not being in this
+    # allowlist).
     sales_stmt = select(func.coalesce(func.sum(SalesTransaction.total_due), 0)).where(
         SalesTransaction.payment_at >= effective_start,
         SalesTransaction.payment_at < effective_end,
-        SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+        SalesTransaction.transaction_type.in_([TransactionTypeEnum.original, TransactionTypeEnum.adjustment]),
     )
     total_sales_today = (await db.execute(sales_stmt)).scalar_one()
 
@@ -302,17 +305,19 @@ async def get_payment_user_sales(
     # (it needs FIFO netting, not a plain SUM — see _sum_outstanding_by_origin_
     # payment_at) rather than as a fourth subquery here.
 
-    # total_sales — same rule as Total Sales Today: refund excluded, no status gate
-    # (a partially-paid transaction still awaiting Releasing has already been
-    # processed by Payment today and must count), total_due already nets
-    # credit_applied.
+    # total_sales — same rule as Total Sales Today: original/adjustment only, no
+    # status gate (a partially-paid transaction still awaiting Releasing has
+    # already been processed by Payment today and must count), total_due already
+    # nets credit_applied. balance_settlement is excluded here specifically: its
+    # total_due re-collects value already counted in the original transaction's
+    # total_due, so including both would double-count the same sale.
     sales_subq = (
         select(
             SalesTransaction.payment_user_id.label("payment_user_id"),
             func.coalesce(func.sum(SalesTransaction.total_due), 0).label("total_sales"),
         )
         .where(
-            SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+            SalesTransaction.transaction_type.in_([TransactionTypeEnum.original, TransactionTypeEnum.adjustment]),
             *_payment_at_filters(),
         )
         .group_by(SalesTransaction.payment_user_id)
