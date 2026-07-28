@@ -178,6 +178,25 @@ class PaymentEntryResponse(BaseModel):
     amount: Decimal
 
 
+class BalanceSettlementSourceEntry(BaseModel):
+    """One row for the Admin Transaction Details item table's synthetic Balance
+    Settlement line — order_number + the exact amount settled from that source.
+    Sourced only from customer_ledger balance_settled entries (see
+    _balance_settlement_ledger_entries) — the mechanism that leaves NO
+    transaction_item row behind (a balance_settlement-type transaction is
+    created with zero items; a walk_in transaction settling an old balance via
+    Payment's checkboxes doesn't get an item row for it either), which is
+    exactly when the item table needs a synthetic row to show anything at all.
+    Distinct from balance_settlement_sources (order_number only, used by the
+    existing Amount Summary bullet list, which also covers the other
+    mechanism — an item_type=balance_settlement transaction_item — since that
+    one already renders as its own real item-table row via ArticleRows and
+    doesn't need duplicating here)."""
+
+    order_number: str
+    amount: Decimal
+
+
 class VoidInfoResponse(BaseModel):
     void_reason: str
     voided_by_user_name: str
@@ -316,6 +335,11 @@ class TransactionResponse(BaseModel):
     # references and customer_ledger notes), filled in by _build_transaction_response.
     # Empty when balance_settled is 0 or the sources can't be determined.
     balance_settlement_sources: list[str] = []
+    # order_number + amount pairs, ledger-sourced only — see
+    # BalanceSettlementSourceEntry. Powers the item table's synthetic Balance
+    # Settlement row(s); balance_settlement_sources above (order_number only)
+    # still powers the existing Amount Summary bullet list, untouched.
+    balance_settlement_entries: list[BalanceSettlementSourceEntry] = []
     # Same as balance_settlement_sources above, but for credit_applied — unique
     # source order_numbers this transaction's applied credit originally came
     # from, in first-seen order. Empty when credit_applied is 0 or the sources

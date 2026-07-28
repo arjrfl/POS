@@ -629,15 +629,55 @@ function ArticleTable({ children, footer }) {
   )
 }
 
+// Synthetic item-table row(s) for a transaction's ledger-sourced balance
+// settlement — see backend's balance_settlement_entries (distinct from
+// balance_settlement_sources, which only powers the existing Amount Summary
+// bullet list and is left untouched). Same shape/styling as ArticleRows'
+// own NonProductRow so a balance_settlement-type transaction (zero real
+// items) and a walk_in original that also settled an old balance (product
+// rows + this) both read consistently. Rendered directly in this file rather
+// than exported from ArticleRows.jsx since that component's own rendering
+// path (items-driven, mechanism 1 only) stays untouched.
+function BalanceSettlementRow({ entry, align }) {
+  const alignClass = align === 'center' ? 'text-center' : ''
+  const articleAlignClass = align === 'center' ? 'text-left' : ''
+  return (
+    <tr className="border-b border-gray-100 last:border-b-0 align-top">
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[0]} ${alignClass}`}>—</td>
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[1]} ${alignClass}`}>—</td>
+      <td className={`py-2 pr-2 font-bold text-gray-900 ${ARTICLE_ROW_COLUMN_WIDTHS[2]} ${articleAlignClass}`}>
+        {`Balance Settlement (Order #${entry.order_number})`}
+      </td>
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[3]} ${alignClass}`}>—</td>
+      <td className={`py-2 pr-2 font-medium text-gray-900 ${ARTICLE_ROW_COLUMN_WIDTHS[4]} ${alignClass}`}>
+        {formatCurrency(entry.amount)}
+      </td>
+    </tr>
+  )
+}
+
+function BalanceSettlementRows({ transaction, align }) {
+  if (!transaction?.balance_settlement_entries?.length) return null
+  return (
+    <>
+      {transaction.balance_settlement_entries.map((entry) => (
+        <BalanceSettlementRow key={entry.order_number} entry={entry} align={align} />
+      ))}
+    </>
+  )
+}
+
 // Print button shown directly below the Original transaction's item table —
-// same eligibility (transaction_type === 'original') and same shared
-// useReceiptPrint flow as the Payment History tab's Print button. Always
-// targets the ORIGINAL transaction, even when viewing a linked
-// adjustment/refund child's own page, since only the original carries real
-// items + payment_entries suitable for the Order Slip form.
+// same shared useReceiptPrint flow as the Payment History tab's Print
+// button. Always targets the ORIGINAL transaction, even when viewing a
+// linked adjustment/refund child's own page (only the original carries real
+// items + payment_entries suitable for the Order Slip form) — rendered
+// unconditionally for any original-position transaction (transaction_type
+// 'original' or 'balance_settlement', the only two types ever reachable as
+// chain roots), regardless of item composition.
 function PrintReceiptButton({ transaction }) {
   const { printing, showPrintDetails, openPrintDetails, closePrintDetails, handlePrintConfirm } = useReceiptPrint()
-  if (!transaction || transaction.transaction_type !== 'original') return null
+  if (!transaction) return null
 
   return (
     <>
@@ -1017,6 +1057,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                       highlightColor={highlightColor}
                       preferActual={isStandaloneChild}
                     />
+                    <BalanceSettlementRows transaction={originalTxn} align="center" />
                   </ArticleTable>
                   <PrintReceiptButton transaction={originalTxn} />
                 </div>
@@ -1035,6 +1076,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                         highlightColor={highlightColor}
                         preferActual={isStandaloneChild}
                       />
+                      <BalanceSettlementRows transaction={originalTxn} align="center" />
                     </ArticleTable>
                     <PrintReceiptButton transaction={originalTxn} />
                   </div>
@@ -1051,6 +1093,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                 <div className="flex-1 min-h-0 flex flex-col gap-2">
                   <ArticleTable>
                     <ArticleRows transaction={originalAsParent} variant="plain" align="center" preferActual={false} />
+                    <BalanceSettlementRows transaction={originalTxn} align="center" />
                   </ArticleTable>
                   <PrintReceiptButton transaction={originalTxn} />
                 </div>

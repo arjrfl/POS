@@ -25,6 +25,7 @@ from app.models.transaction import (
 )
 from app.schemas.transaction import (
     BalanceSettlementItem,
+    BalanceSettlementSourceEntry,
     DraftPaymentEntry,
     HandoverOutcomeResponse,
     ItemEditHistoryItem,
@@ -150,6 +151,36 @@ def _balance_settlement_source_order_numbers(
             add(match.group(1))
 
     return order_numbers
+
+
+def _balance_settlement_ledger_entries(transaction: SalesTransaction) -> list[BalanceSettlementSourceEntry]:
+    """order_number + amount pairs for the Admin Transaction Details item table's
+    synthetic Balance Settlement row(s) — mechanism 2 only (customer_ledger notes,
+    see _balance_settlement_source_order_numbers above), since mechanism 1 (an
+    item_type=balance_settlement transaction_item) already has a real item row
+    rendered by ArticleRows/NonProductRow; including it here too would double it.
+    Mechanism 2 is also the ONLY mechanism that can leave a transaction with
+    nothing in its item table at all — a balance_settlement-type transaction is
+    created with zero items (see create_transaction), and a walk_in transaction
+    settling an old balance via Payment's checkboxes doesn't get an item row for
+    that portion either — so this is what the item table needs when that happens.
+    """
+    entries: list[BalanceSettlementSourceEntry] = []
+    seen: set[str] = set()
+
+    for entry in transaction.ledger_entries:
+        if entry.entry_type != LedgerEntryTypeEnum.balance_settled or not entry.notes:
+            continue
+        match = _BALANCE_SETTLED_NOTE_RE.match(entry.notes)
+        if not match:
+            continue
+        order_number = match.group(1)
+        if order_number in seen:
+            continue
+        seen.add(order_number)
+        entries.append(BalanceSettlementSourceEntry(order_number=order_number, amount=entry.amount))
+
+    return entries
 
 
 # process_payment's credit_entries_checked loop (the only credit-application path
@@ -319,6 +350,7 @@ def _build_transaction_response(transaction: SalesTransaction) -> TransactionRes
         if item is not None and item.reference_transaction is not None:
             item_response.reference_order_number = item.reference_transaction.order_number
     response.balance_settlement_sources = _balance_settlement_source_order_numbers(transaction, response.items)
+    response.balance_settlement_entries = _balance_settlement_ledger_entries(transaction)
     response.credit_usage_sources = _credit_usage_source_order_numbers(transaction, response.items)
 
     response.children = [_build_transaction_response(child) for child in transaction.children]
