@@ -1,4 +1,3 @@
-import { formatCurrency } from '../../utils/format'
 import { formatReceiptDate } from '../../utils/time'
 
 // Pure presentational Order Slip layout, print-only — plain black-on-white,
@@ -12,6 +11,12 @@ import { formatReceiptDate } from '../../utils/time'
 // short — matches the physical paper form's fixed row count. Never
 // truncated: a transaction with more items than this just renders them all.
 const ITEM_TABLE_ROWS = 22
+
+// Matches the reference paper form: plain comma-separated number, no ₱
+// symbol — distinct from the app-wide formatCurrency utility, which is for
+// on-screen UI only.
+const formatPlainAmount = (amount) =>
+  Number(amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export function OrderSlipReceipt({ transaction }) {
   if (!transaction) return null
@@ -66,8 +71,8 @@ export function OrderSlipReceipt({ transaction }) {
         <colgroup>
           <col className="w-[13%]" />
           <col className="w-[9%]" />
-          <col className="w-[47%]" />
-          <col className="w-[14%]" />
+          <col className="w-[41%]" />
+          <col className="w-[20%]" />
           <col className="w-[17%]" />
         </colgroup>
         <thead>
@@ -75,20 +80,20 @@ export function OrderSlipReceipt({ transaction }) {
             <th className="px-1 py-0 text-left font-bold">QTY.</th>
             <th className="px-1 py-0 text-left font-bold">UNIT</th>
             <th className="px-1 py-0 text-left font-bold">ARTICLES</th>
-            <th className="px-1 py-0 text-right font-bold">UNIT PRICE</th>
-            <th className="px-1 py-0 text-right font-bold">AMOUNT</th>
+            <th className="px-1 py-0 text-right font-bold whitespace-nowrap">UNIT PRICE</th>
+            <th className="px-1 py-0 text-right font-bold whitespace-nowrap">AMOUNT</th>
           </tr>
         </thead>
         <tbody>
           {productItems.map((item) => (
             <tr key={item.id}>
-              <td className="px-1 py-0 align-top">{Number(item.quantity_kg)}</td>
+              <td className="px-1 py-0 align-top">{Number(item.quantity_kg).toFixed(3)}</td>
               <td className="px-1 py-0 align-top">{item.unit_count}</td>
               <td className="px-1 py-0 align-top break-words">
                 <div>{item.brand_name ? `${item.product_name} ${item.brand_name}` : item.product_name}</div>
               </td>
-              <td className="px-1 py-0 align-top text-right">{formatCurrency(item.unit_price)}</td>
-              <td className="px-1 py-0 align-top text-right">{formatCurrency(item.subtotal)}</td>
+              <td className="px-1 py-0 align-top text-right">{formatPlainAmount(item.unit_price)}</td>
+              <td className="px-1 py-0 align-top text-right">{formatPlainAmount(item.subtotal)}</td>
             </tr>
           ))}
           {Array.from({ length: fillerRowCount }).map((_, i) => (
@@ -106,7 +111,7 @@ export function OrderSlipReceipt({ transaction }) {
             <td colSpan={4} className="px-1 py-0 text-right font-bold">
               TOTAL AMOUNT DUE
             </td>
-            <td className="px-1 py-0 text-right font-bold">{formatCurrency(transaction.total_due)}</td>
+            <td className="px-1 py-0 text-right font-bold">{formatPlainAmount(transaction.total_due)}</td>
           </tr>
         </tfoot>
       </table>
@@ -122,7 +127,10 @@ export function OrderSlipReceipt({ transaction }) {
             <td rowSpan={2} className="px-2 py-0 align-top">
               <div>RECEIVED BY:</div>
               <div className="border-b border-black mt-3"></div>
-              <div className="text-[8pt] text-center">Signature Over Printed Name / DATE:</div>
+              <div className="text-[8pt] flex justify-between">
+                <span>Signature Over printed Name</span>
+                <span>DATE:</span>
+              </div>
             </td>
           </tr>
           <tr>

@@ -1,0 +1,63 @@
+- generic [ref=e16]:
+  - banner [ref=e17]:
+    - generic [ref=e18]:
+      - img "Lash Meatshop" [ref=e19]
+      - generic [ref=e20]: Lash Meatshop POS
+    - heading "Payment Queue" [level=1] [ref=e21]
+    - generic [ref=e22]:
+      - generic [ref=e23]: Payment User
+      - generic [ref=e24]: payment
+      - button "History" [ref=e25] [cursor=pointer]
+      - button "Log out" [ref=e26] [cursor=pointer]
+  - main [ref=e27]:
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]:
+          - generic [ref=e31]: Queue
+          - generic [ref=e32]:
+            - button "Regular" [ref=e33] [cursor=pointer]
+            - button "Adjustments" [ref=e34] [cursor=pointer]
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]:
+              - generic [ref=e39]: TXN-20260727-0008
+              - generic [ref=e40]: Jose Ramirez
+            - generic [ref=e41]:
+              - generic [ref=e42]: Online
+              - generic [ref=e43]: Waiting
+            - generic [ref=e44]:
+              - generic [ref=e45]: ₱4,150.00
+              - button "Process" [ref=e46] [cursor=pointer]
+          - generic [ref=e47]:
+            - generic [ref=e48]:
+              - generic [ref=e49]: TXN-20260727-0006
+              - generic [ref=e50]: Jose Ramirez
+            - generic [ref=e51]:
+              - generic [ref=e52]: Online
+              - generic [ref=e53]: Waiting
+            - generic [ref=e54]:
+              - generic [ref=e55]: ₱18,480.00
+              - button "Process" [ref=e56] [cursor=pointer]
+          - generic [ref=e57]:
+            - generic [ref=e58]:
+              - generic [ref=e59]: TXN-20260727-0005
+              - generic [ref=e60]: Carmen Aquino
+            - generic [ref=e61]:
+              - generic [ref=e62]: Online
+              - generic [ref=e63]: Waiting
+            - generic [ref=e64]:
+              - generic [ref=e65]: ₱1,300.00
+              - button "Process" [ref=e66] [cursor=pointer]
+          - generic [ref=e67]:
+            - generic [ref=e68]:
+              - generic [ref=e69]: TXN-20260727-0004
+              - generic [ref=e70]: Carmen Aquino
+            - generic [ref=e71]:
+              - generic [ref=e72]: Online
+              - generic [ref=e73]: Waiting
+            - generic [ref=e74]:
+              - generic [ref=e75]: ₱32,400.00
+              - button "Process" [ref=e76] [cursor=pointer]
+      - generic [ref=e77]:
+        - generic [ref=e78]: Order Details
+        - paragraph [ref=e81]: Select a transaction from the queue to process it

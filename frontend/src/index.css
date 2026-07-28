@@ -6,6 +6,9 @@
    into any other table in the app. Real <table> markup + border-collapse is
    what reliably produces continuous grid lines in print (div/flex borders
    do not). */
+.order-slip {
+  font-family: Arial, Helvetica, sans-serif;
+}
 .order-slip,
 .order-slip table {
   border-collapse: collapse;

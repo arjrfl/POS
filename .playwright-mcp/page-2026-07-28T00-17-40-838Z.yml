@@ -1,0 +1,31 @@
+- generic [ref=f1e3]:
+  - banner [ref=f1e4]:
+    - generic [ref=f1e5]:
+      - img "Lash Meatshop" [ref=f1e6]
+      - generic [ref=f1e7]: Lash Meatshop POS
+    - heading "Payment Queue" [level=1] [ref=f1e8]
+    - generic [ref=f1e9]:
+      - generic [ref=f1e10]: Payment User
+      - generic [ref=f1e11]: payment
+      - button "Back to Queue" [ref=f1e12] [cursor=pointer]
+      - button "Log out" [ref=f1e13] [cursor=pointer]
+  - main [ref=f1e14]:
+    - generic [ref=f1e15]:
+      - generic [ref=f1e16]:
+        - generic [ref=f1e17]: Transaction History
+        - generic [ref=f1e18]:
+          - textbox "Search order number or customer..." [ref=f1e19]
+          - button "Search" [ref=f1e20] [cursor=pointer]
+      - table [ref=f1e22]:
+        - rowgroup [ref=f1e23]:
+          - row [ref=f1e24]:
+            - columnheader "Transaction ID" [ref=f1e25]
+            - columnheader "Customer" [ref=f1e26]
+            - columnheader "Cashier" [ref=f1e27]
+            - columnheader "Type" [ref=f1e28]
+            - columnheader "Date & Time" [ref=f1e29]
+            - columnheader "Total" [ref=f1e30]
+            - columnheader "Action" [ref=f1e31]
+        - rowgroup [ref=f1e32]:
+          - row [ref=f1e33]:
+            - cell "Loading history..." [ref=f1e34]
