@@ -100,8 +100,8 @@ export function OrderSlipReceipt({ transaction }) {
         <colgroup>
           <col className="w-[13%]" />
           <col className="w-[9%]" />
-          <col className="w-[41%]" />
-          <col className="w-[20%]" />
+          <col className="w-[47%]" />
+          <col className="w-[14%]" />
           <col className="w-[17%]" />
         </colgroup>
         <thead>
@@ -136,9 +136,9 @@ export function OrderSlipReceipt({ transaction }) {
           ))}
         </tbody>
         <tfoot>
-          {['Partial Payment?', 'Amount Received:', 'Amount Paid:', 'Balance:', 'Change:'].map((label) => (
+          {['PARTIAL PAYMENT?', 'AMOUNT RECEIVED:', 'AMOUNT PAID:', 'BALANCE:', 'CHANGE:'].map((label) => (
             <tr key={label}>
-              <td colSpan={4} className="px-1 py-[1.5pt] text-right text-[8pt]">
+              <td colSpan={4} className="px-1 py-[1.5pt] text-right font-bold text-[8pt]">
                 {label}
               </td>
               <td className="px-1 py-[1.5pt]">&nbsp;</td>
@@ -163,7 +163,7 @@ export function OrderSlipReceipt({ transaction }) {
             <td className="px-2 py-0 h-9 align-top">PREPARED BY:</td>
             <td rowSpan={2} className="px-2 py-0 align-top relative">
               <div>RECEIVED BY:</div>
-              <div className="text-[7pt] absolute bottom-0 left-0 right-0">Signature Over printed Name</div>
+              <div className="text-[7pt] absolute bottom-0 left-0 right-0 pl-2">Signature Over printed Name</div>
             </td>
           </tr>
           <tr>
@@ -172,7 +172,7 @@ export function OrderSlipReceipt({ transaction }) {
         </tbody>
       </table>
 
-      <div className="italic font-bold text-right text-[8pt] mt-[4pt] px-2">Received the above goods in good order &amp; condition</div>
+      <div className="italic font-bold text-right text-[7pt] mt-[4pt] px-2">Received the above goods in good order &amp; condition</div>
     </div>
   )
 }
