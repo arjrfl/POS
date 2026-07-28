@@ -587,6 +587,16 @@ async def get_transaction(db: AsyncSession, transaction_id: int) -> TransactionR
     # for its nodes — needed here too so single-transaction callers (e.g. the
     # Order Slip receipt) get resolved article names without a second round-trip.
     _enrich_items_with_product_info(response, transaction)
+
+    # payment_status — same derivation as get_transaction_chain/list_transactions'
+    # include_payment_status path, needed by the Order Slip reprint (Payment's
+    # Transaction History tab) to render Partial Payment?/Balance correctly.
+    outstanding_entries = await customer_service.get_outstanding_balance_entries(db, transaction.customer_id)
+    transactions_with_outstanding_balance = {entry.transaction_id for entry in outstanding_entries}
+    response.payment_status = _compute_payment_status(
+        transaction.transaction_status, transaction.customer_type, transaction.id, transactions_with_outstanding_balance
+    )
+
     return response
 
 

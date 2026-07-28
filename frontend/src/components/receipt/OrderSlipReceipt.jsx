@@ -33,11 +33,44 @@ const formatOrderNumberForSlip = (orderNumber) => {
   return orderNumber
 }
 
+// refund-type children are resolved via /resolve-as-credit and never get a
+// payment_detail row (locked rule — no cash/online payment occurs), so a
+// computed "0.00" there would misleadingly imply a zero-amount payment was
+// taken. This component isn't reached for refund transactions today (the
+// Transaction History reprint button only enables for transaction_type ===
+// 'original'), but the dash fallback below also covers a payment_entries-less
+// row defensively either way.
+const DASH = '—'
+
+function computePaymentSummary(transaction) {
+  const confirmedPayments = transaction.transaction_type === 'refund' ? [] : transaction.payment_entries ?? []
+  const hasConfirmedPayment = confirmedPayments.length > 0
+
+  const amountPaid = confirmedPayments.reduce((sum, entry) => sum + Number(entry.amount), 0)
+  const nonCashPaid = confirmedPayments
+    .filter((entry) => entry.payment_method_name !== 'cash')
+    .reduce((sum, entry) => sum + Number(entry.amount), 0)
+  const amountReceived = Number(transaction.cash_tendered) + nonCashPaid
+  const changeGiven = Number(transaction.change_given)
+
+  const isPartial = hasConfirmedPayment && transaction.payment_status === 'partial'
+  const balance = Number(transaction.total_due) - amountPaid
+
+  return {
+    partialPayment: isPartial ? 'YES' : 'NO',
+    amountReceived: hasConfirmedPayment && amountReceived > 0 ? formatPlainAmount(amountReceived) : DASH,
+    amountPaid: hasConfirmedPayment ? formatPlainAmount(amountPaid) : DASH,
+    balance: isPartial ? formatPlainAmount(balance) : DASH,
+    change: hasConfirmedPayment && changeGiven > 0 ? formatPlainAmount(changeGiven) : DASH,
+  }
+}
+
 export function OrderSlipReceipt({ transaction }) {
   if (!transaction) return null
 
   const productItems = transaction.items.filter((item) => item.item_type === 'product')
   const fillerRowCount = Math.max(0, ITEM_TABLE_ROWS - productItems.length)
+  const paymentSummary = computePaymentSummary(transaction)
 
   return (
     <div className="order-slip bg-white text-black text-[10pt] leading-tight w-full">
@@ -150,12 +183,18 @@ export function OrderSlipReceipt({ transaction }) {
           ))}
         </tbody>
         <tfoot>
-          {['PARTIAL PAYMENT?', 'AMOUNT RECEIVED:', 'AMOUNT PAID:', 'BALANCE:', 'CHANGE:'].map((label) => (
+          {[
+            ['PARTIAL PAYMENT?', paymentSummary.partialPayment],
+            ['AMOUNT RECEIVED:', paymentSummary.amountReceived],
+            ['AMOUNT PAID:', paymentSummary.amountPaid],
+            ['BALANCE:', paymentSummary.balance],
+            ['CHANGE:', paymentSummary.change],
+          ].map(([label, value]) => (
             <tr key={label}>
               <td colSpan={4} className="px-1 py-[1.5pt] text-right font-bold text-[8pt]">
                 {label}
               </td>
-              <td className="px-1 py-[1.5pt]">&nbsp;</td>
+              <td className="px-1 py-[1.5pt] text-right text-[8pt]">{value}</td>
             </tr>
           ))}
           <tr>
