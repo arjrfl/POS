@@ -69,6 +69,16 @@ _WITH_CHILDREN = selectinload(SalesTransaction.children, recursion_depth=-1)
 # async context whenever a root query result (not reached via someone else's already-loaded
 # .children) actually has a parent.
 _WITH_PARENT = selectinload(SalesTransaction.parent)
+# Same self-referential gap as _WITH_PARENT above, one level deeper:
+# TransactionItem.reference_transaction also points back to SalesTransaction
+# (the class being queried here), so its own lazy="selectin" default never
+# fires automatically either — reading it in _build_transaction_response
+# (to fill in reference_order_number) would otherwise throw MissingGreenlet
+# the moment a balance_settlement/credit_usage item actually carries a
+# reference_transaction_id (the product-item case never hits this, since
+# reference_transaction_id is always NULL there and the attribute access
+# short-circuits without a query).
+_WITH_ITEM_REFERENCES = selectinload(SalesTransaction.items).selectinload(TransactionItem.reference_transaction)
 
 
 def _build_parent_item(item: TransactionItem) -> TransactionParentItemResponse:
@@ -576,7 +586,7 @@ async def get_transaction(db: AsyncSession, transaction_id: int) -> TransactionR
     result = await db.execute(
         select(SalesTransaction)
         .where(SalesTransaction.id == transaction_id)
-        .options(_WITH_CHILDREN, _WITH_PARENT)
+        .options(_WITH_CHILDREN, _WITH_PARENT, _WITH_ITEM_REFERENCES)
         .execution_options(populate_existing=True)
     )
     transaction = result.scalar_one_or_none()
@@ -627,7 +637,7 @@ async def get_transaction_chain(db: AsyncSession, transaction_id: int) -> list[T
         select(SalesTransaction)
         .where(or_(SalesTransaction.id == root_id, SalesTransaction.parent_transaction_id == root_id))
         .order_by(SalesTransaction.id)
-        .options(_WITH_CHILDREN, _WITH_PARENT)
+        .options(_WITH_CHILDREN, _WITH_PARENT, _WITH_ITEM_REFERENCES)
         .execution_options(populate_existing=True)
     )
     chain = result.scalars().all()
@@ -799,7 +809,7 @@ async def list_transactions(
             .order_by(SalesTransaction.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
-            .options(_WITH_CHILDREN, _WITH_PARENT)
+            .options(_WITH_CHILDREN, _WITH_PARENT, _WITH_ITEM_REFERENCES)
             .execution_options(populate_existing=True)
         )
         items = result.scalars().all()
@@ -845,7 +855,7 @@ async def list_transactions(
     result = await db.execute(
         select(SalesTransaction)
         .where(SalesTransaction.id.in_(page_ids))
-        .options(_WITH_CHILDREN, _WITH_PARENT)
+        .options(_WITH_CHILDREN, _WITH_PARENT, _WITH_ITEM_REFERENCES)
         .execution_options(populate_existing=True)
     )
     items_by_id = {t.id: t for t in result.scalars().all()}

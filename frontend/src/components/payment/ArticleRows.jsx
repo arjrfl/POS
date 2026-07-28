@@ -15,7 +15,38 @@ export const ARTICLE_ROW_COLUMN_WIDTHS = ['w-[15%]', 'w-[18%]', 'w-[21%]', 'w-[2
 // a highlighted row in the Original box reads consistently with that.
 const HIGHLIGHT_BG = { amber: 'bg-amber-50', blue: 'bg-blue-50' }
 
+const NON_PRODUCT_ITEM_LABELS = { balance_settlement: 'Balance Settlement', credit_usage: 'Credit Usage' }
+
+// A balance_settlement/credit_usage line has no QTY/UNIT/UNIT PRICE — it's a
+// flat amount referencing another order, not a weighed product. Always
+// unadjusted (no actual_* variance concept applies), so this only ever
+// renders from the unadjusted/plain row list, never the Adjusted Items block.
+function NonProductRow({ row, align }) {
+  const alignClass = align === 'center' ? 'text-center' : ''
+  const articleAlignClass = align === 'center' ? 'text-left' : ''
+  const label = NON_PRODUCT_ITEM_LABELS[row.item_type] ?? row.item_type
+  const articleText = row.reference_order_number ? `${label} — Order ${row.reference_order_number}` : label
+
+  return (
+    <tr className="border-b border-gray-100 last:border-b-0 align-top">
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[0]} ${alignClass}`}>—</td>
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[1]} ${alignClass}`}>—</td>
+      <td className={`py-2 pr-2 font-bold text-gray-900 ${ARTICLE_ROW_COLUMN_WIDTHS[2]} ${articleAlignClass}`}>
+        {articleText}
+      </td>
+      <td className={`py-2 pr-2 text-gray-700 ${ARTICLE_ROW_COLUMN_WIDTHS[3]} ${alignClass}`}>—</td>
+      <td className={`py-2 pr-2 font-medium text-gray-900 ${ARTICLE_ROW_COLUMN_WIDTHS[4]} ${alignClass}`}>
+        {formatCurrency(row.subtotal)}
+      </td>
+    </tr>
+  )
+}
+
 function UnadjustedRow({ row, align, highlightedProductIds, highlightColor, preferActual = true }) {
+  if (row.item_type && row.item_type !== 'product') {
+    return <NonProductRow row={row} align={align} />
+  }
+
   const alignClass = align === 'center' ? 'text-center' : ''
   const articleAlignClass = align === 'center' ? 'text-left' : ''
   const highlightClass = highlightedProductIds?.has(row.product_id) ? HIGHLIGHT_BG[highlightColor] ?? '' : ''

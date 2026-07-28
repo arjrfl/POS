@@ -900,7 +900,13 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
     }
   }, [transactionId])
 
-  const originalTxn = chain?.find((t) => t.transaction_type === 'original')
+  // The chain's root — always parent_transaction_id === null. Almost always
+  // transaction_type 'original', but a standalone balance_settlement
+  // transaction (Receiver -> Payment -> completed, no Releasing, never has
+  // children) is ALSO a root with no parent — matching on parent_transaction_id
+  // rather than the literal 'original' type is what lets this modal render one
+  // at all instead of leaving every section below blank.
+  const originalTxn = chain?.find((t) => !t.parent_transaction_id)
   const linkedChildTxn = originalTxn
     ? chain?.find(
         (t) =>
@@ -941,11 +947,14 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
   // an adjustment/refund child, which carries no items of its own — see
   // resolve_substandard) — an original has no parent, so this wraps it the
   // same shape to reuse that exact pipeline unchanged for the Original box.
-  // Filtered to product-type items only, matching _build_parent_summary's own
-  // filter for the real parent-items path.
+  // Unlike _build_parent_summary's own parent-items path (product-type only,
+  // by design — see that function's comment), every item type is passed
+  // through here unfiltered: this is the Original transaction's real,
+  // complete item list, and balance_settlement/credit_usage rows need to
+  // show up in it too (useArticleRows/ArticleRows render those distinctly).
   const originalAsParent = useMemo(() => {
     if (!originalTxn) return null
-    return { parent: { ...originalTxn, items: originalTxn.items.filter((item) => item.item_type === 'product') } }
+    return { parent: originalTxn }
   }, [originalTxn])
 
   // Which of the original's items actually varied — quantity_kg OR unit_count,
