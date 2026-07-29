@@ -362,6 +362,42 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   `audit_change_type_enum` above, which only tracks `transaction_status`/
   `queue_status` phase moves — the two audit systems never share rows,
   columns, or enum values. No UI currently reads this table.
+- **Fresh-install fix (2026-07-29):** `transaction_item_audit_log` was
+  previously positioned before `sales_transaction` in `schema.sql`, so its
+  `FOREIGN KEY` to `sales_transaction(id)` failed on any genuinely
+  fresh/empty database install. This was invisible in existing dev
+  databases because that table was added via Alembic migration against an
+  already-existing database — Alembic doesn't care about `schema.sql`'s
+  file order the way running the script top-to-bottom does. Fixed by
+  repositioning the table definition after `sales_transaction`/
+  `transaction_item`. Fresh-install correctness of `schema.sql` was then
+  verified end-to-end against a scratch empty-DB container (see
+  Deployment Status below).
+
+---
+
+## Deployment Status
+
+- Production server PC: static IP `192.168.1.58` (manually assigned,
+  DHCP disabled). Intended hostname `http://meatshop.local` — requires a
+  manual `hosts` file entry added individually on each of the 27
+  terminals; not automatic.
+- As of 2026-07-29: a TEST deployment is in progress on this server,
+  running from the `staging` branch — not yet a full go-live to all 27
+  terminals.
+- Deployed via manual command relay: Claude Code Desktop is deliberately
+  NOT installed on the server PC (kept minimal footprint). Commands are
+  written in the planning chat and run manually on the server via
+  TeamViewer, one step at a time.
+- Fresh secrets (`DB_PASSWORD`, `SECRET_KEY`) were generated directly on
+  the server itself — never shared with or stored in the dev environment.
+- ⚠️ Backup destination: NOT YET CONFIGURED. USB drive is the chosen
+  direction but not yet wired up. Blocks real production use with real
+  customer data — acceptable only for today's test deployment.
+- ⚠️ Backend port 8000 is directly exposed in `docker-compose.yml`
+  alongside nginx's port 80 — bypasses nginx entirely. Flagged for the
+  still-deferred CORS/environment hardening Batch 5 item (see Open Items
+  in `PROJECT_CONTEXT.md`).
 
 ---
 

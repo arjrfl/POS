@@ -469,6 +469,35 @@ volumes:
 
 ---
 
+## 13a. Deployment Status
+
+- Production server PC: static IP `192.168.1.58` (manually assigned,
+  DHCP disabled). Intended hostname `http://meatshop.local` — requires a
+  manual `hosts` file entry added individually on each of the 27
+  terminals; not automatic.
+- As of 2026-07-29: a TEST deployment is in progress on this server,
+  running from the `staging` branch — not yet a full go-live to all 27
+  terminals.
+- Deployed via manual command relay: Claude Code Desktop is deliberately
+  NOT installed on the server PC (kept minimal footprint). Commands are
+  written in the planning chat and run manually on the server via
+  TeamViewer, one step at a time.
+- Fresh secrets (`DB_PASSWORD`, `SECRET_KEY`) were generated directly on
+  the server itself — never shared with or stored in the dev environment.
+- ⚠️ Backup destination: NOT YET CONFIGURED. USB drive is the chosen
+  direction but not yet wired up. Blocks real production use with real
+  customer data — acceptable only for today's test deployment.
+- ⚠️ Backend port 8000 is directly exposed in `docker-compose.yml`
+  alongside nginx's port 80 — bypasses nginx entirely. Flagged for the
+  still-deferred CORS/environment hardening Batch 5 item above.
+- This test deployment runs `schema.sql` against a genuinely fresh
+  database, which is exactly the scenario that surfaced the
+  `transaction_item_audit_log` FK-ordering bug fixed just before this
+  deployment — see the "Fresh-install fix" note in CLAUDE.md's Database
+  Rules section.
+
+---
+
 ## 14. What Remains to Build
 
 ### Admin Screen (`/admin`) — IN PROGRESS
