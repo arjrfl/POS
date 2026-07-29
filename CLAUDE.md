@@ -379,13 +379,24 @@ Whenever schema.sql OR any Alembic migration file changes, run
 `scripts/verify-schema-parity.ps1` before committing. This builds two
 fully throwaway databases — one from schema.sql directly (the real
 fresh-install path), one from `alembic upgrade head` against a truly
-empty DB (never-before-tested path, since Alembic has historically
-only ever run incrementally against dev DBs that already had schema.sql
-applied) — and diffs the resulting schemas structurally. A passing run
+empty DB — and diffs the resulting schemas structurally. A passing run
 is a prerequisite for merging any schema-changing prompt. This replaces
 the previous ad hoc "spin up a scratch empty-DB container" step used to
 verify the 2026-07-29 transaction_item_audit_log FK-ordering fix, making
 it a standing, repeatable, mandatory check instead of a one-off.
+
+**Resolved 2026-07-29:** a baseline migration (`101b1dc45309_baseline_initial_schema`)
+was added as the new true root of the chain (`down_revision=None`;
+`1315883b38d2` — the old root — now points to it), making the chain
+fully replayable from empty. `verify-schema-parity.ps1` now passes both
+paths cleanly with zero diff. Two existing migrations
+(`b7e3f9a1c2d4`, `9c4f2a7e5d3b`) also needed
+`op.get_context().autocommit_block()` around their `'pending_edit'`
+enum add/check — Postgres won't let a value added via `ALTER TYPE ...
+ADD VALUE` be referenced until that add commits, which only surfaced
+when the full chain runs as a single `alembic upgrade head` transaction
+(never attempted before this baseline existed). Zero effect on already-
+provisioned databases — see Deployment Status below.
 
 ---
 

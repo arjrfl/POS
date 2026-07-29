@@ -79,6 +79,49 @@ function Wait-PostgresReady {
     throw "$ContainerName did not become ready within $TimeoutSeconds seconds"
 }
 
+function Split-TopLevelCommas {
+    param([string]$Text)
+    $parts = New-Object System.Collections.Generic.List[string]
+    $depth = 0
+    $current = New-Object System.Text.StringBuilder
+    foreach ($ch in $Text.ToCharArray()) {
+        if ($ch -eq '(') { $depth++ }
+        if ($ch -eq ')') { $depth-- }
+        if ($ch -eq ',' -and $depth -eq 0) {
+            $parts.Add($current.ToString())
+            $current = New-Object System.Text.StringBuilder
+        } else {
+            [void]$current.Append($ch)
+        }
+    }
+    if ($current.Length -gt 0) { $parts.Add($current.ToString()) }
+    return $parts
+}
+
+function Get-CanonicalTableBlock {
+    param([string]$Block)
+
+    # A column added later via ALTER TABLE ADD COLUMN always appends at the
+    # physical end of the table, while schema.sql declares it inline in its
+    # "final" position - same structure, different column order. Sort each
+    # CREATE TABLE's column/constraint list internally so that ordering
+    # difference doesn't register as drift, while still catching a genuinely
+    # missing/extra/differently-typed column (each stays its own comparable line).
+    if ($Block -notmatch '(?s)^(CREATE TABLE [^\(]+\()(.*)(\)\s*;?)\s*$') {
+        return $Block
+    }
+    $header = $Matches[1]
+    $body = $Matches[2]
+    $footer = $Matches[3]
+
+    $parts = Split-TopLevelCommas -Text $body |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -ne '' } |
+        Sort-Object
+
+    return "$header`n    " + ($parts -join ",`n    ") + "`n$footer"
+}
+
 function Get-NormalizedSchemaDump {
     param([string]$Path)
 
@@ -86,9 +129,11 @@ function Get-NormalizedSchemaDump {
     $lines = $raw -split "`n"
 
     # Noise pg_dump adds that carries no structural meaning: session SET
-    # statements, dump-tool timestamps/version comments, and per-object
+    # statements, dump-tool timestamps/version comments, per-object
     # "-- Name: ...; Type: ...; Schema: ..." headers (their content is
-    # already implied by the statement that follows).
+    # already implied by the statement that follows), and the psql
+    # \restrict/\unrestrict guard tokens some pg_dump versions emit (random
+    # per dump, carry no schema meaning).
     $noisePatterns = @(
         '^--\s*$',
         '^-- PostgreSQL database dump',
@@ -96,7 +141,9 @@ function Get-NormalizedSchemaDump {
         '^-- Dumped by pg_dump version',
         '^SET\s',
         '^SELECT pg_catalog\.set_config',
-        '^-- Name:.*Type:.*Schema:'
+        '^-- Name:.*Type:.*Schema:',
+        '^\\restrict\s',
+        '^\\unrestrict\s'
     )
 
     $kept = New-Object System.Collections.Generic.List[string]
@@ -110,12 +157,18 @@ function Get-NormalizedSchemaDump {
 
     $cleanText = ($kept -join "`n") -replace "(`n\s*){2,}", "`n`n"
 
-    # Split into per-object statement blocks (blank-line separated) and sort
-    # them so the two dumps compare equal regardless of which order
-    # schema.sql vs. the Alembic chain happened to create objects in.
+    # Split into per-object statement blocks (blank-line separated), drop
+    # alembic_version (Alembic's own bookkeeping table + PK - created by
+    # this script's Container B path, and by the real deploy's `alembic
+    # stamp head` step, but not by a bare schema.sql load; not part of the
+    # application schema this check cares about), canonicalize column order
+    # within each CREATE TABLE, then sort blocks so the two dumps compare
+    # equal regardless of which order schema.sql vs. the Alembic chain
+    # happened to create objects in.
     $blocks = $cleanText -split "`n`n+" |
         ForEach-Object { $_.Trim() } |
-        Where-Object { $_ -ne '' } |
+        Where-Object { $_ -ne '' -and $_ -notmatch '\balembic_version\b' } |
+        ForEach-Object { Get-CanonicalTableBlock -Block $_ } |
         Sort-Object
 
     return ($blocks -join "`n`n") + "`n"
@@ -184,27 +237,48 @@ try {
 
     Wait-PostgresReady -ContainerName $ContainerB
 
-    Write-Host "Determining current backend image tag via 'docker compose images backend'..."
+    # NOTE: deliberately NOT 'docker compose images backend' - that resolves
+    # via the currently-RUNNING container's pinned image ID (docker inspect
+    # under the hood), not the live tag. After a `docker compose build`
+    # retags backend:latest to a new image, the old id a still-running dev
+    # container was created from can become a dangling, garbage-collected
+    # layer - and 'docker compose images' then reports "No such image" even
+    # though the tag itself resolves fine. Resolve the tag directly instead:
+    # docker compose auto-names an unnamed `build:`-only service's image as
+    # "<project-name>-<service-name>:latest", where the project name comes
+    # from compose config itself (never hardcoded here).
+    Write-Host "Determining current backend image tag from the compose project name..."
     Push-Location $RepoRoot
     try {
-        $imagesJson = & docker compose images backend --format json 2>&1
-        $imagesExit = $LASTEXITCODE
-        if ($imagesExit -ne 0 -or [string]::IsNullOrWhiteSpace([string]$imagesJson) -or $imagesJson -eq '[]') {
-            Write-Host "No existing backend image found - building it once via 'docker compose build backend'..."
-            Invoke-Docker -Arguments @('compose', 'build', 'backend') `
-                -FailureMessage "Failed to build backend image" | Out-Null
-            $imagesJson = & docker compose images backend --format json 2>&1
-            $imagesExit = $LASTEXITCODE
-        }
+        $configJson = & docker compose config --format json 2>&1
+        $configExit = $LASTEXITCODE
     } finally {
         Pop-Location
     }
-    if ($imagesExit -ne 0 -or [string]::IsNullOrWhiteSpace([string]$imagesJson) -or $imagesJson -eq '[]') {
-        throw "Could not determine the backend image tag via 'docker compose images backend'"
+    if ($configExit -ne 0 -or [string]::IsNullOrWhiteSpace([string]$configJson)) {
+        throw "Could not read 'docker compose config' to determine the project name"
     }
-    $imageInfo = ($imagesJson | Out-String | ConvertFrom-Json)
-    if ($imageInfo -is [System.Array]) { $imageInfo = $imageInfo[0] }
-    $BackendImage = "$($imageInfo.Repository):$($imageInfo.Tag)"
+    $projectName = ($configJson | Out-String | ConvertFrom-Json).name
+    if ([string]::IsNullOrWhiteSpace($projectName)) {
+        throw "docker compose config returned no project name"
+    }
+    $BackendImage = "${projectName}-backend:latest"
+
+    & docker image inspect $BackendImage *> $null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Image '$BackendImage' not found - building it once via 'docker compose build backend'..."
+        Push-Location $RepoRoot
+        try {
+            Invoke-Docker -Arguments @('compose', 'build', 'backend') `
+                -FailureMessage "Failed to build backend image" | Out-Null
+        } finally {
+            Pop-Location
+        }
+        & docker image inspect $BackendImage *> $null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Backend image '$BackendImage' still not found after building it"
+        }
+    }
     Write-Host "Using backend image: $BackendImage"
 
     $databaseUrl = "postgresql+asyncpg://${PgUser}:${PgPassword}@${ContainerB}:5432/${PgDb}"
