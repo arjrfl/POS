@@ -10,7 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.customer import Customer
-from app.models.ledger import AuditChangeTypeEnum, CustomerLedger, LedgerEntryTypeEnum, TransactionAuditLog
+from app.models.ledger import (
+    AuditChangeTypeEnum,
+    CustomerLedger,
+    ItemEditSourceEnum,
+    LedgerEntryTypeEnum,
+    TransactionAuditLog,
+    TransactionItemAuditLog,
+)
 from app.models.product import Product, ProductStatusEnum
 from app.models.transaction import (
     CustomerTypeEnum,
@@ -1395,9 +1402,22 @@ async def save_draft_payments(
     return [PaymentDetailResponse.model_validate(d) for d in drafts]
 
 
-# TODO: item-edit audit trail — no transaction_audit_log/product_audit_log entry
-# is written for item edits made here yet; explicitly deferred per Arjay until a
-# later prompt wires the real audit trail for this feature.
+def _item_edit_audit_snapshot(item: TransactionItem) -> dict:
+    """Per-item fields captured into a transaction_item_audit_log old_value/new_value
+    entry — used only by edit_transaction_items (payment_item_edit). A separate,
+    deliberately duplicated copy of this exists for edit_releasing_items
+    (releasing_item_correction) so the two edit_source flows never share logic."""
+    return {
+        "item_id": item.id,
+        "product_id": item.product_id,
+        "quantity_kg": str(item.quantity_kg) if item.quantity_kg is not None else None,
+        "unit_count": item.unit_count,
+        "estimated_weight_kg": str(item.estimated_weight_kg) if item.estimated_weight_kg is not None else None,
+        "unit_price": str(item.unit_price) if item.unit_price is not None else None,
+        "subtotal": str(item.subtotal) if item.subtotal is not None else None,
+    }
+
+
 async def edit_transaction_items(
     db: AsyncSession, transaction_id: int, data: TransactionItemEditRequest, payment_user_id: int
 ) -> TransactionResponse:
@@ -1477,8 +1497,24 @@ async def edit_transaction_items(
         # Fine to set again on every subsequent confirmed edit; idempotent.
         transaction.items_edited_at_payment = True
 
+        # audit_old/audit_new stay index-aligned: audit_old[i] is always the
+        # pre-edit state (or null for a brand-new row) that produced
+        # audit_new[i]'s post-edit state (or null for a row that no longer
+        # exists after this call). Only items actually touched this call are
+        # appended — untouched existing items are skipped entirely.
+        audit_old: list[dict | None] = []
+        audit_new: list[dict | None] = []
+
         for item_id in deleted_ids:
-            await db.delete(items_by_id[item_id])
+            item = items_by_id[item_id]
+            audit_old.append({**_item_edit_audit_snapshot(item), "action": "deleted"})
+            audit_new.append(None)
+            await db.delete(item)
+
+        # product_ids removed above in THIS call — re-adding one of them below
+        # (as a new_entries row, which otherwise looks identical to a brand-new
+        # item) is a restore of that same product line, not a genuinely new item.
+        restorable_product_ids = {items_by_id[item_id].product_id for item_id in deleted_ids}
 
         estimated_amount = Decimal("0.00")
         for item_id, item in items_by_id.items():
@@ -1486,13 +1522,16 @@ async def edit_transaction_items(
                 continue
             entry = edited_by_id.get(item_id)
             if entry is not None:
+                audit_old.append({**_item_edit_audit_snapshot(item), "action": "updated"})
                 item.quantity_kg = entry.quantity_kg
                 item.estimated_weight_kg = entry.estimated_weight_kg
                 item.unit_count = entry.unit_count
                 item.subtotal = (entry.quantity_kg * item.unit_price).quantize(Decimal("0.01"))
+                audit_new.append({**_item_edit_audit_snapshot(item), "action": "updated"})
             if item.item_type == ItemTypeEnum.product:
                 estimated_amount += item.subtotal
 
+        new_item_audit_refs: list[tuple[TransactionItem, dict]] = []
         for entry in new_entries:
             if entry.product_id is None:
                 raise ItemEditValidationError("New items require a product_id")
@@ -1505,25 +1544,48 @@ async def edit_transaction_items(
             # unit_price is always snapshotted from the product server-side, never
             # trusted from the client — same rule as create_transaction.
             subtotal = (entry.quantity_kg * product.unit_price_php).quantize(Decimal("0.01"))
-            db.add(
-                TransactionItem(
-                    transaction_id=transaction.id,
-                    item_type=ItemTypeEnum.product,
-                    product_id=product.id,
-                    unit_count=entry.unit_count,
-                    estimated_weight_kg=entry.estimated_weight_kg,
-                    quantity_kg=entry.quantity_kg,
-                    unit_price=product.unit_price_php,
-                    subtotal=subtotal,
-                )
+            new_item = TransactionItem(
+                transaction_id=transaction.id,
+                item_type=ItemTypeEnum.product,
+                product_id=product.id,
+                unit_count=entry.unit_count,
+                estimated_weight_kg=entry.estimated_weight_kg,
+                quantity_kg=entry.quantity_kg,
+                unit_price=product.unit_price_php,
+                subtotal=subtotal,
             )
+            db.add(new_item)
             estimated_amount += subtotal
+
+            action = "restored" if product.id in restorable_product_ids else "added"
+            audit_old.append(None)
+            audit_entry = {**_item_edit_audit_snapshot(new_item), "action": action}
+            audit_new.append(audit_entry)
+            new_item_audit_refs.append((new_item, audit_entry))
 
         # balance_settled/credit_applied are staged separately by the Pay modal,
         # not touched by this feature — total_due is recomputed off the same
         # formula create_transaction/process_payment already use for walk_in.
         transaction.estimated_amount = estimated_amount
         transaction.total_due = estimated_amount + transaction.balance_settled - transaction.credit_applied
+
+        if audit_old or audit_new:
+            # New items don't have a real id until flushed — backfill it into the
+            # already-built audit_entry dicts (same dict objects referenced in
+            # audit_new) rather than rebuilding the snapshot post-flush.
+            await db.flush()
+            for new_item, audit_entry in new_item_audit_refs:
+                audit_entry["item_id"] = new_item.id
+
+            db.add(
+                TransactionItemAuditLog(
+                    transaction_id=transaction.id,
+                    changed_by_user_id=payment_user_id,
+                    edit_source=ItemEditSourceEnum.payment_item_edit,
+                    old_value=json.dumps(audit_old),
+                    new_value=json.dumps(audit_new),
+                )
+            )
 
         await db.commit()
     except Exception:
@@ -1540,8 +1602,9 @@ async def edit_transaction_items(
 
 # Same gating as edit_transaction_items (only original/walk_in/pending_payment,
 # grabbed by the requesting user) plus one extra check: a snapshot must actually
-# exist to revert to. No audit log entry — item edits at Payment are still
-# deferred (see the TODO above edit_transaction_items).
+# exist to revert to. No transaction_item_audit_log entry is written here — Revert
+# All is its own distinct action (bulk restore-to-snapshot), not an item-by-item
+# edit, and isn't in scope for the payment_item_edit audit trail.
 async def revert_transaction_items(
     db: AsyncSession, transaction_id: int, payment_user_id: int
 ) -> TransactionResponse:
@@ -1620,8 +1683,22 @@ async def revert_transaction_items(
     return await get_transaction(db, transaction.id)
 
 
-# TODO: item-edit audit trail — same deferred gap as edit_transaction_items
-# above; no transaction_audit_log entry is written for this endpoint's edits.
+def _releasing_item_edit_audit_snapshot(item: TransactionItem) -> dict:
+    """Per-item fields captured into a transaction_item_audit_log old_value/new_value
+    entry — used only by edit_releasing_items (releasing_item_correction). A
+    separate, deliberately duplicated copy of this exists for edit_transaction_items
+    (payment_item_edit) so the two edit_source flows never share logic."""
+    return {
+        "item_id": item.id,
+        "product_id": item.product_id,
+        "quantity_kg": str(item.quantity_kg) if item.quantity_kg is not None else None,
+        "unit_count": item.unit_count,
+        "estimated_weight_kg": str(item.estimated_weight_kg) if item.estimated_weight_kg is not None else None,
+        "unit_price": str(item.unit_price) if item.unit_price is not None else None,
+        "subtotal": str(item.subtotal) if item.subtotal is not None else None,
+    }
+
+
 async def edit_releasing_items(
     db: AsyncSession, transaction_id: int, data: ReleasingItemsUpdateRequest, releasing_user_id: int
 ) -> TransactionResponse:
@@ -1665,14 +1742,23 @@ async def edit_releasing_items(
     edited_by_id = {entry.item_id: entry for entry in data.items}
 
     try:
+        # Update-only endpoint — every touched item's action is always "updated",
+        # no added/deleted/restored classification needed here (see
+        # _item_edit_audit_snapshot's docstring in edit_transaction_items for why
+        # that endpoint needs the extra classification and this one doesn't).
+        audit_old: list[dict] = []
+        audit_new: list[dict] = []
+
         estimated_amount = Decimal("0.00")
         for item_id, item in items_by_id.items():
             entry = edited_by_id.get(item_id)
             if entry is not None:
+                audit_old.append({**_releasing_item_edit_audit_snapshot(item), "action": "updated"})
                 item.quantity_kg = entry.quantity_kg
                 item.estimated_weight_kg = entry.estimated_weight_kg
                 item.unit_count = entry.unit_count
                 item.subtotal = (entry.quantity_kg * item.unit_price).quantize(Decimal("0.01"))
+                audit_new.append({**_releasing_item_edit_audit_snapshot(item), "action": "updated"})
             if item.item_type == ItemTypeEnum.product:
                 estimated_amount += item.subtotal
 
@@ -1681,6 +1767,17 @@ async def edit_releasing_items(
         # only product lines are editable here.
         transaction.estimated_amount = estimated_amount
         transaction.total_due = estimated_amount + transaction.balance_settled - transaction.credit_applied
+
+        if audit_old:
+            db.add(
+                TransactionItemAuditLog(
+                    transaction_id=transaction.id,
+                    changed_by_user_id=releasing_user_id,
+                    edit_source=ItemEditSourceEnum.releasing_item_correction,
+                    old_value=json.dumps(audit_old),
+                    new_value=json.dumps(audit_new),
+                )
+            )
 
         await db.commit()
     except Exception:

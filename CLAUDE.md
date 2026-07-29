@@ -25,11 +25,10 @@ No internet at runtime. No cloud. No external services.
 
 - Backend: fully built and tested (all 7 flows passing)
 - Frontend: Receiver, Payment, Releasing screens built and refined
-- Admin screen: Dashboard, Customers, Products, and Transaction History tabs
-  built and wired into the TabBar. Users tab is present in the TabBar but
-  disabled (no content built). A `QueueMonitorSection` component exists in
-  `frontend/src/components/admin/` but is not wired into `Admin.jsx`/`TabBar`
-  — not reachable from the UI yet.
+- Admin screen: Dashboard, Customers, Products, Transaction History, and Users
+  tabs all built and wired into the TabBar. A `QueueMonitorSection` component
+  exists in `frontend/src/components/admin/` but is not wired into
+  `Admin.jsx`/`TabBar` — not reachable from the UI yet.
 - Product CRUD is available in both Releasing (Inventory tab) and Admin
   (Products tab). Both are fully functional and share the same underlying
   components (`frontend/src/components/inventory/`); changes made in either
@@ -221,9 +220,9 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   released/parked and re-grabbed — consistent with the existing
   rule that a WebSocket disconnect auto-releases an in-progress
   transaction back to `waiting`
-- `# TODO: item-edit audit trail` — same deferred gap as Payment's
-  item edits; no `transaction_audit_log` entry is written for this
-  yet
+- Audit logging: this endpoint (like Payment's Edit Items) writes a
+  `transaction_item_audit_log` row (`edit_source = 'releasing_item_correction'`)
+  on every successful edit — see Database Rules above
 
 ### Substandard Kilo — Payment Resolution
 - `adjustment` children (customer owes more): normal payment flow (cash/online/split), same as any transaction
@@ -306,6 +305,17 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   complete-exact, confirm-handover, online confirm-ready) decrements
   `product.stock_quantity` directly and does NOT write an audit log row;
   that's routine inventory movement, not a product-management event
+- `transaction_item_audit_log` (`item_edit_source_enum`: `payment_item_edit` |
+  `releasing_item_correction`) records item-content edits from Payment's Edit
+  Items (`PATCH /{id}/items`) and Releasing's online pre-payment item
+  correction (`PATCH /{id}/releasing-items`) — one row per successful PATCH
+  call, `old_value`/`new_value` as index-aligned JSON arrays covering only the
+  items touched in that call, each entry tagged with an `action`
+  (`added`/`updated`/`deleted`/`restored` for Payment; always `updated` for
+  Releasing). Completely separate from `transaction_audit_log`/
+  `audit_change_type_enum` above, which only tracks `transaction_status`/
+  `queue_status` phase moves — the two audit systems never share rows,
+  columns, or enum values. No UI currently reads this table.
 
 ---
 
@@ -336,7 +346,9 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   - `PATCH /{id}/items` — edit items during Payment phase, walk_in +
     original transactions only, must be grabbed by requester (payment).
     Also triggers a one-time capture of `original_items_snapshot` the first
-    time this is confirmed for a transaction (never overwritten afterward)
+    time this is confirmed for a transaction (never overwritten afterward).
+    Writes one `transaction_item_audit_log` row per call
+    (`edit_source = 'payment_item_edit'`) — see Database Rules above
   - `POST /{id}/revert-items` — restore items to Receiver's original list,
     walk_in + original transactions only, must be grabbed by requester
     (payment). Requires an existing snapshot (i.e. at least one prior Edit
@@ -358,7 +370,9 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
     items are left untouched. `estimated_amount`/`total_due` recompute
     from ALL items on the transaction afterward, per the locked
     `total_due` formula. `actual_amount` and all `actual_*` columns
-    stay NULL — this is not the substandard/variance flow.
+    stay NULL — this is not the substandard/variance flow. Writes one
+    `transaction_item_audit_log` row per call
+    (`edit_source = 'releasing_item_correction'`) — see Database Rules above
   - `POST /{id}/complete-exact` — auto-complete when confirmed weight is exact, `balance_due = 0` (releasing)
   - `GET /{id}/handover-outcome` — how a `settled` transaction's adjustment/refund
     child was resolved, for display before handover (releasing)

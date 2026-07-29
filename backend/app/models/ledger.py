@@ -27,6 +27,11 @@ class AuditChangeTypeEnum(str, enum.Enum):
     queue_status = "queue_status"
 
 
+class ItemEditSourceEnum(str, enum.Enum):
+    payment_item_edit = "payment_item_edit"
+    releasing_item_correction = "releasing_item_correction"
+
+
 class CustomerLedger(Base):
     __tablename__ = "customer_ledger"
 
@@ -88,4 +93,32 @@ class TransactionAuditLog(Base):
     changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     transaction: Mapped["SalesTransaction"] = relationship(back_populates="audit_logs", lazy="selectin")
+
+
+class TransactionItemAuditLog(Base):
+    """Separate from TransactionAuditLog/audit_change_type_enum above — that table
+    tracks transaction_status/queue_status phase moves only. This one tracks the
+    actual item-level content changes made by Payment's Edit Items
+    (edit_transaction_items) and Releasing's online pre-payment item correction
+    (edit_releasing_items). No relationship back to SalesTransaction is declared
+    here (unlike TransactionAuditLog.transaction) since nothing currently reads
+    this table via the ORM graph — only written to, directly by transaction_id."""
+
+    __tablename__ = "transaction_item_audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("sales_transaction.id", ondelete="CASCADE"), nullable=False
+    )
+    changed_by_user_id: Mapped[int] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"), nullable=False)
+
+    edit_source: Mapped[ItemEditSourceEnum] = mapped_column(
+        Enum(ItemEditSourceEnum, name="item_edit_source_enum", create_type=False), nullable=False
+    )
+
+    old_value: Mapped[Optional[str]] = mapped_column(Text)  # JSON array, changed items only
+    new_value: Mapped[str] = mapped_column(Text, nullable=False)  # JSON array, changed items only
+
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     changed_by_user: Mapped["User"] = relationship(foreign_keys=[changed_by_user_id], lazy="selectin")
