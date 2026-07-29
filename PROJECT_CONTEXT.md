@@ -454,7 +454,12 @@ volumes:
 
 ## 13. Open Items (Batch 5 — Production Readiness)
 
-- [ ] Plain HTTP vs self-signed HTTPS across the LAN
+- [x] Plain HTTP vs self-signed HTTPS — DECIDED: staying on plain HTTP.
+    Chrome's --unsafely-treat-insecure-origin-as-secure flag covers the
+    PWA service-worker secure-context requirement instead. See
+    deployment/launch-chrome-terminal.bat and CLAUDE.md Frontend Deploy
+    Notes. To be applied to all 27 terminals alongside the still-pending
+    kiosk-mode setup.
 - [x] Backup destination — RESOLVED: relying on the existing docker
     `backup` container's nightly local pg_dump only. Off-machine backup
     explicitly declined by client. See §13a for full note.

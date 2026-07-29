@@ -327,6 +327,17 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
 - Never assume a UI prompt "worked" from Claude Code's own summary —
   always confirm against http://localhost (real nginx), and expect the
   one-extra-reload SW quirk before flagging something as still broken.
+- Production is served over plain HTTP (no TLS) — decided over
+  self-signed HTTPS to keep LAN setup simple, since this is a closed
+  offline network. Because Chrome only registers Service Workers on a
+  secure context (HTTPS or localhost), and production runs on
+  http://meatshop.local (not localhost), every terminal's Chrome must
+  launch with --unsafely-treat-insecure-origin-as-secure covering
+  http://meatshop.local and http://192.168.1.58 (see
+  deployment/launch-chrome-terminal.bat) — otherwise the PWA's LAN
+  reconnect/service worker behavior silently fails to register in
+  production even though it works fine in dev (dev's http://localhost
+  gets Chrome's built-in secure-context exemption for free).
 
 ---
 
