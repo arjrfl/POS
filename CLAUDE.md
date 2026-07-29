@@ -403,6 +403,11 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   alongside nginx's port 80 — bypasses nginx entirely. Flagged for the
   still-deferred CORS/environment hardening Batch 5 item (see Open Items
   in `PROJECT_CONTEXT.md`).
+- CORS hardening: env-driven allow_origins implemented on dev/staging
+  (CORS_ALLOWED_ORIGINS env var, no wildcard fallback). Still needs
+  CORS_ALLOWED_ORIGINS=http://meatshop.local,http://192.168.1.58 added
+  to the server's .env — pending, to be done on SERVER PC alongside the
+  remaining deployment steps.
 
 ---
 

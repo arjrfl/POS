@@ -465,7 +465,8 @@ volumes:
   Releasing queue cards, no alert/notification. See Queue Mechanism note above.
 - [ ] Load test with ~27 simulated concurrent connections
 - [ ] Alembic migration workflow finalized
-- [ ] Environment hardening (CORS tightened for production)
+- [~] CORS hardening — code done (dev/staging), env value still needs
+  to be set on the production server's .env (see §13a)
 - [ ] Chrome kiosk mode setup on all 27 terminals
 - [ ] Chrome auto-update disabled on all terminals
 
@@ -495,6 +496,11 @@ volumes:
 - ⚠️ Backend port 8000 is directly exposed in `docker-compose.yml`
   alongside nginx's port 80 — bypasses nginx entirely. Flagged for the
   still-deferred CORS/environment hardening Batch 5 item above.
+- CORS hardening: env-driven allow_origins implemented on dev/staging
+  (CORS_ALLOWED_ORIGINS env var, no wildcard fallback). Still needs
+  CORS_ALLOWED_ORIGINS=http://meatshop.local,http://192.168.1.58 added
+  to the server's .env — pending, to be done on SERVER PC alongside the
+  remaining deployment steps.
 - This test deployment runs `schema.sql` against a genuinely fresh
   database, which is exactly the scenario that surfaced the
   `transaction_item_audit_log` FK-ordering bug fixed just before this

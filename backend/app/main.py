@@ -24,14 +24,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Lash Meatshop POS", lifespan=lifespan)
 
-# LAN-only deployment behind nginx, no public internet exposure.
-# Wide open for now; tighten once terminal origins are finalized.
+# LAN-only deployment behind nginx, no public internet exposure. Allowed
+# origins come from CORS_ALLOWED_ORIGINS (see app/core/config.py) — never a
+# wildcard. allow_credentials stays False: auth is a Bearer JWT via the
+# Authorization header, not cookies, so there's nothing for credentialed
+# CORS to protect here.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+    expose_headers=["X-Refreshed-Token"],
 )
 
 
