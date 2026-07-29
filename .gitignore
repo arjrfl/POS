@@ -20,6 +20,7 @@ backups/
 # Load test tooling (loadtest/)
 loadtest/loadtest_data.json
 loadtest/venv/
+loadtest/*.csv
 
 # IDE / OS
 .vscode/
