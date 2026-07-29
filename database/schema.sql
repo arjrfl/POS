@@ -245,29 +245,6 @@ CREATE INDEX idx_pal_product     ON product_audit_log (product_id);
 CREATE INDEX idx_pal_change_type ON product_audit_log (change_type);
 
 -- =============================================================
--- TRANSACTION ITEM AUDIT LOG
--- Tracks item-content edits made by Payment's Edit Items
--- (PATCH /transactions/{id}/items) and Releasing's online pre-payment
--- item correction (PATCH /transactions/{id}/releasing-items).
--- Separate from transaction_audit_log/audit_change_type_enum, which
--- only tracks transaction_status/queue_status phase moves — the two
--- audit systems are independent.
--- =============================================================
-CREATE TABLE transaction_item_audit_log (
-    id                 SERIAL PRIMARY KEY,
-    transaction_id     INT                    NOT NULL REFERENCES sales_transaction(id) ON DELETE CASCADE,
-    changed_by_user_id INT                    NOT NULL REFERENCES "user"(id)            ON DELETE RESTRICT,
-    edit_source        item_edit_source_enum  NOT NULL,
-    old_value          TEXT                   NULL,     -- JSON array, changed items only
-    new_value          TEXT                   NOT NULL, -- JSON array, changed items only
-    notes              TEXT                   NULL,
-    changed_at         TIMESTAMPTZ            NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_tial_transaction ON transaction_item_audit_log (transaction_id);
-CREATE INDEX idx_tial_edit_source ON transaction_item_audit_log (edit_source);
-
--- =============================================================
 -- PAYMENT METHOD
 -- e.g. 'cash', 'gcash', 'maya', 'bank_transfer'
 -- =============================================================
@@ -509,6 +486,29 @@ CREATE TABLE transaction_item (
 
 CREATE INDEX idx_ti_transaction ON transaction_item (transaction_id);
 CREATE INDEX idx_ti_item_type   ON transaction_item (item_type);
+
+-- =============================================================
+-- TRANSACTION ITEM AUDIT LOG
+-- Tracks item-content edits made by Payment's Edit Items
+-- (PATCH /transactions/{id}/items) and Releasing's online pre-payment
+-- item correction (PATCH /transactions/{id}/releasing-items).
+-- Separate from transaction_audit_log/audit_change_type_enum, which
+-- only tracks transaction_status/queue_status phase moves — the two
+-- audit systems are independent.
+-- =============================================================
+CREATE TABLE transaction_item_audit_log (
+    id                 SERIAL PRIMARY KEY,
+    transaction_id     INT                    NOT NULL REFERENCES sales_transaction(id) ON DELETE CASCADE,
+    changed_by_user_id INT                    NOT NULL REFERENCES "user"(id)            ON DELETE RESTRICT,
+    edit_source        item_edit_source_enum  NOT NULL,
+    old_value          TEXT                   NULL,     -- JSON array, changed items only
+    new_value          TEXT                   NOT NULL, -- JSON array, changed items only
+    notes              TEXT                   NULL,
+    changed_at         TIMESTAMPTZ            NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_tial_transaction ON transaction_item_audit_log (transaction_id);
+CREATE INDEX idx_tial_edit_source ON transaction_item_audit_log (edit_source);
 
 -- =============================================================
 -- PAYMENT DETAIL
