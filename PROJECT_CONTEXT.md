@@ -135,6 +135,17 @@ When a user's WebSocket disconnects (refresh, logout, browser close):
 - Any transaction they were processing auto-releases back to `waiting`
 - Broadcasts to current team's room so others see it become available
 
+### Stale-Parked Highlight (client-side only)
+A `parked` card on the Payment or Releasing queue whose `parked_at` is 3+
+hours old renders with a red highlight (`bg-red-50`/`border-l-red-500`,
+overriding the normal yellow parked styling) plus a "Parked Xh Ym" duration
+badge. Flat 3-hour threshold, hardcoded — not configurable. Purely a
+frontend re-render on a 60-second timer against the existing `parked_at`
+field; no new endpoint, no WebSocket event, no Admin Dashboard change. This
+is separate from and does not replace `QueueMonitorSection`'s own
+(currently unwired, deprioritized) ">30min" concept mentioned in §14 item 6
+— that refers to a different, unbuilt component.
+
 ---
 
 ## 6. Substandard Kilo Flow (Releasing)
@@ -447,7 +458,9 @@ volumes:
 - [ ] Backup destination: USB drive vs NAS vs second PC
 - [ ] Static IP scheme for server + `hosts` file entries for all 27 terminals
 - [ ] Whether a standby/failover server PC is in budget
-- [ ] Parked transaction timeout threshold (alert admin after 30 mins)
+- [x] Parked transaction timeout threshold — DONE: flat 3-hour, client-side
+  visual highlight only (red card + "Parked Xh Ym" badge) on Payment and
+  Releasing queue cards, no alert/notification. See Queue Mechanism note above.
 - [ ] Load test with ~27 simulated concurrent connections
 - [ ] Alembic migration workflow finalized
 - [ ] Environment hardening (CORS tightened for production)

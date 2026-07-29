@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useCustomer } from '../../hooks/useCustomer'
 import { formatCurrency } from '../../utils/format'
-import { timeAgoShort } from '../../utils/time'
+import { timeAgoShort, isParkedStale, formatElapsedDuration } from '../../utils/time'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 
 const STATUS_PILL = {
@@ -10,10 +10,11 @@ const STATUS_PILL = {
   processing: { label: 'Being Processed', className: 'bg-blue-100 text-blue-800' },
 }
 
-export function QueueTransactionRow({ transaction, onProcess }) {
+export function QueueTransactionRow({ transaction, onProcess, now }) {
   const { data: customer } = useCustomer(transaction.customer_id)
   const isParked = transaction.queue_status === 'parked'
   const isProcessing = transaction.queue_status === 'processing'
+  const isStaleParked = isParked && isParkedStale(transaction.parked_at, now)
   const typeBadge = CUSTOMER_TYPE_BADGE[transaction.customer_type]
   const statusPill = STATUS_PILL[transaction.queue_status] ?? STATUS_PILL.waiting
 
@@ -24,8 +25,14 @@ export function QueueTransactionRow({ transaction, onProcess }) {
     return () => clearInterval(interval)
   }, [])
 
-  const cardBg = isParked ? 'bg-yellow-50' : isProcessing ? 'bg-blue-50' : 'bg-white'
-  const accent = isParked ? 'border-l-4 border-l-yellow-400' : isProcessing ? 'border-l-4 border-l-blue-400' : ''
+  const cardBg = isStaleParked ? 'bg-red-50' : isParked ? 'bg-yellow-50' : isProcessing ? 'bg-blue-50' : 'bg-white'
+  const accent = isStaleParked
+    ? 'border-l-4 border-l-red-500'
+    : isParked
+      ? 'border-l-4 border-l-yellow-400'
+      : isProcessing
+        ? 'border-l-4 border-l-blue-400'
+        : ''
 
   return (
     <div
@@ -35,7 +42,11 @@ export function QueueTransactionRow({ transaction, onProcess }) {
         <div className="font-mono font-bold text-base text-gray-900 truncate">{transaction.order_number}</div>
         <div className="text-sm text-gray-500 truncate">{customer?.full_name ?? '...'}</div>
         {isParked && (
-          <div className="text-xs text-amber-500">Parked · {timeAgoShort(transaction.parked_at)}</div>
+          <div className={`text-xs ${isStaleParked ? 'text-red-600' : 'text-amber-500'}`}>
+            {isStaleParked
+              ? `Parked ${formatElapsedDuration(transaction.parked_at, now)}`
+              : `Parked · ${timeAgoShort(transaction.parked_at)}`}
+          </div>
         )}
       </div>
 

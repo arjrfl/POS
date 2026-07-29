@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { QueueTransactionRow } from './QueueTransactionRow'
 
 function EmptyState() {
@@ -9,6 +10,14 @@ function EmptyState() {
 }
 
 export function QueuePanel({ transactions, isLoading, onProcess }) {
+  // Drives the stale-parked (>3h) highlight re-check — purely a visual tick,
+  // no data refetch/WebSocket invalidation involved.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 60000)
+    return () => clearInterval(interval)
+  }, [])
+
   if (isLoading) {
     return <p className="px-4 text-gray-500">Loading queue...</p>
   }
@@ -26,7 +35,7 @@ export function QueuePanel({ transactions, isLoading, onProcess }) {
   return (
     <div>
       {ordered.map((transaction) => (
-        <QueueTransactionRow key={transaction.id} transaction={transaction} onProcess={onProcess} />
+        <QueueTransactionRow key={transaction.id} transaction={transaction} onProcess={onProcess} now={now} />
       ))}
     </div>
   )

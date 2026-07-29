@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useCustomer } from '../../hooks/useCustomer'
-import { timeAgoShort } from '../../utils/time'
+import { timeAgoShort, isParkedStale, formatElapsedDuration } from '../../utils/time'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 
 const STATUS_PILL = {
@@ -13,7 +13,7 @@ const AWAITING_PAYMENT_PILL = { label: 'Awaiting Payment', className: 'bg-purple
 const PAYMENT_RESOLVED_PILL = { label: 'Payment Resolved', className: 'bg-green-100 text-green-700' }
 const PAYMENT_CONFIRMED_PILL = { label: 'Payment Confirmed', className: 'bg-indigo-100 text-indigo-700' }
 
-export function QueueTransactionRow({ transaction, onProcess, onReview, onConfirmOnline }) {
+export function QueueTransactionRow({ transaction, onProcess, onReview, onConfirmOnline, now }) {
   const { data: customer } = useCustomer(transaction.customer_id)
   // Releasing already handed this off to Payment (a child adjustment/refund is
   // sitting in their queue) — this card is read-only until Payment resolves it,
@@ -28,6 +28,7 @@ export function QueueTransactionRow({ transaction, onProcess, onReview, onConfir
   const isPendingHandover = transaction.transaction_status === 'pending_handover'
   const isParked = transaction.queue_status === 'parked'
   const isProcessing = transaction.queue_status === 'processing'
+  const isStaleParked = isParked && isParkedStale(transaction.parked_at, now)
   const typeBadge = CUSTOMER_TYPE_BADGE[transaction.customer_type]
   const statusPill = isAwaitingPayment
     ? AWAITING_PAYMENT_PILL
@@ -50,20 +51,24 @@ export function QueueTransactionRow({ transaction, onProcess, onReview, onConfir
       ? 'bg-indigo-50'
       : isSettled
         ? 'bg-green-50'
-        : isParked
-          ? 'bg-yellow-50'
-          : isProcessing
-            ? 'bg-blue-50'
-            : 'bg-white'
+        : isStaleParked
+          ? 'bg-red-50'
+          : isParked
+            ? 'bg-yellow-50'
+            : isProcessing
+              ? 'bg-blue-50'
+              : 'bg-white'
   const accent = isPendingHandover
     ? 'border-l-4 border-l-indigo-500'
     : isSettled
       ? 'border-l-4 border-l-green-500'
-      : isParked
-        ? 'border-l-4 border-l-yellow-400'
-        : isProcessing
-          ? 'border-l-4 border-l-blue-400'
-          : ''
+      : isStaleParked
+        ? 'border-l-4 border-l-red-500'
+        : isParked
+          ? 'border-l-4 border-l-yellow-400'
+          : isProcessing
+            ? 'border-l-4 border-l-blue-400'
+            : ''
 
   return (
     <div
@@ -76,7 +81,11 @@ export function QueueTransactionRow({ transaction, onProcess, onReview, onConfir
         <div className="text-sm text-gray-500 truncate">{customer?.full_name ?? '...'}</div>
         {isAwaitingPayment && <div className="text-xs text-gray-500">Awaiting Payment Resolution</div>}
         {isParked && (
-          <div className="text-xs text-amber-500">Parked · {timeAgoShort(transaction.parked_at)}</div>
+          <div className={`text-xs ${isStaleParked ? 'text-red-600' : 'text-amber-500'}`}>
+            {isStaleParked
+              ? `Parked ${formatElapsedDuration(transaction.parked_at, now)}`
+              : `Parked · ${timeAgoShort(transaction.parked_at)}`}
+          </div>
         )}
       </div>
 

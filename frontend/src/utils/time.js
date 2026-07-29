@@ -31,6 +31,24 @@ export function timeAgoShort(dateString) {
   return `${diffDay}d ago`
 }
 
+// Parked-card staleness: flat 3-hour threshold, not configurable.
+export const PARKED_STALE_THRESHOLD_MS = 3 * 60 * 60 * 1000
+
+export function isParkedStale(parked_at, now = Date.now()) {
+  if (!parked_at) return false
+  return now - new Date(parked_at).getTime() >= PARKED_STALE_THRESHOLD_MS
+}
+
+// "3h 24m" elapsed form for the stale-parked badge — distinct from
+// timeAgo/timeAgoShort's "Xh ago" wording since this shows raw duration.
+export function formatElapsedDuration(dateString, now = Date.now()) {
+  const diffMs = now - new Date(dateString).getTime()
+  const diffMin = Math.max(0, Math.floor(diffMs / 60000))
+  const hours = Math.floor(diffMin / 60)
+  const mins = diffMin % 60
+  return `${hours}h ${mins}m`
+}
+
 // "YYYY-MM-DD HH:MM:SS", 24-hour, local time — the Order Slip receipt's DATE
 // field, deliberately distinct from timeAgo/timeAgoShort's relative wording.
 export function formatReceiptDate(dateString) {

@@ -105,6 +105,12 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   (heavier), blue (lighter)
 - Queue card processing (`bg-blue-50`) / parked (`bg-yellow-50`) styling,
   and the "Unpark" amber action button
+- Stale-parked queue card styling (Payment + Releasing queues): a parked
+  card whose `parked_at` is 3+ hours old switches to
+  `bg-red-50 border-l-4 border-l-red-500` (takes precedence over the
+  normal yellow parked styling) and shows a "Parked Xh Ym" duration badge.
+  Flat 3-hour threshold, not configurable. Passive visual-only — no toast,
+  WebSocket push, or Admin Dashboard change
 - `pending_adjustment` "Awaiting Payment" purple pill (Releasing queue)
 - `pending_handover`/`settled` queue-card entry buttons in Releasing
   (indigo "Confirm Handover", green "Review & Confirm") — tied to their
