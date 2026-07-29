@@ -34,7 +34,6 @@ No internet at runtime. No cloud. No external services.
   components (`frontend/src/components/inventory/`); changes made in either
   screen broadcast live to both.
 - Batch 5 (production readiness): NOT YET DONE
-- Known deferred issue: multiple WebSocket connections per user (fix in Batch 5)
 - All 27 client terminals must use Google Chrome (fixed version, auto-update disabled)
 
 ---

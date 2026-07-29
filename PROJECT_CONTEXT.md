@@ -396,7 +396,6 @@ volumes:
 - [ ] Whether a standby/failover server PC is in budget
 - [ ] Parked transaction timeout threshold (alert admin after 30 mins)
 - [ ] Load test with ~27 simulated concurrent connections
-- [ ] Admin screen build
 - [ ] Alembic migration workflow finalized
 - [ ] Environment hardening (CORS tightened for production)
 - [ ] Chrome kiosk mode setup on all 27 terminals
