@@ -468,9 +468,9 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
     Confirm Items Ready is disabled until every item has been checked
     at least once (see Online Pre-Payment Item Correction rule above).
 - Admin screen (`/admin`): TabBar navigation — Dashboard, Customers, Products,
-  and Transaction History tabs built and wired; Users tab present in the
-  TabBar but disabled (no content). `QueueMonitorSection.jsx` exists under
-  `components/admin/` but is not wired into the TabBar/page.
+  Transaction History, and Users tabs all built and wired into the TabBar.
+  `QueueMonitorSection.jsx` exists under `components/admin/` but is not wired
+  into the TabBar/page.
   - Dashboard tab: summary cards (Transactions Today, Total Sales Today,
     Pending in Payment, Pending in Releasing) + `TopProductsChart`
   - Customers tab: searchable list (Name/Contact/Net Balance/Status,
