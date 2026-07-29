@@ -391,9 +391,14 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   TeamViewer, one step at a time.
 - Fresh secrets (`DB_PASSWORD`, `SECRET_KEY`) were generated directly on
   the server itself — never shared with or stored in the dev environment.
-- ⚠️ Backup destination: NOT YET CONFIGURED. USB drive is the chosen
-  direction but not yet wired up. Blocks real production use with real
-  customer data — acceptable only for today's test deployment.
+- Backup destination: RESOLVED — relying solely on the existing docker
+  `backup` container's nightly local `pg_dump` (writes to ./backups on
+  the same server PC/drive as pgdata). No USB/NAS/off-site backup will
+  be configured. This is a deliberate, client-informed decision, not an
+  oversight. Accepted risk: this does not protect against the server's
+  drive failing, or the server PC itself being lost, stolen, or damaged
+  (fire, flood, etc.) — only against bad data, accidental deletes, bad
+  migrations, or Postgres container corruption.
 - ⚠️ Backend port 8000 is directly exposed in `docker-compose.yml`
   alongside nginx's port 80 — bypasses nginx entirely. Flagged for the
   still-deferred CORS/environment hardening Batch 5 item (see Open Items

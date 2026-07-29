@@ -455,7 +455,9 @@ volumes:
 ## 13. Open Items (Batch 5 — Production Readiness)
 
 - [ ] Plain HTTP vs self-signed HTTPS across the LAN
-- [ ] Backup destination: USB drive vs NAS vs second PC
+- [x] Backup destination — RESOLVED: relying on the existing docker
+    `backup` container's nightly local pg_dump only. Off-machine backup
+    explicitly declined by client. See §13a for full note.
 - [ ] Static IP scheme for server + `hosts` file entries for all 27 terminals
 - [ ] Whether a standby/failover server PC is in budget
 - [x] Parked transaction timeout threshold — DONE: flat 3-hour, client-side
@@ -484,9 +486,12 @@ volumes:
   TeamViewer, one step at a time.
 - Fresh secrets (`DB_PASSWORD`, `SECRET_KEY`) were generated directly on
   the server itself — never shared with or stored in the dev environment.
-- ⚠️ Backup destination: NOT YET CONFIGURED. USB drive is the chosen
-  direction but not yet wired up. Blocks real production use with real
-  customer data — acceptable only for today's test deployment.
+- Backup destination: RESOLVED — client has decided to rely solely on
+  the existing docker `backup` container's nightly local `pg_dump`
+  (writes to ./backups on the same server PC/drive as pgdata). No
+  USB/NAS/off-site backup will be configured. Client is explicitly
+  aware this does not protect against server drive failure or physical
+  loss/theft/disaster — accepted risk, not an oversight.
 - ⚠️ Backend port 8000 is directly exposed in `docker-compose.yml`
   alongside nginx's port 80 — bypasses nginx entirely. Flagged for the
   still-deferred CORS/environment hardening Batch 5 item above.
