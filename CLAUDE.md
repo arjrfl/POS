@@ -374,6 +374,19 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   verified end-to-end against a scratch empty-DB container (see
   Deployment Status below).
 
+### Schema/Alembic Parity Verification
+Whenever schema.sql OR any Alembic migration file changes, run
+`scripts/verify-schema-parity.ps1` before committing. This builds two
+fully throwaway databases — one from schema.sql directly (the real
+fresh-install path), one from `alembic upgrade head` against a truly
+empty DB (never-before-tested path, since Alembic has historically
+only ever run incrementally against dev DBs that already had schema.sql
+applied) — and diffs the resulting schemas structurally. A passing run
+is a prerequisite for merging any schema-changing prompt. This replaces
+the previous ad hoc "spin up a scratch empty-DB container" step used to
+verify the 2026-07-29 transaction_item_audit_log FK-ordering fix, making
+it a standing, repeatable, mandatory check instead of a one-off.
+
 ---
 
 ## Deployment Status

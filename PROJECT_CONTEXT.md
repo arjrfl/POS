@@ -464,7 +464,10 @@ volumes:
   visual highlight only (red card + "Parked Xh Ym" badge) on Payment and
   Releasing queue cards, no alert/notification. See Queue Mechanism note above.
 - [ ] Load test with ~27 simulated concurrent connections
-- [ ] Alembic migration workflow finalized
+- [x] Alembic migration workflow — FINALIZED: dual-source (schema.sql +
+    Alembic) retained, with scripts/verify-schema-parity.ps1 as a
+    mandatory drift-check before any schema-changing commit. See
+    CLAUDE.md Database Rules for details.
 - [~] CORS hardening — code done (dev/staging), env value still needs
   to be set on the production server's .env (see §13a)
 - [ ] Chrome kiosk mode setup on all 27 terminals
