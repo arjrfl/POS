@@ -1,0 +1,2 @@
+locust==2.31.8
+websocket-client==1.8.0
