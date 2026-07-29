@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import NamedTuple
 
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -17,6 +17,7 @@ from app.models.ledger import (
     LedgerEntryTypeEnum,
     TransactionAuditLog,
     TransactionItemAuditLog,
+    TransactionVoidLog,
 )
 from app.models.product import Product, ProductStatusEnum
 from app.models.transaction import (
@@ -54,18 +55,11 @@ from app.schemas.transaction import (
     VoidInfoResponse,
     WeightConfirmRequest,
 )
+from app.models.user import User
 from app.services import customer_service
 from app.websocket.events import queue_status_changed, transaction_items_changed, transaction_status_changed
 from app.websocket.manager import manager
 
-
-# TODO: End-of-day job — void all transactions where:
-#   transaction_status IN ('pending_payment', 'pending_settlement', 'parked')
-#   AND DATE(created_at) < CURRENT_DATE
-#   This should run as a scheduled task at midnight.
-#   Delete is_draft payment_detail rows for voided transactions.
-#   Insert transaction_audit_log entry for each voided transaction.
-#   Will be implemented in Batch 5 (production readiness).
 
 # self-referential relationships aren't loaded by their mapper-level lazy="selectin"
 # default — they need to be requested explicitly at query time, recursion_depth=-1
@@ -2729,3 +2723,195 @@ async def complete_online(db: AsyncSession, transaction_id: int, releasing_user_
     await manager.broadcast_multi(rooms, event)
 
     return await get_transaction(db, transaction.id)
+
+
+# Eligible for end-of-day auto-void: only the two states where
+# product.stock_quantity is guaranteed to have NOT been touched yet for this
+# transaction (see PROJECT_CONTEXT.md and CLAUDE.md's End-of-Day Auto-Void
+# rule). Every other incomplete status (online's own pending_payment,
+# pending_adjustment, settled, pending_handover) has already moved stock and
+# must never be voided here. queue_status = 'waiting' is also required —
+# a transaction currently 'processing' (someone has it grabbed) or 'parked'
+# is actively being worked on and must never be auto-voided out from under
+# them, even if its transaction_status/customer_type otherwise match.
+def _auto_void_eligibility_filter():
+    return and_(
+        SalesTransaction.queue_status == QueueStatusEnum.waiting,
+        or_(
+            and_(
+                SalesTransaction.transaction_status == TransactionStatusEnum.pending_payment,
+                SalesTransaction.customer_type == CustomerTypeEnum.walk_in,
+            ),
+            SalesTransaction.transaction_status == TransactionStatusEnum.pending_settlement,
+        ),
+    )
+
+
+async def _get_system_auto_void_user_id(db: AsyncSession) -> int:
+    user_id = await db.scalar(select(User.id).where(User.username == "system_auto_void"))
+    if user_id is None:
+        raise ValueError("system_auto_void user not found — seed data missing (see app/core/seed.py)")
+    return user_id
+
+
+async def _auto_void_transaction(db: AsyncSession, transaction_id: int, system_user_id: int) -> bool:
+    """Voids a single transaction for run_end_of_day_auto_void. Returns False
+    (no-op) if the transaction is no longer eligible by the time its row lock
+    is acquired — it may have moved on since the batch's listing query ran."""
+    transaction = await _get_transaction_for_update(db, transaction_id)
+    if transaction is None:
+        return False
+
+    is_eligible = transaction.queue_status == QueueStatusEnum.waiting and (
+        transaction.transaction_status == TransactionStatusEnum.pending_settlement
+        or (
+            transaction.transaction_status == TransactionStatusEnum.pending_payment
+            and transaction.customer_type == CustomerTypeEnum.walk_in
+        )
+    )
+    if not is_eligible:
+        return False
+
+    customer = await db.get(Customer, transaction.customer_id)
+    old_status = transaction.transaction_status.value
+
+    try:
+        # Reverse this transaction's net_balance impact so the customer ends
+        # up exactly as if it never existed — append-only compensating ledger
+        # rows, the original rows are never edited/deleted.
+        if transaction.credit_applied > 0:
+            customer.net_balance += transaction.credit_applied
+            db.add(
+                CustomerLedger(
+                    customer_id=customer.id,
+                    transaction_id=transaction.id,
+                    entry_type=LedgerEntryTypeEnum.credit_added,
+                    amount=transaction.credit_applied,
+                    running_balance=customer.net_balance,
+                    notes=f"Reversal of credit applied — auto-voided transaction {transaction.order_number}",
+                )
+            )
+
+        if transaction.balance_settled > 0:
+            customer.net_balance -= transaction.balance_settled
+            db.add(
+                CustomerLedger(
+                    customer_id=customer.id,
+                    transaction_id=transaction.id,
+                    entry_type=LedgerEntryTypeEnum.balance_added,
+                    amount=transaction.balance_settled,
+                    running_balance=customer.net_balance,
+                    notes=f"Reversal of balance settled — auto-voided transaction {transaction.order_number}",
+                )
+            )
+
+        transaction.transaction_status = TransactionStatusEnum.voided
+        transaction.queue_status = QueueStatusEnum.done
+        transaction.processing_by_user_id = None
+        transaction.parked_by_user_id = None
+        transaction.parked_at = None
+
+        db.add(
+            TransactionVoidLog(
+                transaction_id=transaction.id,
+                void_reason="Auto-voided: incomplete transaction at end-of-day cleanup",
+                voided_by_user_id=system_user_id,
+            )
+        )
+        db.add(
+            TransactionAuditLog(
+                transaction_id=transaction.id,
+                changed_by_user_id=system_user_id,
+                change_type=AuditChangeTypeEnum.transaction_status,
+                old_value=old_status,
+                new_value=TransactionStatusEnum.voided.value,
+                notes="Automated end-of-day auto-void",
+            )
+        )
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    rooms, event = transaction_status_changed(
+        transaction_id=transaction.id,
+        old_status=old_status,
+        new_status=TransactionStatusEnum.voided.value,
+        customer_type=transaction.customer_type.value,
+    )
+    await manager.broadcast_multi(rooms, event)
+    return True
+
+
+async def run_end_of_day_auto_void(db: AsyncSession, *, dry_run: bool = False) -> int | list[dict]:
+    """Nightly scheduled job (see app/services/scheduler_service.py) — voids
+    transactions stuck in a pre-stock-movement state at end of day. See
+    _auto_void_eligibility_filter for the exact (narrow) eligibility rule.
+    Each transaction is voided in its own try/except so one bad row can't
+    block the rest of the batch. Returns how many were voided.
+
+    dry_run=True runs the exact same eligibility query and reports what WOULD
+    happen — no writes, no broadcasts — returning one dict per candidate
+    transaction (id, order_number, transaction_status, customer_type,
+    customer_id, credit_applied, balance_settled).
+
+    This is the MANDATORY way to exercise this function outside the real
+    nightly schedule: always call with dry_run=True first and inspect every
+    returned id. Only call with dry_run=False if every single one is
+    recognized/expected (e.g. your own test data) — this function scans the
+    whole table, not just rows you created, so an unscoped real call against
+    shared data will void whatever else happens to be eligible. If the
+    dry-run list contains anything unrecognized, STOP.
+    """
+    system_user_id = await _get_system_auto_void_user_id(db)
+
+    if dry_run:
+        candidates = (
+            await db.execute(
+                select(
+                    SalesTransaction.id,
+                    SalesTransaction.order_number,
+                    SalesTransaction.transaction_status,
+                    SalesTransaction.customer_type,
+                    SalesTransaction.customer_id,
+                    SalesTransaction.credit_applied,
+                    SalesTransaction.balance_settled,
+                ).where(_auto_void_eligibility_filter())
+            )
+        ).all()
+        result = [
+            {
+                "id": row.id,
+                "order_number": row.order_number,
+                "transaction_status": row.transaction_status.value,
+                "customer_type": row.customer_type.value,
+                "customer_id": row.customer_id,
+                "credit_applied": row.credit_applied,
+                "balance_settled": row.balance_settled,
+            }
+            for row in candidates
+        ]
+        order_numbers = [c["order_number"] for c in result]
+        print(
+            f"[DRY RUN] end-of-day auto-void: would void {len(result)} transaction(s): {order_numbers}",
+            flush=True,
+        )
+        return result
+
+    transaction_ids = (
+        await db.execute(select(SalesTransaction.id).where(_auto_void_eligibility_filter()))
+    ).scalars().all()
+
+    voided_count = 0
+    for transaction_id in transaction_ids:
+        try:
+            if await _auto_void_transaction(db, transaction_id, system_user_id):
+                voided_count += 1
+        except Exception as exc:
+            print(
+                f"[scheduler] end-of-day auto-void: failed to void transaction {transaction_id}: {exc}",
+                flush=True,
+            )
+
+    return voided_count

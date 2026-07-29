@@ -223,6 +223,47 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   `transaction_item_audit_log` row (`edit_source = 'releasing_item_correction'`)
   on every successful edit — see Database Rules above
 
+### End-of-Day Auto-Void
+- Scheduled nightly job only — no manual trigger endpoint. Runs from a plain
+  asyncio background task started at FastAPI startup (`app/services/
+  scheduler_service.py`), no new scheduling dependency (no APScheduler/Celery)
+- Time is configurable via `END_OF_DAY_VOID_HOUR`/`END_OF_DAY_VOID_MINUTE` env
+  vars (default 23:59, server-local time)
+- Eligibility is narrow — **not** "all incomplete transactions." Only:
+  `transaction_status = 'pending_payment' AND customer_type = 'walk_in'`, OR
+  `transaction_status = 'pending_settlement'` (either customer_type) —
+  **AND `queue_status = 'waiting'` in both cases.** The status/customer_type
+  pair is the only guarantee that `product.stock_quantity` hasn't been
+  touched yet; `queue_status = 'waiting'` on top of that guarantees no team
+  member currently has the transaction grabbed (`processing`) or set aside
+  (`parked`) — either of those means someone is actively working it, so it
+  must never be auto-voided out from under them even if its status/
+  customer_type otherwise match. Every other incomplete status (online's own
+  `pending_payment`, `pending_adjustment`, `settled`, `pending_handover`) has
+  already moved stock and is explicitly out of scope
+- Any nonzero `credit_applied`/`balance_settled` on a voided transaction is
+  reversed via new compensating `customer_ledger` rows (append-only —
+  existing rows are never edited/deleted) so the customer's `net_balance`
+  ends up exactly as if the transaction never existed
+- Sets `transaction_status = 'voided'`, resets queue lock fields, writes a
+  `transaction_void_log` row and a `transaction_audit_log` row, and
+  broadcasts the status change like any other transition
+- Attributed to a seeded `system_auto_void` account (see Seed Users below),
+  never a real admin login
+- Each transaction is voided in its own try/except so one bad row can't
+  block the rest of the nightly batch
+- Implementation: `run_end_of_day_auto_void` in `transaction_service.py`
+- `run_end_of_day_auto_void(db, dry_run=True)` reports what WOULD be voided
+  (same eligibility query, no writes, no broadcasts) — one dict per
+  candidate transaction. **Mandatory testing rule for this function
+  specifically:** never call it with `dry_run=False` against a shared/live
+  database without calling `dry_run=True` first and confirming every id in
+  the returned list is recognized/expected (e.g. your own test data). This
+  function scans the *entire* table, not just rows you created — an
+  unscoped real call against shared data will void whatever else happens to
+  be eligible at that moment. If the dry-run list contains anything
+  unrecognized, stop and investigate instead of proceeding
+
 ### Substandard Kilo — Payment Resolution
 - `adjustment` children (customer owes more): normal payment flow (cash/online/split), same as any transaction
 - `refund` children (store owes customer): resolved via a single **[ Save as Credit ]**
@@ -516,6 +557,7 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
 | releasing_user2 | releasing |
 | releasing_user3 | releasing |
 | admin_user | admin |
+| system_auto_void | admin (system-only — `is_active = FALSE`, cannot log in; exists only for end-of-day auto-void attribution; never delete or reactivate) |
 
 ---
 

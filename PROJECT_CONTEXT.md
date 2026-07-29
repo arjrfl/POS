@@ -199,6 +199,60 @@ the Receiver already created the transaction.
 
 ---
 
+## 6b. End-of-Day Auto-Void
+
+A nightly scheduled job (no manual trigger) voids transactions still stuck
+before Payment/Releasing has finished with them at end of day, so they don't
+linger into the next business day.
+
+- Runs from a plain asyncio background task started at FastAPI startup
+  (`app/services/scheduler_service.py`) — no new scheduling dependency.
+  Time is configurable via `END_OF_DAY_VOID_HOUR`/`END_OF_DAY_VOID_MINUTE`
+  env vars (default 23:59, server-local time)
+- Eligibility is intentionally narrow — **not** "all incomplete
+  transactions." Only:
+  - `transaction_status = 'pending_payment' AND customer_type = 'walk_in'`, OR
+  - `transaction_status = 'pending_settlement'` (either `customer_type`)
+
+  — **AND `queue_status = 'waiting'` in both cases.** The status/
+  customer_type pair is the only guarantee that `product.stock_quantity`
+  hasn't been touched yet for that transaction (confirmed against the flow
+  tables in §3 above). `queue_status = 'waiting'` on top of that guarantees
+  no team member currently has it grabbed (`processing`) or set aside
+  (`parked`) — a transaction actively being worked on must never be
+  auto-voided out from under whoever holds it, even if its status/
+  customer_type otherwise match. Every other incomplete status — online's
+  own `pending_payment`, `pending_adjustment`, `settled`, `pending_handover`
+  — has already moved stock and is explicitly out of scope
+- Any nonzero `credit_applied` or `balance_settled` on the voided
+  transaction is reversed via new compensating `customer_ledger` rows
+  (append-only — existing rows are never edited or deleted), so the
+  customer's `net_balance` ends up exactly as if the transaction never
+  existed
+- Sets `transaction_status = 'voided'`, resets the queue lock fields
+  (`queue_status → 'done'`, `processing_by_user_id`/`parked_by_user_id`/
+  `parked_at → NULL`), writes a `transaction_void_log` row and a
+  `transaction_audit_log` row, and broadcasts the status change to the
+  team room that had it (payment-queue or releasing-queue) plus admin —
+  same as any other status transition
+- Attributed to a seeded `system_auto_void` account (`is_active = FALSE`,
+  can never log in) — not a real admin login
+- Each transaction is voided in its own try/except so one bad row can't
+  block the rest of the nightly batch
+- Implementation: `run_end_of_day_auto_void` in `transaction_service.py`
+- `run_end_of_day_auto_void(db, dry_run=True)` reports what WOULD be voided
+  (same eligibility query, no writes, no broadcasts) instead of actually
+  voiding anything. **This is the mandatory way to verify this function
+  outside the real nightly schedule** — always call `dry_run=True` first,
+  inspect every id in the returned list, and only make a real
+  (`dry_run=False`) call if every single one is recognized/expected. This
+  function scans the whole table, not just rows you created, so an unscoped
+  real call against shared/live data will void whatever else is eligible at
+  that moment — see the incident note on transaction 14/15 in
+  `transaction_audit_log` for exactly what that looked like in practice
+
+---
+
 ## 7. Payment Team Responsibilities
 
 Payment handles ALL financial decisions:
@@ -389,7 +443,6 @@ volumes:
 
 ## 13. Open Items (Batch 5 — Production Readiness)
 
-- [ ] End-of-day auto-void for incomplete transactions (TODO comment in transaction_service.py)
 - [ ] Plain HTTP vs self-signed HTTPS across the LAN
 - [ ] Backup destination: USB drive vs NAS vs second PC
 - [ ] Static IP scheme for server + `hosts` file entries for all 27 terminals

@@ -11,11 +11,14 @@ from app.core.database import AsyncSessionLocal, engine, get_db
 from app.core.security import create_access_token, decode_access_token_soft
 from app.models.user import User
 from app.routers import admin, auth, customers, payment_methods, products, transactions, users, ws
+from app.services.scheduler_service import start_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    scheduler_task = start_scheduler()
     yield
+    scheduler_task.cancel()
     await engine.dispose()
 
 

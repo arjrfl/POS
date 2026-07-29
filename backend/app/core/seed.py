@@ -1,4 +1,5 @@
 import asyncio
+import secrets
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -26,6 +27,17 @@ USERS = [
     {"full_name": "Releasing User 2", "username": "releasing_user2", "role_name": "releasing"},
     {"full_name": "Releasing User 3", "username": "releasing_user3", "role_name": "releasing"},
 ]
+
+# System-only account — attribution for the end-of-day auto-void job
+# (see transaction_service.run_end_of_day_auto_void). is_active=False and a
+# random, never-surfaced password mean this account can never log in; it
+# exists purely to satisfy transaction_void_log/transaction_audit_log's
+# changed_by/voided_by FK. Never delete or reactivate this account.
+SYSTEM_AUTO_VOID_USER = {
+    "full_name": "System (Automated End-of-Day Void)",
+    "username": "system_auto_void",
+    "role_name": "admin",
+}
 
 CUSTOMERS = [
     {
@@ -146,6 +158,22 @@ async def seed() -> None:
                     username=entry["username"],
                     password_hash=hash_password(PASSWORD),
                     role_id=roles_by_name[entry["role_name"]].id,
+                )
+            )
+
+        existing_system_user = await db.execute(
+            select(User).where(User.username == SYSTEM_AUTO_VOID_USER["username"])
+        )
+        if existing_system_user.scalar_one_or_none() is None:
+            db.add(
+                User(
+                    full_name=SYSTEM_AUTO_VOID_USER["full_name"],
+                    username=SYSTEM_AUTO_VOID_USER["username"],
+                    # random, unguessable, never surfaced anywhere — this account
+                    # is not a login path (is_active=False blocks login regardless)
+                    password_hash=hash_password(secrets.token_urlsafe(32)),
+                    role_id=roles_by_name[SYSTEM_AUTO_VOID_USER["role_name"]].id,
+                    is_active=False,
                 )
             )
 
