@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { formatCurrency, formatWeight, formatStock } from '../../utils/format'
 
-export function ProductSelector({ onAddItem }) {
+export function ProductSelector({ onAddItem, editingItem = null, onUpdateItem, onCancelEdit }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState(null)
@@ -34,6 +34,36 @@ export function ProductSelector({ onAddItem }) {
     setQty('')
     setItemError('')
   }
+
+  // Mirrors the row being edited (or clears back to blank/Add state) into this
+  // component's own local fields. Only reruns when the parent hands us a
+  // different row (a new pencil click, a save, a cancel, or a delete of the
+  // row mid-edit) — never while the user is actively typing within one edit.
+  useEffect(() => {
+    if (editingItem) {
+      const product = products?.find((p) => p.id === editingItem.product_id) ?? {
+        id: editingItem.product_id,
+        product_name: editingItem.product_name,
+        brand_name: editingItem.brand_name,
+        unit_price_php: editingItem.unit_price,
+        unit_weight_kg: null,
+        stock_quantity: Infinity,
+      }
+      setSelectedProduct(product)
+      setSearchTerm('')
+      setIsOpen(false)
+      setEstimatedWeight(editingItem.estimated_weight_kg != null ? String(editingItem.estimated_weight_kg) : '')
+      setUnitCount(editingItem.unit_count != null ? String(editingItem.unit_count) : '')
+      setQty(editingItem.quantity_kg != null ? String(editingItem.quantity_kg) : '')
+      setItemError('')
+    } else {
+      setSelectedProduct(null)
+      setSearchTerm('')
+      setIsOpen(false)
+      resetItemFields()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingItem])
 
   const handleSelect = (product) => {
     setSelectedProduct(product)
@@ -83,21 +113,21 @@ export function ProductSelector({ onAddItem }) {
   const stockAvailable = selectedProduct ? Number(selectedProduct.stock_quantity) : null
   const exceedsStock = selectedProduct && parsedQty != null && parsedQty > stockAvailable
 
-  const handleAdd = () => {
+  const buildItemPayload = () => {
     if (!parsedUnitCount || parsedUnitCount <= 0) {
       setItemError('Unit count is required')
-      return
+      return null
     }
     if (!parsedQty || parsedQty <= 0) {
       setItemError('QTY is required')
-      return
+      return null
     }
     if (exceedsStock) {
       setItemError(`Only ${formatStock(stockAvailable)} kg left in stock`)
-      return
+      return null
     }
 
-    onAddItem({
+    return {
       item_type: 'product',
       product_id: selectedProduct.id,
       product_name: selectedProduct.product_name,
@@ -107,10 +137,28 @@ export function ProductSelector({ onAddItem }) {
       unit_count: parsedUnitCount,
       quantity_kg: parsedQty,
       subtotal,
-    })
+    }
+  }
+
+  const handleAdd = () => {
+    const payload = buildItemPayload()
+    if (!payload) return
+
+    onAddItem(payload)
     setSelectedProduct(null)
     setSearchTerm('')
     resetItemFields()
+  }
+
+  const handleUpdate = () => {
+    const payload = buildItemPayload()
+    if (!payload) return
+
+    onUpdateItem(editingItem.id, payload)
+  }
+
+  const handleCancel = () => {
+    onCancelEdit()
   }
 
   return (
@@ -237,9 +285,20 @@ export function ProductSelector({ onAddItem }) {
 
           {itemError && <p className="text-sm text-red-600">{itemError}</p>}
 
-          <Button type="button" onClick={handleAdd} className="w-full" disabled={exceedsStock}>
-            + Add to Order
-          </Button>
+          {editingItem ? (
+            <div className="flex gap-2">
+              <Button type="button" onClick={handleUpdate} className="flex-1" disabled={exceedsStock}>
+                Update Item
+              </Button>
+              <Button type="button" variant="outline" onClick={handleCancel} className="flex-1">
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button type="button" onClick={handleAdd} className="w-full" disabled={exceedsStock}>
+              + Add to Order
+            </Button>
+          )}
         </div>
       )}
     </div>

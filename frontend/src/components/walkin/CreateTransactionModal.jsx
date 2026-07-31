@@ -30,6 +30,7 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
   const [{ customer, customerType, items, settleOnly }, setState] = useState(() =>
     initialState(loadReceiverDraft(username)),
   )
+  const [editingRowId, setEditingRowId] = useState(null)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [confirmation, setConfirmation] = useState(null)
@@ -60,6 +61,7 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
 
   const resetForm = () => {
     setState(initialState(null))
+    setEditingRowId(null)
     setError('')
     setConfirmation(null)
     setChangeGuard(null)
@@ -80,16 +82,19 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
 
   const clearCustomer = () => {
     setState((prev) => ({ ...prev, customer: null, items: [], settleOnly: false }))
+    setEditingRowId(null)
     setError('')
   }
 
   const clearCustomerType = () => {
     setState((prev) => ({ ...prev, customerType: null, items: [] }))
+    setEditingRowId(null)
     setError('')
   }
 
   const handleSelectCustomer = (selected) => {
     setState((prev) => ({ ...prev, customer: selected, items: [], settleOnly: false }))
+    setEditingRowId(null)
     setError('')
   }
 
@@ -124,6 +129,19 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
 
   const handleRemoveItem = (id) => {
     setState((prev) => ({ ...prev, items: prev.items.filter((item) => item.id !== id) }))
+    setEditingRowId((prev) => (prev === id ? null : prev))
+  }
+
+  const startEdit = (rowId) => setEditingRowId(rowId)
+
+  const cancelEdit = () => setEditingRowId(null)
+
+  const updateEdit = (rowId, newValues) => {
+    setState((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => (item.id === rowId ? { ...item, ...newValues } : item)),
+    }))
+    setEditingRowId(null)
   }
 
   const requestToggleSettleOnly = (checked) => {
@@ -136,6 +154,7 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
 
   const handleConfirmSettleOnlyGuard = () => {
     setState((prev) => ({ ...prev, items: [], settleOnly: true }))
+    setEditingRowId(null)
     setSettleOnlyGuard(false)
   }
 
@@ -147,6 +166,7 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
 
   const handleConfirmDeleteAll = () => {
     setState((prev) => ({ ...prev, items: [] }))
+    setEditingRowId(null)
     setDeleteAllGuard(false)
   }
 
@@ -332,7 +352,12 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
 
             <div className="relative">
               <div className={settleOnly ? 'opacity-50 pointer-events-none' : ''}>
-                <ProductSelector onAddItem={handleAddProduct} />
+                <ProductSelector
+                  onAddItem={handleAddProduct}
+                  editingItem={items.find((item) => item.id === editingRowId) ?? null}
+                  onUpdateItem={updateEdit}
+                  onCancelEdit={cancelEdit}
+                />
               </div>
               {settleOnly && (
                 <div className="absolute inset-0 flex items-center justify-center px-4">
@@ -351,6 +376,8 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
               items={items}
               total={total}
               onRemoveItem={handleRemoveItem}
+              onEditItem={settleOnly ? null : startEdit}
+              editingRowId={editingRowId}
               onDeleteAll={requestDeleteAll}
               balanceSettlementRow={settleOnly}
               footer={
