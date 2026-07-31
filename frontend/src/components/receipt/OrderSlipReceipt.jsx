@@ -11,8 +11,9 @@ import { formatReceiptDate } from '../../utils/time'
 // short — matches the physical paper form's fixed row count. Never
 // truncated: a transaction with more items than this just renders them all.
 // 17 (not 22) because the tfoot below now carries 5 extra blank label rows
-// (Partial Payment? / Amount Received / Amount Paid / Balance / Change)
-// above TOTAL AMOUNT DUE — 17 + 5 keeps the form's total row budget at 22.
+// (Total Amount Due / Partial Payment? / Amount Received / Amount Paid /
+// Balance / Change, minus the 1 already counted) — 17 + 5 keeps the form's
+// total row budget at 22.
 const ITEM_TABLE_ROWS = 17
 
 // Matches the reference paper form: plain comma-separated number, no ₱
@@ -183,26 +184,26 @@ export function OrderSlipReceipt({ transaction, tin, busStyle }) {
           ))}
         </tbody>
         <tfoot>
+          <tr>
+            <td colSpan={4} className="px-1 py-[4pt] text-right text-[11pt]">
+              TOTAL AMOUNT DUE
+            </td>
+            <td className="px-1 py-[4pt] text-right text-[13pt]">{formatPlainAmount(transaction.total_due)}</td>
+          </tr>
           {[
             ['PARTIAL PAYMENT?', paymentSummary.partialPayment],
-            ['AMOUNT RECEIVED:', paymentSummary.amountReceived],
-            ['AMOUNT PAID:', paymentSummary.amountPaid],
-            ['BALANCE:', paymentSummary.balance],
-            ['CHANGE:', paymentSummary.change],
+            ['AMOUNT RECEIVED', paymentSummary.amountReceived],
+            ['AMOUNT PAID', paymentSummary.amountPaid],
+            ['BALANCE', paymentSummary.balance],
+            ['CHANGE', paymentSummary.change],
           ].map(([label, value]) => (
             <tr key={label}>
-              <td colSpan={4} className="px-1 py-[1.5pt] text-right font-bold text-[8pt]">
+              <td colSpan={4} className="px-1 py-[1.5pt] text-right text-[8pt]">
                 {label}
               </td>
               <td className="px-1 py-[1.5pt] text-right text-[8pt]">{value}</td>
             </tr>
           ))}
-          <tr>
-            <td colSpan={4} className="px-1 py-[1.5pt] text-right font-bold text-[8pt]">
-              TOTAL AMOUNT DUE
-            </td>
-            <td className="px-1 py-[1.5pt] text-right font-bold text-[10pt]">{formatPlainAmount(transaction.total_due)}</td>
-          </tr>
         </tfoot>
       </table>
 
