@@ -478,6 +478,23 @@ async def _product_item_subtotal(
     return subtotal, item.estimated_weight_kg, item.quantity_kg
 
 
+def _tabulation_breakdown_json(item: TransactionItemCreate, quantity_kg: Decimal | None) -> str | None:
+    """Validates that a product item's tabulation breakdown (per-unit weights from
+    Receiver's Tabulation modal) sums to quantity_kg, and JSON-encodes it for
+    storage. Guards against a stale/tampered payload rather than trusting the
+    frontend blindly. Returns None when the item wasn't tabulated."""
+    if item.item_type != ItemTypeEnum.product or not item.tabulation_breakdown:
+        return None
+
+    breakdown_sum = sum(Decimal(str(value)) for value in item.tabulation_breakdown)
+    if quantity_kg is None or abs(breakdown_sum - quantity_kg) > Decimal("0.001"):
+        raise ValueError(
+            f"Tabulation breakdown sum ({breakdown_sum}) does not match QTY ({quantity_kg}) "
+            f"for product {item.product_id}"
+        )
+    return json.dumps(item.tabulation_breakdown)
+
+
 async def _item_subtotal(
     db: AsyncSession, item: TransactionItemCreate, data: TransactionCreate
 ) -> tuple[Decimal, Decimal | None, Decimal | None]:
@@ -579,6 +596,7 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
             subtotal, estimated_weight_kg, quantity_kg = await _item_subtotal(db, item, data)
             if item.item_type == ItemTypeEnum.product:
                 estimated_amount += subtotal
+            tabulation_breakdown = _tabulation_breakdown_json(item, quantity_kg)
 
             db.add(
                 TransactionItem(
@@ -587,6 +605,7 @@ async def create_transaction(db: AsyncSession, data: TransactionCreate, walkin_u
                     product_id=item.product_id,
                     unit_count=item.unit_count,
                     estimated_weight_kg=estimated_weight_kg,
+                    tabulation_breakdown=tabulation_breakdown,
                     quantity_kg=quantity_kg,
                     unit_price=item.unit_price,
                     reference_transaction_id=item.reference_transaction_id,

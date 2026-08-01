@@ -3,9 +3,19 @@ import { useQuery } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
+import { TabulationModal } from './TabulationModal'
 import { formatCurrency, formatWeight, formatStock } from '../../utils/format'
 
-export function ProductSelector({ onAddItem, editingItem = null, onUpdateItem, onCancelEdit }) {
+// enableTabulation defaults off — the Tabulation button/modal is Receiver-only
+// (see CreateTransactionModal.jsx). Payment's Add New Item (EditItemsModal.jsx)
+// reuses this same component but omits the prop, so it stays unaffected.
+export function ProductSelector({
+  onAddItem,
+  editingItem = null,
+  onUpdateItem,
+  onCancelEdit,
+  enableTabulation = false,
+}) {
   const [searchTerm, setSearchTerm] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState(null)
@@ -13,6 +23,12 @@ export function ProductSelector({ onAddItem, editingItem = null, onUpdateItem, o
   const [unitCount, setUnitCount] = useState('')
   const [qty, setQty] = useState('')
   const [itemError, setItemError] = useState('')
+  // Per-unit weight breakdown from the Tabulation modal — null when this
+  // pending line was never tabulated, or was invalidated by a manual QTY/
+  // Unit Count edit since the last Tabulation confirm (see handleQtyChange/
+  // handleUnitCountChange below).
+  const [tabulationBreakdown, setTabulationBreakdown] = useState(null)
+  const [tabulationOpen, setTabulationOpen] = useState(false)
 
   // Small, static catalog and the search endpoint only matches product_name —
   // fetch once and filter name/brand client-side instead of round-tripping per keystroke.
@@ -33,6 +49,7 @@ export function ProductSelector({ onAddItem, editingItem = null, onUpdateItem, o
     setUnitCount('')
     setQty('')
     setItemError('')
+    setTabulationBreakdown(null)
   }
 
   // Mirrors the row being edited (or clears back to blank/Add state) into this
@@ -56,6 +73,7 @@ export function ProductSelector({ onAddItem, editingItem = null, onUpdateItem, o
       setUnitCount(editingItem.unit_count != null ? String(editingItem.unit_count) : '')
       setQty(editingItem.quantity_kg != null ? String(editingItem.quantity_kg) : '')
       setItemError('')
+      setTabulationBreakdown(Array.isArray(editingItem.tabulation_breakdown) ? editingItem.tabulation_breakdown : null)
     } else {
       setSelectedProduct(null)
       setSearchTerm('')
@@ -73,6 +91,7 @@ export function ProductSelector({ onAddItem, editingItem = null, onUpdateItem, o
     setUnitCount('')
     setQty('')
     setItemError('')
+    setTabulationBreakdown(null)
   }
 
   const handleDeselect = () => {
@@ -99,13 +118,27 @@ export function ProductSelector({ onAddItem, editingItem = null, onUpdateItem, o
     setUnitCount(value)
     const weight = estimatedWeight === '' ? 0 : Number(estimatedWeight)
     setQty(value === '' || !weight ? value : String(multiplyKg(weight, Number(value))))
+    // Row count would no longer match the new Unit Count — clear rather than
+    // keep a stale breakdown. QTY itself is left exactly as computed above,
+    // not re-derived from the (now cleared) breakdown.
+    setTabulationBreakdown(null)
   }
 
   const handleQtyChange = (value) => {
     setQty(value)
+    // Manual QTY edit no longer matches whatever breakdown produced the old
+    // value — clear it. QTY is left as whatever the user typed.
+    setTabulationBreakdown(null)
+  }
+
+  const handleTabulationConfirm = (values, total) => {
+    setQty(String(total))
+    setTabulationBreakdown(values)
+    setTabulationOpen(false)
   }
 
   const parsedUnitCount = unitCount === '' ? null : Number(unitCount)
+  const unitCountValid = parsedUnitCount != null && Number.isInteger(parsedUnitCount) && parsedUnitCount > 0
   const parsedQty = qty === '' ? null : Number(qty)
   const parsedWeight = estimatedWeight === '' ? null : Number(estimatedWeight)
   const subtotal = (parsedQty || 0) * unitPrice
@@ -136,6 +169,7 @@ export function ProductSelector({ onAddItem, editingItem = null, onUpdateItem, o
       unit_price: unitPrice,
       unit_count: parsedUnitCount,
       quantity_kg: parsedQty,
+      tabulation_breakdown: tabulationBreakdown,
       subtotal,
     }
   }
@@ -265,7 +299,14 @@ export function ProductSelector({ onAddItem, editingItem = null, onUpdateItem, o
             />
             <Input
               id="qty"
-              label="QTY (kg)"
+              label={
+                <>
+                  QTY (kg)
+                  {enableTabulation && tabulationBreakdown && (
+                    <span className="ml-1.5 text-xs font-normal text-brand-gold-dark">Tabulated</span>
+                  )}
+                </>
+              }
               type="number"
               step="0.001"
               placeholder="0.000"
@@ -273,6 +314,20 @@ export function ProductSelector({ onAddItem, editingItem = null, onUpdateItem, o
               onChange={(e) => handleQtyChange(e.target.value)}
             />
           </div>
+
+          {enableTabulation && (
+            <div className="grid grid-cols-2 gap-3">
+              <div />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setTabulationOpen(true)}
+                disabled={!unitCountValid}
+              >
+                Tabulation
+              </Button>
+            </div>
+          )}
 
           {exceedsStock && <p className="text-sm text-red-600">Only {formatStock(stockAvailable)} kg left in stock</p>}
 
@@ -300,6 +355,16 @@ export function ProductSelector({ onAddItem, editingItem = null, onUpdateItem, o
             </Button>
           )}
         </div>
+      )}
+
+      {enableTabulation && (
+        <TabulationModal
+          open={tabulationOpen}
+          unitCount={unitCountValid ? parsedUnitCount : 0}
+          initialValues={tabulationBreakdown}
+          onConfirm={handleTabulationConfirm}
+          onClose={() => setTabulationOpen(false)}
+        />
       )}
     </div>
   )

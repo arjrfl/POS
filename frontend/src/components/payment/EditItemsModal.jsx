@@ -672,6 +672,7 @@ export function EditItemsModal({ open, transaction, items, onClose, onItemsUpdat
       </Modal>
 
       <Modal open={showAddItemModal} onClose={() => setShowAddItemModal(false)} title="Add Item">
+        {/* TODO: extend Tabulation to Payment's Add New Item if requested */}
         <ProductSelector onAddItem={handleAddNewItem} />
       </Modal>
     </>

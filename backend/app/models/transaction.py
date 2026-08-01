@@ -77,6 +77,7 @@ class TransactionItem(Base):
     product_id: Mapped[Optional[int]] = mapped_column(ForeignKey("product.id", ondelete="RESTRICT"))
     unit_count: Mapped[Optional[int]] = mapped_column(Integer)
     estimated_weight_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
+    tabulation_breakdown: Mapped[Optional[str]] = mapped_column(Text)
     quantity_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
     actual_weight_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 3))
     actual_unit_count: Mapped[Optional[int]] = mapped_column(Integer)

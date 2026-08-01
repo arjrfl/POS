@@ -437,6 +437,17 @@ CREATE TABLE transaction_item (
     -- purely an estimate for reference — does NOT drive subtotal
     -- NULL for balance_settlement and credit_usage items, and may be left NULL for product items
 
+    tabulation_breakdown      TEXT           NULL,
+    -- JSON array of per-unit weight values (kg) entered via Receiver's
+    -- "Tabulation" modal, e.g. '[4,4,4,4,4]' when Unit Count = 5.
+    -- Reference/audit only — quantity_kg (already set to the tabulated
+    -- sum client-side) still drives subtotal/estimated_amount, UNCHANGED.
+    -- NULL when the item was never tabulated, OR when QTY (kg) or
+    -- Unit Count was hand-edited after a Tabulation confirm (breakdown
+    -- no longer matches, so it's cleared rather than kept stale).
+    -- Backend-only for now — no Admin UI consumer yet (same deferred
+    -- pattern as transaction_item_audit_log).
+
     quantity_kg              DECIMAL(10,3)  NULL,
     -- QTY — the value that actually drives subtotal for product items
     -- defaults to Estimated Weight or Unit Count depending on which the

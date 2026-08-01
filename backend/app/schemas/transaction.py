@@ -1,8 +1,9 @@
+import json
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.models.transaction import (
     CustomerTypeEnum,
@@ -27,6 +28,10 @@ class TransactionItemCreate(BaseModel):
     # QTY — required for product items, drives subtotal (quantity_kg * unit_price)
     quantity_kg: Decimal | None = None
     unit_price: Decimal | None = None
+    # Optional per-unit weight breakdown entered via Receiver's Tabulation modal.
+    # Reference/audit only — must sum to quantity_kg (validated server-side in
+    # create_transaction); does not itself drive subtotal/estimated_amount.
+    tabulation_breakdown: list[float] | None = None
 
     # for balance_settlement and credit_usage items
     reference_transaction_id: int | None = None
@@ -117,6 +122,10 @@ class TransactionItemResponse(BaseModel):
     brand_name: str | None = None
     unit_count: int | None
     estimated_weight_kg: Decimal | None
+    # Parsed from the stored JSON string (transaction_item.tabulation_breakdown)
+    # back into a list — see _parse_tabulation_breakdown below. None when the
+    # item was never tabulated. No UI consumer yet — backend/API only.
+    tabulation_breakdown: list[float] | None = None
     quantity_kg: Decimal | None
     actual_weight_kg: Decimal | None
     actual_unit_count: int | None
@@ -135,6 +144,15 @@ class TransactionItemResponse(BaseModel):
     # else, including while has_items_snapshot is False (nothing to diff yet).
     is_new_since_snapshot: bool = False
     is_updated_since_snapshot: bool = False
+
+    @field_validator("tabulation_breakdown", mode="before")
+    @classmethod
+    def _parse_tabulation_breakdown(cls, value):
+        # ORM attribute is the raw TEXT column (a JSON string) — parse it back
+        # into a list here so the response envelope carries real numbers.
+        if isinstance(value, str):
+            return json.loads(value)
+        return value
 
 
 class TransactionParentItemResponse(BaseModel):

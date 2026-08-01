@@ -209,6 +209,7 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
               unit_price: item.unit_price,
               unit_count: item.unit_count,
               quantity_kg: item.quantity_kg,
+              tabulation_breakdown: item.tabulation_breakdown ?? null,
             })),
           }
 
@@ -357,6 +358,7 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
                   editingItem={items.find((item) => item.id === editingRowId) ?? null}
                   onUpdateItem={updateEdit}
                   onCancelEdit={cancelEdit}
+                  enableTabulation
                 />
               </div>
               {settleOnly && (
