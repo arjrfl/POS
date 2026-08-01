@@ -26,6 +26,7 @@ USERS = [
     {"full_name": "Payment User 3", "username": "payment_user3", "role_name": "payment"},
     {"full_name": "Releasing User 2", "username": "releasing_user2", "role_name": "releasing"},
     {"full_name": "Releasing User 3", "username": "releasing_user3", "role_name": "releasing"},
+    {"full_name": "Operations User", "username": "operations_user", "role_name": "operations"},
 ]
 
 # System-only account — attribution for the end-of-day auto-void job

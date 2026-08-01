@@ -622,7 +622,7 @@ CREATE INDEX idx_tal_change_type ON transaction_audit_log (change_type);
 -- =============================================================
 
 INSERT INTO role (role_name)
-VALUES ('receiver'), ('payment'), ('releasing'), ('admin');
+VALUES ('receiver'), ('payment'), ('releasing'), ('admin'), ('operations');
 
 INSERT INTO payment_method (payment_method_name)
 VALUES ('cash'), ('gcash'), ('maya'), ('bank_transfer'), ('credit');

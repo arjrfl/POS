@@ -14,6 +14,7 @@ ROOM_ALLOWED_ROLES: dict[str, set[str]] = {
     "releasing-queue": {"releasing", "admin"},
     "admin": {"admin"},
     "receiver": {"receiver", "admin"},
+    "operations": {"operations", "admin"},
 }
 
 # A page reload closes the old socket and opens a new one for the same user

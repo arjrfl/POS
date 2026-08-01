@@ -57,7 +57,12 @@ from app.schemas.transaction import (
 )
 from app.models.user import User
 from app.services import customer_service
-from app.websocket.events import queue_status_changed, transaction_items_changed, transaction_status_changed
+from app.websocket.events import (
+    product_stock_changed,
+    queue_status_changed,
+    transaction_items_changed,
+    transaction_status_changed,
+)
 from app.websocket.manager import manager
 
 
@@ -2157,13 +2162,17 @@ async def process_payment(
     return await get_transaction(db, transaction.id)
 
 
-async def _decrement_stock_online(db: AsyncSession, items: list[TransactionItem]) -> None:
+async def _decrement_stock_online(db: AsyncSession, items: list[TransactionItem]) -> list[tuple[int, Decimal]]:
     """Deducts each product item's quantity_kg from product.stock_quantity — online
     orders only. Releasing never confirms a per-item actual for online orders (see
     confirm_items_ready), so there's no actual_unit_count/actual_weight_kg to base a
     unit-based decrement on here — quantity_kg is the only weight field this flow
     ever populates.
+
+    Returns (product_id, new_stock_quantity) pairs for the Operations room's
+    real-time stock broadcast — see product_stock_changed.
     """
+    changed: list[tuple[int, Decimal]] = []
     for item in items:
         if item.item_type != ItemTypeEnum.product:
             continue
@@ -2172,9 +2181,13 @@ async def _decrement_stock_online(db: AsyncSession, items: list[TransactionItem]
         product = await db.get(Product, item.product_id)
         if product is not None:
             product.stock_quantity -= item.quantity_kg
+            changed.append((product.id, product.stock_quantity))
+    return changed
 
 
-async def _decrement_stock_for_walkin_handover(db: AsyncSession, items: list[TransactionItem]) -> None:
+async def _decrement_stock_for_walkin_handover(
+    db: AsyncSession, items: list[TransactionItem]
+) -> list[tuple[int, Decimal]]:
     """Deducts each product item's handed-over quantity from product.stock_quantity —
     walk-in only (see _decrement_stock_online for the online counterpart).
 
@@ -2188,7 +2201,11 @@ async def _decrement_stock_for_walkin_handover(db: AsyncSession, items: list[Tra
     Not logged to product_audit_log — that log is reserved for manual product-
     management actions (Adjust Stock modal, edits, activate/deactivate); a
     transaction fulfilling normally isn't a product-management event.
+
+    Returns (product_id, new_stock_quantity) pairs for the Operations room's
+    real-time stock broadcast — see product_stock_changed.
     """
+    changed: list[tuple[int, Decimal]] = []
     for item in items:
         if item.item_type != ItemTypeEnum.product:
             continue
@@ -2209,6 +2226,8 @@ async def _decrement_stock_for_walkin_handover(db: AsyncSession, items: list[Tra
             continue
 
         product.stock_quantity -= stock_decrement
+        changed.append((product.id, product.stock_quantity))
+    return changed
 
 
 async def confirm_weight(
@@ -2293,7 +2312,7 @@ async def confirm_items_ready(db: AsyncSession, transaction_id: int, releasing_u
         # Items are handed over to the customer right now (online has no
         # separate handover step) — decrement using quantity_kg, the only
         # weight field Releasing ever populates for this flow.
-        await _decrement_stock_online(db, transaction.items)
+        stock_changes = await _decrement_stock_online(db, transaction.items)
 
         _record_status_change_audit(db, transaction, releasing_user_id, old_status, old_queue)
 
@@ -2309,6 +2328,10 @@ async def confirm_items_ready(db: AsyncSession, transaction_id: int, releasing_u
         customer_type=transaction.customer_type.value,
     )
     await manager.broadcast_multi(rooms, event)
+
+    for product_id, new_stock_quantity in stock_changes:
+        stock_rooms, stock_event = product_stock_changed(product_id, new_stock_quantity)
+        await manager.broadcast_multi(stock_rooms, stock_event)
 
     return await get_transaction(db, transaction.id)
 
@@ -2469,7 +2492,7 @@ async def complete_exact(db: AsyncSession, transaction_id: int, releasing_user_i
     try:
         # Item is handed to the customer right now — this is where stock
         # actually leaves for the standard exact-weight flow.
-        await _decrement_stock_for_walkin_handover(db, transaction.items)
+        stock_changes = await _decrement_stock_for_walkin_handover(db, transaction.items)
 
         transaction.actual_amount = actual_amount
         transaction.transaction_status = TransactionStatusEnum.completed
@@ -2491,6 +2514,10 @@ async def complete_exact(db: AsyncSession, transaction_id: int, releasing_user_i
         customer_type=transaction.customer_type.value,
     )
     await manager.broadcast_multi(rooms, event)
+
+    for product_id, new_stock_quantity in stock_changes:
+        stock_rooms, stock_event = product_stock_changed(product_id, new_stock_quantity)
+        await manager.broadcast_multi(stock_rooms, stock_event)
 
     return await get_transaction(db, transaction.id)
 
@@ -2660,7 +2687,7 @@ async def confirm_handover(db: AsyncSession, transaction_id: int, releasing_user
         # actually leaves for the substandard-kilo flow (see PROJECT_CONTEXT.md).
         # Parent's own items carry the confirmed weights; the adjustment/refund
         # child has none of its own (see resolve_substandard).
-        await _decrement_stock_for_walkin_handover(db, transaction.items)
+        stock_changes = await _decrement_stock_for_walkin_handover(db, transaction.items)
 
         transaction.transaction_status = TransactionStatusEnum.completed
         transaction.queue_status = QueueStatusEnum.done
@@ -2681,6 +2708,10 @@ async def confirm_handover(db: AsyncSession, transaction_id: int, releasing_user
         customer_type=transaction.customer_type.value,
     )
     await manager.broadcast_multi(rooms, event)
+
+    for product_id, new_stock_quantity in stock_changes:
+        stock_rooms, stock_event = product_stock_changed(product_id, new_stock_quantity)
+        await manager.broadcast_multi(stock_rooms, stock_event)
 
     return await get_transaction(db, transaction.id)
 

@@ -66,7 +66,7 @@ def transaction_items_changed(transaction_id: int, transaction_status: str) -> t
     return _rooms_for_status(transaction_status), event
 
 
-PRODUCT_ROOMS = ["releasing-queue", "admin", "receiver"]
+PRODUCT_ROOMS = ["releasing-queue", "admin", "receiver", "operations"]
 
 
 def product_changed(product_id: int, change_type: str) -> tuple[list[str], dict]:
@@ -76,6 +76,20 @@ def product_changed(product_id: int, change_type: str) -> tuple[list[str], dict]
         "change_type": change_type,
     }
     return PRODUCT_ROOMS, event
+
+
+def product_stock_changed(product_id: int, stock_quantity) -> tuple[list[str], dict]:
+    # Routine sale-driven stock movement (confirm-weight/complete-exact,
+    # confirm-handover, confirm-ready) — NOT a manual Inventory action, so this
+    # is deliberately its own lightweight event rather than product_changed,
+    # and goes to Operations only (not releasing-queue/admin/receiver, which
+    # already learn about the transaction's own status change separately).
+    event = {
+        "type": "product_stock_changed",
+        "product_id": product_id,
+        "stock_quantity": str(stock_quantity),
+    }
+    return ["operations"], event
 
 
 def user_changed(user_id: int, change_type: str) -> tuple[list[str], dict]:

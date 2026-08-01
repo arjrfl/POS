@@ -8,6 +8,7 @@ class ConnectionManager:
             "releasing-queue": set(),
             "admin": set(),
             "receiver": set(),
+            "operations": set(),
         }
         # Reference-counted per user_id, independent of room — a page reload
         # closes the old socket and opens a new one for the same user, and

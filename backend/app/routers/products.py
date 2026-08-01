@@ -26,6 +26,11 @@ router = APIRouter(prefix="/api/products", tags=["products"])
 # Products screen already exists and manages the same rows.
 PRODUCT_WRITE_ROLES = ("releasing", "admin")
 
+# Operations is read-only — sees active + inactive products (same as
+# Releasing/Admin) but must NOT be granted any of the PRODUCT_WRITE_ROLES
+# endpoints (create/update/adjust-stock/toggle-status/delete).
+PRODUCT_READ_ALL_ROLES = PRODUCT_WRITE_ROLES + ("operations",)
+
 
 async def _get_product_or_404(product_id: int, db: AsyncSession) -> Product:
     product = await db.get(Product, product_id)
@@ -69,9 +74,10 @@ async def list_products(
     db: AsyncSession = Depends(get_db),
 ):
     stmt = select(Product)
-    # Only Releasing's Inventory tab (and Admin) needs to see inactive products —
-    # every other caller (e.g. the Receiver order picker) keeps the active-only view.
-    if current_user.get("role_name") not in PRODUCT_WRITE_ROLES:
+    # Only Releasing's Inventory tab (and Admin, Operations) needs to see inactive
+    # products — every other caller (e.g. the Receiver order picker) keeps the
+    # active-only view.
+    if current_user.get("role_name") not in PRODUCT_READ_ALL_ROLES:
         stmt = stmt.where(Product.product_status == ProductStatusEnum.active)
     if search:
         stmt = stmt.where(
