@@ -11,11 +11,20 @@ import { useProducts } from '../../hooks/useProducts'
 import { formatCurrency } from '../../utils/format'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
 
-export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCredit, onItemsUpdated, onItemsReverted }) {
+export function TransactionDetailPanel({
+  transaction,
+  onPay,
+  onPark,
+  onSaveAsCredit,
+  onSaveAsBalance,
+  onItemsUpdated,
+  onItemsReverted,
+}) {
   const { data: customer } = useCustomer(transaction?.customer_id)
   const { data: products } = useProducts()
-  const [confirmAction, setConfirmAction] = useState(null) // null | 'park'
+  const [confirmAction, setConfirmAction] = useState(null) // null | 'park' | 'save-as-balance'
   const [savingCredit, setSavingCredit] = useState(false)
+  const [savingBalance, setSavingBalance] = useState(false)
   const [showEditItemsModal, setShowEditItemsModal] = useState(false)
 
   const handleSaveAsCredit = async () => {
@@ -24,6 +33,15 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCre
       await onSaveAsCredit()
     } finally {
       setSavingCredit(false)
+    }
+  }
+
+  const handleSaveAsBalance = async () => {
+    setSavingBalance(true)
+    try {
+      await onSaveAsBalance()
+    } finally {
+      setSavingBalance(false)
     }
   }
 
@@ -124,14 +142,25 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCre
                     </p>
                   )}
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowEditItemsModal(true)}
-                >
-                  Edit Items
-                </Button>
+                {isAdjustment ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setConfirmAction('save-as-balance')}
+                  >
+                    Save as Balance
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setShowEditItemsModal(true)}
+                  >
+                    Edit Items
+                  </Button>
+                )}
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmAction('park')}>
                   Park
                 </Button>
@@ -156,6 +185,44 @@ export function TransactionDetailPanel({ transaction, onPay, onPark, onSaveAsCre
               Yes, Park
             </Button>
             <Button type="button" variant="outline" className="flex-1" onClick={() => setConfirmAction(null)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={confirmAction === 'save-as-balance'}
+        onClose={() => {
+          if (savingBalance) return
+          setConfirmAction(null)
+        }}
+        title="Save as Balance?"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-gray-700">
+            Add {formatCurrency(transaction.total_due)} to {customer?.full_name ?? 'the customer'}&apos;s balance? No
+            payment will be collected now.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              className="flex-1"
+              disabled={savingBalance}
+              onClick={async () => {
+                await handleSaveAsBalance()
+                setConfirmAction(null)
+              }}
+            >
+              {savingBalance ? 'Saving...' : 'Yes, Save as Balance'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              disabled={savingBalance}
+              onClick={() => setConfirmAction(null)}
+            >
               Cancel
             </Button>
           </div>

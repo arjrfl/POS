@@ -2609,6 +2609,95 @@ async def resolve_refund_as_credit(
     return await get_transaction(db, transaction.id)
 
 
+async def resolve_adjustment_as_balance(
+    db: AsyncSession, transaction_id: int, resolved_by_user_id: int
+) -> TransactionResponse:
+    """Mirrors resolve_refund_as_credit above, ledger direction swapped: an
+    adjustment child (customer-owes-more) can be saved to the customer's
+    balance/utang instead of collecting cash now, same as a refund child can
+    be saved as credit instead of a cash payout."""
+    transaction = await db.get(SalesTransaction, transaction_id)
+    if transaction is None or transaction.transaction_type != TransactionTypeEnum.adjustment:
+        raise ValueError(f"Transaction {transaction_id} is not an adjustment")
+    if transaction.transaction_status != TransactionStatusEnum.pending_payment:
+        raise QueueConflictError(f"transaction {transaction_id} is not pending payment")
+    if transaction.queue_status != QueueStatusEnum.processing:
+        raise QueueConflictError(f"transaction {transaction_id} has not been grabbed for payment")
+    if transaction.processing_by_user_id != resolved_by_user_id:
+        raise QueuePermissionError(f"transaction {transaction_id} is not being processed by this user")
+
+    customer = await db.get(Customer, transaction.customer_id)
+    amount = transaction.total_due  # already positive — the customer-owes amount
+
+    parent: SalesTransaction | None = None
+    if transaction.parent_transaction_id is not None:
+        parent = await db.get(SalesTransaction, transaction.parent_transaction_id)
+
+    old_status = transaction.transaction_status.value
+    old_queue = transaction.queue_status.value
+    parent_settled = False
+
+    try:
+        customer.net_balance -= amount
+        db.add(
+            CustomerLedger(
+                customer_id=customer.id,
+                transaction_id=transaction.id,
+                entry_type=LedgerEntryTypeEnum.balance_added,
+                amount=amount,
+                running_balance=customer.net_balance,
+                notes=f"Adjustment {transaction.order_number} saved as balance",
+            )
+        )
+
+        transaction.transaction_status = TransactionStatusEnum.completed
+        transaction.queue_status = QueueStatusEnum.done
+        transaction.processing_by_user_id = None
+        transaction.processing_started_at = None
+        # process_payment sets these for the normal adjustment payment path —
+        # mirrored here so a balance-saved adjustment also carries who
+        # resolved it and when (admin Transaction Details modal's Section B
+        # "Resolved"/"Resolved By (Payment)" lines).
+        transaction.payment_user_id = resolved_by_user_id
+        transaction.payment_at = datetime.now(timezone.utc)
+
+        _record_status_change_audit(db, transaction, resolved_by_user_id, old_status, old_queue)
+
+        # Same handoff resolve_refund_as_credit already does: the parent goes
+        # to 'settled' (not 'completed') so Releasing still gets one more
+        # actionable step — confirm handover — before stock actually leaves.
+        if parent is not None and parent.transaction_status == TransactionStatusEnum.pending_adjustment:
+            parent_old_status = parent.transaction_status.value
+            parent_old_queue = parent.queue_status.value
+            parent.transaction_status = TransactionStatusEnum.settled
+            parent.queue_status = QueueStatusEnum.waiting
+            _record_status_change_audit(db, parent, resolved_by_user_id, parent_old_status, parent_old_queue)
+            parent_settled = True
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    rooms, event = transaction_status_changed(
+        transaction_id=transaction.id,
+        old_status=old_status,
+        new_status=transaction.transaction_status.value,
+        customer_type=transaction.customer_type.value,
+    )
+    await manager.broadcast_multi(rooms, event)
+
+    if parent_settled:
+        parent_rooms, parent_event = transaction_status_changed(
+            transaction_id=parent.id,
+            old_status=TransactionStatusEnum.pending_adjustment.value,
+            new_status=parent.transaction_status.value,
+            customer_type=parent.customer_type.value,
+        )
+        await manager.broadcast_multi(parent_rooms, parent_event)
+
+    return await get_transaction(db, transaction.id)
+
 
 async def _get_adjustment_child(db: AsyncSession, parent_id: int) -> SalesTransaction:
     # resolve_substandard creates at most one adjustment/refund child per parent

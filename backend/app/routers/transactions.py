@@ -552,3 +552,22 @@ async def resolve_refund_as_credit(
     return {"data": transaction, "error": None}
 
 
+@router.post("/{transaction_id}/resolve-as-balance", dependencies=[Depends(require_role("payment"))])
+async def resolve_adjustment_as_balance(
+    transaction_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        transaction = await transaction_service.resolve_adjustment_as_balance(
+            db, transaction_id, current_user["user_id"]
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except transaction_service.QueuePermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except transaction_service.QueueConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return {"data": transaction, "error": None}
+
+
