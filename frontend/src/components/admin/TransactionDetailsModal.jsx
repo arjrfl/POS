@@ -700,6 +700,136 @@ function PrintReceiptButton({ transaction }) {
   )
 }
 
+// True when an item still carries a valid (non-cleared) breakdown from
+// Receiver's Tabulation modal — see database/schema.sql's tabulation_breakdown
+// column comment. Payment's Edit Items clears this to NULL the moment
+// quantity_kg is actually changed (see edit_transaction_items), so an empty
+// array is never stored, but the length check is kept as a defensive floor.
+function hasTabulationBreakdown(item) {
+  return Array.isArray(item.tabulation_breakdown) && item.tabulation_breakdown.length > 0
+}
+
+// Print + (conditionally) Tabulation Logs, side by side — same shared
+// originalTxn.items list backs both the existence check here and the modal's
+// own left-column list, so they can never disagree about which transaction
+// has tabulation data.
+function TransactionActionButtons({ transaction, hasTabulationLogs, onShowTabulationLogs }) {
+  if (!transaction) return null
+  return (
+    <div className="flex items-center gap-2">
+      <PrintReceiptButton transaction={transaction} />
+      {hasTabulationLogs && (
+        <Button
+          type="button"
+          variant="outline"
+          className="self-start !px-3 !py-1 text-xs inline-flex items-center gap-1"
+          onClick={onShowTabulationLogs}
+        >
+          Tabulation Logs
+        </Button>
+      )}
+    </div>
+  )
+}
+
+// Left column row — one per tabulated item. "Show" loads that item's
+// breakdown into the right column; the active row gets a highlighted
+// background so it's clear which item the right column is currently showing.
+function TabulationLogsListRow({ item, isSelected, onShow }) {
+  return (
+    <div
+      className={`flex items-center justify-between gap-2 px-3 py-2 rounded-md border ${
+        isSelected ? 'bg-brand-gold/10 border-brand-gold' : 'bg-white border-gray-200'
+      }`}
+    >
+      <div className="min-w-0">
+        <div className="font-medium text-gray-900 truncate">{item.product_name}</div>
+        {item.brand_name && <div className="text-xs text-gray-500 truncate">{item.brand_name}</div>}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        className="!px-2 !py-1 text-xs shrink-0"
+        onClick={onShow}
+      >
+        Show
+      </Button>
+    </div>
+  )
+}
+
+// Right column — read-only Row 1..N + Total for whichever item is currently
+// selected in the left column. No inputs/edit/delete anywhere in this modal;
+// it's a log viewer, not an editor.
+function TabulationLogsDetail({ item }) {
+  if (!item) {
+    return (
+      <div className="flex-1 min-h-0 flex items-center justify-center">
+        <p className="text-sm text-gray-500">Select an item to view its tabulation entries.</p>
+      </div>
+    )
+  }
+
+  const breakdown = item.tabulation_breakdown ?? []
+  const total = breakdown.reduce((sum, value) => sum + Number(value), 0)
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="text-sm">
+        <span className="font-medium text-gray-900">{item.product_name}</span>
+        {item.brand_name && <span className="text-gray-500"> — {item.brand_name}</span>}
+      </div>
+      <div className="text-xs text-gray-500">Unit Count: {item.unit_count}</div>
+      <div className="flex flex-col mt-1">
+        {breakdown.map((value, index) => (
+          <div key={index} className="flex justify-between text-sm py-1 border-b border-gray-200">
+            <span className="text-gray-600">Row {index + 1}</span>
+            <span className="text-gray-900">{Number(value).toFixed(3)} kg</span>
+          </div>
+        ))}
+        <div className="flex justify-between text-sm font-bold pt-2 mt-1 border-t border-gray-300">
+          <span>Total</span>
+          <span>{total.toFixed(3)} kg</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// items here is always the pre-filtered tabulated-only list (see
+// tabulatedItems in TransactionDetailsModal) — this modal never has to
+// re-derive which items qualify.
+function TabulationLogsModal({ items, open, onClose }) {
+  const [selectedItemId, setSelectedItemId] = useState(null)
+
+  useEffect(() => {
+    if (open) setSelectedItemId(null)
+  }, [open])
+
+  const selectedItem = items.find((item) => item.id === selectedItemId) ?? null
+
+  return (
+    <Modal open={open} onClose={onClose} title="Tabulation Logs" size="lg">
+      <div className="flex-1 min-h-0 flex gap-[10px]">
+        <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-2">
+          {items.map((item) => (
+            <TabulationLogsListRow
+              key={item.id}
+              item={item}
+              isSelected={item.id === selectedItemId}
+              onShow={() => setSelectedItemId(item.id)}
+            />
+          ))}
+        </div>
+
+        <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-3">
+          <TabulationLogsDetail item={selectedItem} />
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // Lists each of the original transaction's items that varied (quantity_kg
 // and/or unit_count — see adjustedItemRows above), only shown on the
 // standalone Adjustment child view alongside the highlighted rows in the
@@ -917,6 +1047,7 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [itemLogsOpen, setItemLogsOpen] = useState(false)
+  const [tabulationLogsOpen, setTabulationLogsOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -997,6 +1128,14 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
     return { parent: originalTxn }
   }, [originalTxn])
 
+  // Backs both the Tabulation Logs button's existence check and the modal's
+  // own left-column list — always sourced from the original's real item rows
+  // (tabulation only ever happens at Receiver, on the original transaction).
+  const tabulatedItems = useMemo(
+    () => originalTxn?.items?.filter(hasTabulationBreakdown) ?? [],
+    [originalTxn]
+  )
+
   // Which of the original's items actually varied — quantity_kg OR unit_count,
   // independently (a substandard resolution can adjust either dimension) —
   // broader than useArticleRows' own isAdjusted (quantity_kg only), since that
@@ -1059,7 +1198,11 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                     />
                     <BalanceSettlementRows transaction={originalTxn} align="center" />
                   </ArticleTable>
-                  <PrintReceiptButton transaction={originalTxn} />
+                  <TransactionActionButtons
+                    transaction={originalTxn}
+                    hasTabulationLogs={tabulatedItems.length > 0}
+                    onShowTabulationLogs={() => setTabulationLogsOpen(true)}
+                  />
                 </div>
               ) : hasLinkedAdjustment ? (
                 <>
@@ -1078,7 +1221,11 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                       />
                       <BalanceSettlementRows transaction={originalTxn} align="center" />
                     </ArticleTable>
-                    <PrintReceiptButton transaction={originalTxn} />
+                    <TransactionActionButtons
+                      transaction={originalTxn}
+                      hasTabulationLogs={tabulatedItems.length > 0}
+                      onShowTabulationLogs={() => setTabulationLogsOpen(true)}
+                    />
                   </div>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
                     <span className="text-sm font-medium">
@@ -1095,7 +1242,11 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                     <ArticleRows transaction={originalAsParent} variant="plain" align="center" preferActual={false} />
                     <BalanceSettlementRows transaction={originalTxn} align="center" />
                   </ArticleTable>
-                  <PrintReceiptButton transaction={originalTxn} />
+                  <TransactionActionButtons
+                    transaction={originalTxn}
+                    hasTabulationLogs={tabulatedItems.length > 0}
+                    onShowTabulationLogs={() => setTabulationLogsOpen(true)}
+                  />
                 </div>
               )}
             </div>
@@ -1126,6 +1277,12 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
         transactionId={transactionId}
         open={itemLogsOpen}
         onClose={() => setItemLogsOpen(false)}
+      />
+
+      <TabulationLogsModal
+        items={tabulatedItems}
+        open={tabulationLogsOpen}
+        onClose={() => setTabulationLogsOpen(false)}
       />
     </FullScreenModal>
   )

@@ -1560,6 +1560,13 @@ async def edit_transaction_items(
             entry = edited_by_id.get(item_id)
             if entry is not None:
                 audit_old.append({**_item_edit_audit_snapshot(item), "action": "updated"})
+                # Payment isn't using the Tabulation modal to produce this new
+                # value, so any actual quantity_kg change invalidates whatever
+                # breakdown was recorded — regardless of whether the new value
+                # happens to still sum-match it. Untouched items (quantity_kg
+                # resent unchanged) keep their existing breakdown.
+                if item.quantity_kg != entry.quantity_kg:
+                    item.tabulation_breakdown = None
                 item.quantity_kg = entry.quantity_kg
                 item.estimated_weight_kg = entry.estimated_weight_kg
                 item.unit_count = entry.unit_count
