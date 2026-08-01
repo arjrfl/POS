@@ -677,13 +677,32 @@ async def get_transaction(db: AsyncSession, transaction_id: int) -> TransactionR
     # payment_status — same derivation as get_transaction_chain/list_transactions'
     # include_payment_status path, needed by the Order Slip reprint (Payment's
     # Transaction History tab) to render Partial Payment?/Balance correctly.
+    # Applied recursively (see _apply_payment_status_recursive) so nested
+    # children in response.children get their own payment_status too, not just
+    # the top-level node — unlike get_transaction_chain, whose nodes are
+    # siblings in a flat list, get_transaction's children are nested and were
+    # previously left at the Pydantic default of None.
     outstanding_entries = await customer_service.get_outstanding_balance_entries(db, transaction.customer_id)
     transactions_with_outstanding_balance = {entry.transaction_id for entry in outstanding_entries}
-    response.payment_status = _compute_payment_status(
-        transaction.transaction_status, transaction.customer_type, transaction.id, transactions_with_outstanding_balance
-    )
+    _apply_payment_status_recursive(response, transaction, transactions_with_outstanding_balance)
 
     return response
+
+
+def _apply_payment_status_recursive(
+    response: TransactionResponse,
+    txn: SalesTransaction,
+    transactions_with_outstanding_balance: set[int],
+) -> None:
+    # response.children was built via [_build_transaction_response(child) for
+    # child in transaction.children] (see _build_transaction_response), so the
+    # two lists share the same order — safe to zip. Walks to whatever depth
+    # actually exists (today's flows only ever produce one level of children).
+    response.payment_status = _compute_payment_status(
+        txn.transaction_status, txn.customer_type, txn.id, transactions_with_outstanding_balance
+    )
+    for child_response, child_txn in zip(response.children, txn.children):
+        _apply_payment_status_recursive(child_response, child_txn, transactions_with_outstanding_balance)
 
 
 def _enrich_items_with_product_info(response: TransactionResponse, transaction: SalesTransaction) -> None:
