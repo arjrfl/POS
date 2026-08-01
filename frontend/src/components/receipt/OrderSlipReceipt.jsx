@@ -54,7 +54,7 @@ function computePaymentSummary(transaction) {
   const amountReceived = Number(transaction.cash_tendered) + nonCashPaid
   const changeGiven = Number(transaction.change_given)
 
-  const isPartial = hasConfirmedPayment && transaction.payment_status === 'partial'
+  const isPartial = transaction.payment_status === 'partial'
   const balance = Number(transaction.total_due) - amountPaid
 
   return {
