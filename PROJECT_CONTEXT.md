@@ -13,8 +13,14 @@
 | Payment | 10 | 10 |
 | Releasing | 10 | 10 |
 | Admin | 1 | 1 |
+| Operations | 1 (seed user) | TBD — terminal count not yet decided by client |
 | **Total client terminals** | | **27** |
 | Database/app server | — | 1 |
+
+> Note: the table above reflects the original 27-terminal count. The
+> Operations role was added later; how many additional physical terminals
+> it needs has not been decided yet (client hasn't specified). Update this
+> table once that's confirmed.
 
 ---
 
@@ -261,6 +267,35 @@ linger into the next business day.
   real call against shared/live data will void whatever else is eligible at
   that moment — see the incident note on transaction 14/15 in
   `transaction_audit_log` for exactly what that looked like in practice
+
+---
+
+## 6c. Operations Role — Stock Monitoring
+
+A single-purpose, read-only role added for live stock oversight —
+separate from Releasing/Admin's Inventory CRUD, which remains
+unchanged and unaffected by this addition.
+
+- **Scope:** sees ALL products (active + inactive) — the only role
+  besides releasing/admin with this visibility. No create/update/
+  delete/adjust-stock/toggle-status access of any kind.
+- **Real-time mechanism:** subscribes to the `operations` WebSocket
+  room. Receives:
+  - `product_changed` — same event manual Inventory edits already
+    broadcast to releasing-queue + admin (now also operations)
+  - `product_stock_changed` — new event, fires on routine sale-driven
+    stock decrements (confirm-items-ready, complete-exact,
+    confirm-handover) that intentionally do NOT write a
+    `product_audit_log` row per the existing locked rule. This is
+    what makes the monitoring screen genuinely real-time across
+    normal sales, not just manual inventory edits.
+- **Frontend:** single full-width panel, no queue/order-details
+  split. Client-side search by product name. Low-stock rows
+  highlighted in place (not resorted) via a frontend-only threshold
+  constant — see CLAUDE.md Frontend Rules for the exact detail.
+- **Not built:** any configurable per-product low-stock threshold in
+  the database — current threshold is a hardcoded frontend constant,
+  a placeholder pending a real business number from the client.
 
 ---
 

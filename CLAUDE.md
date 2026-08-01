@@ -34,6 +34,9 @@ No internet at runtime. No cloud. No external services.
   components (`frontend/src/components/inventory/`); changes made in either
   screen broadcast live to both.
 - Batch 5 (production readiness): NOT YET DONE
+- Operations screen (`/operations`): built — single-screen, read-only,
+  real-time stock monitoring table. No queue, no financial or edit
+  actions. See Team Roles and WebSocket Rooms below.
 - All 27 client terminals must use Google Chrome (fixed version, auto-update disabled)
 
 ---
@@ -46,6 +49,7 @@ No internet at runtime. No cloud. No external services.
 | `payment` | `payment` | Processes payment (cash/online/split), can park transactions, handles balance/credit decisions |
 | `releasing` | `releasing` | Confirms actual item weight, sends variance to Payment — NO financial decisions |
 | `admin` | `admin` | Full visibility — queues, reports, audit log, customer ledger |
+| `operations` | `operations` | Read-only, real-time stock monitoring only — no financial or edit actions, no queue |
 
 `role_id` on `"user"` is set once at account creation (`POST /api/users`) and
 is immutable afterward — `PATCH /api/users/{id}` only accepts `full_name` and
@@ -169,6 +173,12 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
 - `payment-queue` → payment role only
 - `releasing-queue` → releasing role only
 - `admin` → admin role only
+- `operations` → operations role only. Receives `product_changed` (manual
+  Inventory CRUD: create/update/adjust-stock/deactivate/reactivate/deleted)
+  and `product_stock_changed` (routine sale-driven stock decrements at
+  confirm-items-ready/complete-exact/confirm-handover — does NOT write a
+  `product_audit_log` row, per the existing locked rule that routine
+  fulfillment decrements are not audit-logged)
 
 ### Customer Balance/Credit — Role Separation
 - `customer.net_balance`: positive = credit, negative = balance/utang
@@ -616,6 +626,16 @@ provisioned databases — see Deployment Status below.
     acting user's role ("Releasing" or "Admin"). Not admin-only — both
     screens read/write the same rows and stay in sync via the
     `product_changed` WebSocket broadcast
+- Operations screen (`/operations`): single full-width panel — no 60/40
+  queue/order-details split (no queue concept for this role). Read-only
+  `OperationsStockTable` (`components/operations/`) — client-side search
+  by product name, low-stock row highlighting via a frontend-only
+  `LOW_STOCK_THRESHOLD` constant (placeholder value, NOT a schema/DB
+  field — adjust the constant directly if the real business threshold
+  differs). Live updates via the `operations` WebSocket room
+  (`useOperationsLiveSync.js`), debounced ~300–500ms, no toast on
+  refetch. No edit/adjust-stock/toggle-status actions of any kind.
+  Navbar shows chrome only — no tabs, no queue links.
 - No page scroll on any screen — panels scroll internally only
 - All screens: 60% left (queue) / 40% right (order details) split
 - Queue panels: `bg-gray-100 border border-brand-black/20 rounded-lg`
@@ -644,6 +664,7 @@ provisioned databases — see Deployment Status below.
 | releasing_user2 | releasing |
 | releasing_user3 | releasing |
 | admin_user | admin |
+| operations_user | operations |
 | system_auto_void | admin (system-only — `is_active = FALSE`, cannot log in; exists only for end-of-day auto-void attribution; never delete or reactivate) |
 
 ---
@@ -678,7 +699,8 @@ lash-meatshop-pos/
     │   │   ├── WalkIn.jsx     ← Receiver screen
     │   │   ├── Payment.jsx
     │   │   ├── Releasing.jsx
-    │   │   └── Admin.jsx      ← Admin screen (Dashboard/Customers/Products/Transaction History)
+    │   │   ├── Admin.jsx      ← Admin screen (Dashboard/Customers/Products/Transaction History)
+    │   │   └── Operations.jsx   ← Operations screen (stock monitor)
     │   ├── components/
     │   │   ├── admin/         ← DashboardSection, TopProductsChart, CustomersSection,
     │   │   │                     CustomerDetailPanel, ProductsSection, TransactionsSection,
@@ -686,6 +708,7 @@ lash-meatshop-pos/
     │   │   ├── inventory/     ← AdjustStockModal, ChangeHistoryModal, InventoryView
     │   │   │                     (shared by Releasing's Inventory tab and Admin's Products tab)
     │   │   ├── layout/        ← Navbar, PageLayout
+    │   │   ├── operations/    ← OperationsStockTable
     │   │   ├── payment/       ← QueuePanel, QueueTransactionRow, PaymentModal,
     │   │   │                     PaymentConfirmationModal, TransactionDetailPanel,
     │   │   │                     TransactionHistory, ArticleRows, OriginalTransactionLink
@@ -704,6 +727,7 @@ lash-meatshop-pos/
     │   │   ├── useAuth.js
     │   │   ├── useArticleRows.js
     │   │   ├── useCustomer.js
+    │   │   ├── useOperationsLiveSync.js
     │   │   ├── usePaymentMethods.js
     │   │   ├── useProducts.js
     │   │   └── useTransactions.js
