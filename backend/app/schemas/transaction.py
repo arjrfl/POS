@@ -126,6 +126,12 @@ class TransactionItemResponse(BaseModel):
     # back into a list — see _parse_tabulation_breakdown below. None when the
     # item was never tabulated. No UI consumer yet — backend/API only.
     tabulation_breakdown: list[float] | None = None
+    # Permanent marker — TRUE once Payment's Edit Items has changed this
+    # item's quantity_kg while tabulation_breakdown was non-null (see
+    # edit_transaction_items). tabulation_breakdown itself is left as-is
+    # when this happens; this flag just signals it may no longer match
+    # quantity_kg. Always False for items that were never tabulated.
+    tabulation_edited_by_payment: bool = False
     quantity_kg: Decimal | None
     actual_weight_kg: Decimal | None
     actual_unit_count: int | None

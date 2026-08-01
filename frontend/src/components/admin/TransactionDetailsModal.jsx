@@ -760,8 +760,12 @@ function TabulationLogsListRow({ item, isSelected, onShow }) {
 
 // Right column — read-only Row 1..N + Total for whichever item is currently
 // selected in the left column. No inputs/edit/delete anywhere in this modal;
-// it's a log viewer, not an editor.
-function TabulationLogsDetail({ item }) {
+// it's a log viewer, not an editor. When the selected item's quantity_kg was
+// later changed by Payment's Edit Items (tabulation_edited_by_payment),
+// the breakdown/total above are still the original tabulated values — this
+// note + link (reusing the exact same Order Items Update Logs trigger as
+// the Handled By section, via onShowItemLogs) is how that staleness surfaces.
+function TabulationLogsDetail({ item, receiverName, onShowItemLogs }) {
   if (!item) {
     return (
       <div className="flex-1 min-h-0 flex items-center justify-center">
@@ -779,6 +783,10 @@ function TabulationLogsDetail({ item }) {
         <span className="font-medium text-gray-900">{item.product_name}</span>
         {item.brand_name && <span className="text-gray-500"> — {item.brand_name}</span>}
       </div>
+      {/* Same walkin_user_name already shown in Handled By's Receiver row —
+          tabulation only ever happens during that same Receiver session, so
+          no separate backend field/query is needed here. */}
+      <div className="text-xs text-gray-500">Receiver: {receiverName ?? '—'}</div>
       <div className="text-xs text-gray-500">Unit Count: {item.unit_count}</div>
       <div className="flex flex-col mt-1">
         {breakdown.map((value, index) => (
@@ -792,14 +800,25 @@ function TabulationLogsDetail({ item }) {
           <span>{total.toFixed(3)} kg</span>
         </div>
       </div>
+
+      {item.tabulation_edited_by_payment && (
+        <div className="flex flex-col items-start gap-1.5 mt-2 pt-2 border-t border-gray-200">
+          <p className="text-xs text-amber-700">Payment updated this item's quantity after tabulation.</p>
+          <OrderItemsUpdateLogsButton onClick={onShowItemLogs} />
+        </div>
+      )}
     </div>
   )
 }
 
 // items here is always the pre-filtered tabulated-only list (see
 // tabulatedItems in TransactionDetailsModal) — this modal never has to
-// re-derive which items qualify.
-function TabulationLogsModal({ items, open, onClose }) {
+// re-derive which items qualify. onShowItemLogs is the same
+// setItemLogsOpen(true) trigger DetailsColumn's Handled By section uses —
+// lifted to the common parent (TransactionDetailsModal) so both open the
+// exact same OrderItemsUpdateLogsModal instance rather than each building
+// their own.
+function TabulationLogsModal({ items, open, onClose, receiverName, onShowItemLogs }) {
   const [selectedItemId, setSelectedItemId] = useState(null)
 
   useEffect(() => {
@@ -823,7 +842,7 @@ function TabulationLogsModal({ items, open, onClose }) {
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-3">
-          <TabulationLogsDetail item={selectedItem} />
+          <TabulationLogsDetail item={selectedItem} receiverName={receiverName} onShowItemLogs={onShowItemLogs} />
         </div>
       </div>
     </Modal>
@@ -1283,6 +1302,15 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
         items={tabulatedItems}
         open={tabulationLogsOpen}
         onClose={() => setTabulationLogsOpen(false)}
+        receiverName={originalTxn?.walkin_user_name}
+        onShowItemLogs={() => {
+          // Close this modal before opening Order Items Update Logs so only
+          // one is ever visible at a time — closing that one lands cleanly
+          // back on the Transaction History detail view underneath, with no
+          // need to reopen Tabulation Logs automatically.
+          setTabulationLogsOpen(false)
+          setItemLogsOpen(true)
+        }}
       />
     </FullScreenModal>
   )

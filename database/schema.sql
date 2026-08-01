@@ -448,6 +448,17 @@ CREATE TABLE transaction_item (
     -- Backend-only for now — no Admin UI consumer yet (same deferred
     -- pattern as transaction_item_audit_log).
 
+    tabulation_edited_by_payment BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Set to TRUE the first time Payment's Edit Items (PATCH /{id}/items)
+    -- changes this item's quantity_kg while tabulation_breakdown is
+    -- non-null. Like items_edited_at_payment, this is a PERMANENT
+    -- historical marker — once TRUE, never reset back to FALSE.
+    -- tabulation_breakdown itself is NOT cleared when this happens
+    -- (reversing the previous prompt's behavior) — the original
+    -- tabulated rows remain visible in Tabulation Logs, this flag
+    -- just signals they may no longer match the current quantity_kg.
+    -- Irrelevant/stays FALSE for items that were never tabulated.
+
     quantity_kg              DECIMAL(10,3)  NULL,
     -- QTY — the value that actually drives subtotal for product items
     -- defaults to Estimated Weight or Unit Count depending on which the
