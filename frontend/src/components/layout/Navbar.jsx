@@ -9,6 +9,7 @@ const ROLE_BADGE_STYLES = {
   payment: 'bg-yellow-100 text-yellow-800',
   releasing: 'bg-orange-100 text-orange-800',
   admin: 'bg-red-100 text-red-800',
+  operations: 'bg-purple-100 text-purple-800',
 }
 
 export function Navbar({ title, actions }) {

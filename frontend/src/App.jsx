@@ -7,6 +7,7 @@ import WalkIn from './pages/WalkIn'
 import Payment from './pages/Payment'
 import Releasing from './pages/Releasing'
 import Admin from './pages/Admin'
+import Operations from './pages/Operations'
 
 function App() {
   return (
@@ -49,6 +50,16 @@ function App() {
             <ProtectedRoute role="admin">
               <ErrorBoundary>
                 <Admin />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/operations"
+          element={
+            <ProtectedRoute role="operations">
+              <ErrorBoundary>
+                <Operations />
               </ErrorBoundary>
             </ProtectedRoute>
           }
