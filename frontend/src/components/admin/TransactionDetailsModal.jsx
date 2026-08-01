@@ -783,7 +783,7 @@ function TabulationLogsDetail({ item }) {
       <div className="flex flex-col mt-1">
         {breakdown.map((value, index) => (
           <div key={index} className="flex justify-between text-sm py-1 border-b border-gray-200">
-            <span className="text-gray-600">Row {index + 1}</span>
+            <span className="text-gray-600">Unit {index + 1}</span>
             <span className="text-gray-900">{Number(value).toFixed(3)} kg</span>
           </div>
         ))}

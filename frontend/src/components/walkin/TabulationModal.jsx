@@ -44,7 +44,7 @@ export function TabulationModal({ open, unitCount, initialValues, onConfirm, onC
             <Input
               key={index}
               id={`tabulation-row-${index}`}
-              label={`Row ${index + 1} (kg)`}
+              label={`Unit ${index + 1} (kg)`}
               type="number"
               step="0.001"
               min="0"
