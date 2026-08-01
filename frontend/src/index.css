@@ -30,6 +30,18 @@
   border: hidden;
 }
 
+/* Restores just the top edge above TOTAL AMOUNT DUE, separating the totals
+   section from the items grid above it. Under border-collapse, `hidden` on
+   ANY participant at a shared edge wins outright regardless of specificity
+   — the <tfoot> itself (a row-group) is a participant alongside its cells,
+   so both the row-group and the first row's td cells need their border-top
+   overridden here, not just the cells, or the row-group's hidden top would
+   still suppress the edge. */
+.order-slip-totals,
+.order-slip-totals tr:first-child td {
+  border-top: 1px solid #000;
+}
+
 /* Fixed page size/margins for the Order Slip print, and a hint (not a
    guarantee — content taller than one page will still split) that the
    receipt should stay on a single page rather than spill across two. */

@@ -185,7 +185,7 @@ export function OrderSlipReceipt({ transaction, tin, busStyle }) {
         </tbody>
         <tfoot className="order-slip-totals">
           <tr>
-            <td colSpan={4} className="px-1 py-[4pt] text-right text-[11pt]">
+            <td colSpan={4} className="pl-1 pr-16 py-[4pt] text-right text-[11pt]">
               TOTAL AMOUNT DUE
             </td>
             <td className="px-1 py-[4pt] text-right text-[13pt]">{formatPlainAmount(transaction.total_due)}</td>
@@ -198,7 +198,7 @@ export function OrderSlipReceipt({ transaction, tin, busStyle }) {
             ['CHANGE', paymentSummary.change],
           ].map(([label, value]) => (
             <tr key={label}>
-              <td colSpan={4} className="px-1 py-[1.5pt] text-right text-[8pt]">
+              <td colSpan={4} className="pl-1 pr-16 py-[1.5pt] text-right text-[8pt]">
                 {label}
               </td>
               <td className="px-1 py-[1.5pt] text-right text-[8pt]">{value}</td>
