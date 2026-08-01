@@ -183,7 +183,7 @@ export function OrderSlipReceipt({ transaction, tin, busStyle }) {
             </tr>
           ))}
         </tbody>
-        <tfoot>
+        <tfoot className="order-slip-totals">
           <tr>
             <td colSpan={4} className="px-1 py-[4pt] text-right text-[11pt]">
               TOTAL AMOUNT DUE

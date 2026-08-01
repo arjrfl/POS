@@ -19,6 +19,17 @@
   border: 1px solid #000;
 }
 
+/* Totals section (TOTAL AMOUNT DUE -> CHANGE) is the <tfoot> of the same
+   <table> as the items grid above it, so the generic .order-slip td rule
+   above would otherwise border it too. `hidden` (not `none`) is required:
+   under border-collapse, a conflicting border always wins over `none` at a
+   shared edge, but `hidden` unconditionally wins the collapse, which is the
+   only way to suppress the edge shared with the items tbody. */
+.order-slip-totals,
+.order-slip-totals td {
+  border: hidden;
+}
+
 /* Fixed page size/margins for the Order Slip print, and a hint (not a
    guarantee — content taller than one page will still split) that the
    receipt should stay on a single page rather than spill across two. */
