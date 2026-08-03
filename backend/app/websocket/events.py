@@ -92,6 +92,15 @@ def product_stock_changed(product_id: int, stock_quantity) -> tuple[list[str], d
     return ["operations"], event
 
 
+def transaction_voided(transaction_id: int) -> tuple[list[str], dict]:
+    # Admin-only manual void (see transaction_service.void_transaction) — unlike
+    # transaction_status_changed, this never touches a team-queue room: a
+    # 'completed' transaction has already left every team's active queue, so
+    # only Admin needs to know.
+    event = {"type": "transaction_voided", "transaction_id": transaction_id}
+    return [ADMIN_ROOM], event
+
+
 def user_changed(user_id: int, change_type: str) -> tuple[list[str], dict]:
     # Users management is admin-only (unlike products, which also feeds
     # releasing-queue) — broadcast to the admin room only.

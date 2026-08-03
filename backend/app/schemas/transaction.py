@@ -227,6 +227,11 @@ class VoidInfoResponse(BaseModel):
     voided_at: datetime
 
 
+class VoidTransactionRequest(BaseModel):
+    reason: str
+    password: str
+
+
 class PaymentDetailResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -2,6 +2,10 @@ import { useAuthStore } from '../store/authStore'
 
 const BASE_URL = '/api'
 
+// Endpoints whose own 401 is a business-rule rejection, not an expired/invalid
+// token — see the request() 401 handling below.
+const REAUTH_401_PATHS = /\/transactions\/\d+\/void$/
+
 async function request(path, { method = 'GET', body, headers } = {}) {
   const token = useAuthStore.getState().token
 
@@ -35,7 +39,11 @@ async function request(path, { method = 'GET', body, headers } = {}) {
 
   // A 401 with no token attached is a login failure, not an expired session —
   // let it fall through to the normal error below instead of forcing a redirect.
-  if (res.status === 401 && token) {
+  // Same for the void endpoint's re-authentication check: that 401 means
+  // "wrong password", not "your session/token is invalid" — forcing a global
+  // logout there would kick the admin out of their own session instead of
+  // just rejecting the void attempt (see VoidTransactionModal).
+  if (res.status === 401 && token && !REAUTH_401_PATHS.test(path)) {
     useAuthStore.getState().logout()
     window.location.href = '/'
     throw new Error('Session expired')

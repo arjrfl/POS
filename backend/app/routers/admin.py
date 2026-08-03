@@ -189,6 +189,10 @@ async def get_dashboard_summary(
         SalesTransaction.payment_at >= effective_start,
         SalesTransaction.payment_at < effective_end,
         SalesTransaction.transaction_type.in_([TransactionTypeEnum.original, TransactionTypeEnum.adjustment]),
+        # A voided transaction keeps its payment_at (voiding never clears it —
+        # see void_transaction/_auto_void_transaction), so without this it would
+        # still count toward a sale that no longer exists.
+        SalesTransaction.transaction_status != TransactionStatusEnum.voided,
     )
     total_sales_today = (await db.execute(sales_stmt)).scalar_one()
 

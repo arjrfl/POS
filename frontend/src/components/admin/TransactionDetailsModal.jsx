@@ -4,11 +4,14 @@ import { FullScreenModal } from '../ui/FullScreenModal'
 import { Modal } from '../ui/Modal'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { Toast } from '../ui/Toast'
 import { get } from '../../services/api'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useReceiptPrint } from '../../hooks/useReceiptPrint'
 import { ArticleRows, ARTICLE_ROW_COLUMN_WIDTHS } from '../payment/ArticleRows'
 import { PrintDetailsModal } from '../receipt/PrintDetailsModal'
+import { VoidTransactionModal } from './VoidTransactionModal'
+import { VoidLogsModal } from './VoidLogsModal'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
@@ -712,20 +715,45 @@ function hasTabulationBreakdown(item) {
 // Print + (conditionally) Tabulation Logs, side by side — same shared
 // originalTxn.items list backs both the existence check here and the modal's
 // own left-column list, so they can never disagree about which transaction
-// has tabulation data.
-function TransactionActionButtons({ transaction, hasTabulationLogs, onShowTabulationLogs }) {
+// has tabulation data. Void/Void Logs (admin-only exception to "a completed
+// transaction is immutable" — see CLAUDE.md) sits on the opposite side of the
+// same row: a completed transaction gets a red Void button, a voided one gets
+// Void Logs instead (never both), anything else gets neither.
+function TransactionActionButtons({ transaction, hasTabulationLogs, onShowTabulationLogs, onVoid, onShowVoidLogs }) {
   if (!transaction) return null
   return (
-    <div className="flex items-center gap-2">
-      <PrintReceiptButton transaction={transaction} />
-      {hasTabulationLogs && (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <PrintReceiptButton transaction={transaction} />
+        {hasTabulationLogs && (
+          <Button
+            type="button"
+            variant="outline"
+            className="self-start !px-3 !py-1 text-xs inline-flex items-center gap-1"
+            onClick={onShowTabulationLogs}
+          >
+            Tabulation Logs
+          </Button>
+        )}
+      </div>
+      {transaction.transaction_status === 'completed' && (
+        <Button
+          type="button"
+          variant="danger"
+          className="self-start !px-3 !py-1 text-xs"
+          onClick={onVoid}
+        >
+          Void
+        </Button>
+      )}
+      {transaction.transaction_status === 'voided' && (
         <Button
           type="button"
           variant="outline"
-          className="self-start !px-3 !py-1 text-xs inline-flex items-center gap-1"
-          onClick={onShowTabulationLogs}
+          className="self-start !px-3 !py-1 text-xs"
+          onClick={onShowVoidLogs}
         >
-          Tabulation Logs
+          Void Logs
         </Button>
       )}
     </div>
@@ -1067,10 +1095,17 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
   const [error, setError] = useState(null)
   const [itemLogsOpen, setItemLogsOpen] = useState(false)
   const [tabulationLogsOpen, setTabulationLogsOpen] = useState(false)
+  const [voidModalOpen, setVoidModalOpen] = useState(false)
+  const [voidLogsOpen, setVoidLogsOpen] = useState(false)
+  const [toast, setToast] = useState(null)
 
-  useEffect(() => {
+  const showToast = (message, variant = 'info') => {
+    setToast({ message, variant })
+    window.setTimeout(() => setToast(null), 3500)
+  }
+
+  const loadChain = () => {
     let cancelled = false
-    setChain(null)
     setError(null)
     setLoading(true)
 
@@ -1088,6 +1123,12 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
     return () => {
       cancelled = true
     }
+  }
+
+  useEffect(() => {
+    setChain(null)
+    return loadChain()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactionId])
 
   // The chain's root — always parent_transaction_id === null. Almost always
@@ -1105,6 +1146,17 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
       )
     : null
   const hasLinkedAdjustment = Boolean(linkedChildTxn)
+
+  // Void's cascade set (see backend void_transaction/_collect_void_set) is the
+  // original's own direct 'completed' children — surfaced as a warning in the
+  // confirm modal before it happens. Once voided, those same children show up
+  // as 'voided' instead — that's the set Void Logs lists alongside the parent.
+  const voidCascadeChildren = originalTxn
+    ? chain.filter((t) => t.parent_transaction_id === originalTxn.id && t.transaction_status === 'completed')
+    : []
+  const voidedChildren = originalTxn
+    ? chain.filter((t) => t.parent_transaction_id === originalTxn.id && t.transaction_status === 'voided')
+    : []
 
   // "View Details" can be opened directly on a child row (Transaction History
   // lists adjustment/refund children as their own rows) — the chain endpoint
@@ -1221,6 +1273,8 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                     transaction={originalTxn}
                     hasTabulationLogs={tabulatedItems.length > 0}
                     onShowTabulationLogs={() => setTabulationLogsOpen(true)}
+                    onVoid={() => setVoidModalOpen(true)}
+                    onShowVoidLogs={() => setVoidLogsOpen(true)}
                   />
                 </div>
               ) : hasLinkedAdjustment ? (
@@ -1244,6 +1298,8 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                       transaction={originalTxn}
                       hasTabulationLogs={tabulatedItems.length > 0}
                       onShowTabulationLogs={() => setTabulationLogsOpen(true)}
+                      onVoid={() => setVoidModalOpen(true)}
+                      onShowVoidLogs={() => setVoidLogsOpen(true)}
                     />
                   </div>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
@@ -1265,6 +1321,8 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                     transaction={originalTxn}
                     hasTabulationLogs={tabulatedItems.length > 0}
                     onShowTabulationLogs={() => setTabulationLogsOpen(true)}
+                    onVoid={() => setVoidModalOpen(true)}
+                    onShowVoidLogs={() => setVoidLogsOpen(true)}
                   />
                 </div>
               )}
@@ -1312,6 +1370,27 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
           setItemLogsOpen(true)
         }}
       />
+
+      <VoidTransactionModal
+        open={voidModalOpen}
+        transaction={originalTxn}
+        childOrderNumbers={voidCascadeChildren.map((t) => t.order_number)}
+        onClose={() => setVoidModalOpen(false)}
+        onVoided={() => {
+          loadChain()
+          showToast('Transaction voided', 'success')
+        }}
+        onError={(message) => showToast(message, 'error')}
+      />
+
+      <VoidLogsModal
+        open={voidLogsOpen}
+        transaction={originalTxn}
+        childTransactions={voidedChildren}
+        onClose={() => setVoidLogsOpen(false)}
+      />
+
+      <Toast toast={toast} />
     </FullScreenModal>
   )
 }

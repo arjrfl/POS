@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.security import verify_password
 from app.models.customer import Customer
 from app.models.ledger import (
     AuditChangeTypeEnum,
@@ -19,7 +20,7 @@ from app.models.ledger import (
     TransactionItemAuditLog,
     TransactionVoidLog,
 )
-from app.models.product import Product, ProductStatusEnum
+from app.models.product import Product, ProductAuditLog, ProductChangeTypeEnum, ProductStatusEnum
 from app.models.transaction import (
     CustomerTypeEnum,
     ItemTypeEnum,
@@ -53,15 +54,18 @@ from app.schemas.transaction import (
     TransactionParentResponse,
     TransactionResponse,
     VoidInfoResponse,
+    VoidTransactionRequest,
     WeightConfirmRequest,
 )
 from app.models.user import User
 from app.services import customer_service
 from app.websocket.events import (
+    product_changed,
     product_stock_changed,
     queue_status_changed,
     transaction_items_changed,
     transaction_status_changed,
+    transaction_voided,
 )
 from app.websocket.manager import manager
 
@@ -412,6 +416,15 @@ class WeightConfirmValidationError(Exception):
 class ItemEditValidationError(Exception):
     """The submitted Payment-phase item edit violates a business rule (wrong
     transaction type/customer type, or would leave zero items)."""
+
+
+class VoidPasswordError(Exception):
+    """Incorrect password supplied for a manual void's re-authentication check."""
+
+
+class VoidValidationError(Exception):
+    """The void request violates a business rule (missing reason, wrong
+    transaction_status)."""
 
 
 def _initial_status(customer_type: CustomerTypeEnum, transaction_type: TransactionTypeEnum) -> TransactionStatusEnum:
@@ -3081,3 +3094,300 @@ async def run_end_of_day_auto_void(db: AsyncSession, *, dry_run: bool = False) -
             )
 
     return voided_count
+
+
+# =============================================================
+# Manual admin void (POST /{id}/void) — a deliberate, password-gated exception
+# to "a completed/settled transaction is immutable" (see CLAUDE.md), distinct
+# from _auto_void_transaction above (which only ever runs against a narrow,
+# pre-fulfillment eligibility set). This voids a genuinely 'completed'
+# transaction — stock has left, money may have changed hands, ledger effects
+# may have posted — so every one of those effects has to be reversed, not just
+# skipped.
+#
+# Investigation findings (see resolve_refund_as_credit/resolve_adjustment_as_balance
+# and process_payment above) this reversal logic rests on:
+#   1. resolve_refund_as_credit / resolve_adjustment_as_balance write directly to
+#      customer_ledger (entry_type=credit_added / balance_added) on the CHILD
+#      transaction — a mechanism entirely separate from the credit_applied/
+#      balance_settled FIELDS on sales_transaction. _create_adjustment_child
+#      leaves both fields at 0.00 and neither resolve function ever sets them.
+#      So the target's field-based reversal and a cascaded child's ledger-row
+#      reversal below can never double-count the same effect.
+#   2. Adjustment/refund children never carry transaction_item rows of their own
+#      (_create_adjustment_child creates none) — all stock movement is tied to
+#      the PARENT/target's own items, decremented exactly once by whichever step
+#      actually hands the item over (complete_exact/confirm_handover for
+#      walk_in, confirm_items_ready for online). Running the stock-reversal
+#      helper against a child is therefore always a safe no-op (empty item
+#      list), so it's called unconditionally for every transaction in the void
+#      set rather than special-cased to "target only".
+#   3. A standalone balance_settlement-type transaction and the per-transaction
+#      balance-checkbox case both post through the exact same mechanism —
+#      entry_type=balance_settled customer_ledger rows in process_payment, with
+#      transaction.balance_settled always kept equal to the net total. So
+#      reversing that FIELD (mirroring _auto_void_transaction) is sufficient;
+#      there is no third, separate ledger mechanism for this case.
+#
+# One reversal beyond what's explicitly enumerated above: an original
+# transaction's unclaimed cash change becomes customer credit at /pay time
+# (transaction.change_given / change_claimed, entry_type=credit_added — see
+# process_payment). That's a real net_balance effect the target may carry,
+# so it's reversed here for the same reason credit_applied/balance_settled are
+# — otherwise voiding a transaction with unclaimed change would leave the
+# customer permanently over-credited.
+#
+# Known, deliberate gap: if an adjustment/refund child was ever paid through
+# the normal /pay endpoint AND also had balance/credit checkboxes applied on
+# it (rather than the single resolve-as-credit/resolve-as-balance action),
+# its own credit_applied/balance_settled FIELDS would be set too — those are
+# not reversed here (only entry_type=credit_added/balance_added ledger rows on
+# a child are). The current UI never produces this combination for a child,
+# so it's left undone rather than risking double-reversal for a case that
+# can't happen today.
+
+
+class _StockRestoreEntry(NamedTuple):
+    product_id: int
+    before: Decimal
+    after: Decimal
+    delta: Decimal
+
+
+async def _reverse_stock_for_transaction(db: AsyncSession, transaction: SalesTransaction) -> list[_StockRestoreEntry]:
+    """Restores product.stock_quantity for one transaction being voided, using
+    whichever formula matches how that customer_type's items were originally
+    decremented — the exact same basis as _decrement_stock_online /
+    _decrement_stock_for_walkin_handover above, just added back instead of
+    subtracted. Naturally a no-op for adjustment/refund children (no items of
+    their own — see finding 2 above), so safe to call for every transaction in
+    a void set unconditionally."""
+    restored: list[_StockRestoreEntry] = []
+    if transaction.customer_type == CustomerTypeEnum.online:
+        for item in transaction.items:
+            if item.item_type != ItemTypeEnum.product or item.quantity_kg is None:
+                continue
+            product = await db.get(Product, item.product_id)
+            if product is None:
+                continue
+            before = product.stock_quantity
+            product.stock_quantity += item.quantity_kg
+            restored.append(_StockRestoreEntry(product.id, before, product.stock_quantity, item.quantity_kg))
+    else:
+        for item in transaction.items:
+            if item.item_type != ItemTypeEnum.product or item.actual_quantity_kg is None:
+                continue
+            product = await db.get(Product, item.product_id)
+            if product is None:
+                continue
+            if product.unit_weight_kg is not None and item.actual_unit_count is not None:
+                delta = item.actual_unit_count * product.unit_weight_kg
+            elif item.actual_weight_kg is not None:
+                delta = item.actual_weight_kg
+            else:
+                continue
+            before = product.stock_quantity
+            product.stock_quantity += delta
+            restored.append(_StockRestoreEntry(product.id, before, product.stock_quantity, delta))
+    return restored
+
+
+async def _collect_void_set(db: AsyncSession, target: SalesTransaction) -> list[SalesTransaction]:
+    """target + its direct completed children (adjustment/refund resolutions),
+    recursing one more level defensively in case of grandchildren — today's
+    data model never produces them (resolve_substandard only ever runs once per
+    parent), but this doesn't hardcode that assumption. A child not in
+    'completed' status (shouldn't exist once its parent has reached
+    'completed') is defensively left out rather than erroring the whole void."""
+    void_set = [target]
+    frontier = [target]
+    while frontier:
+        next_frontier: list[SalesTransaction] = []
+        for txn in frontier:
+            result = await db.execute(
+                select(SalesTransaction).where(
+                    SalesTransaction.parent_transaction_id == txn.id,
+                    SalesTransaction.transaction_status == TransactionStatusEnum.completed,
+                )
+            )
+            children = result.scalars().all()
+            void_set.extend(children)
+            next_frontier.extend(children)
+        frontier = next_frontier
+    return void_set
+
+
+# entry_type -> (reversal_entry_type, net_balance sign the reversal applies) —
+# the "amount always positive, entry_type carries direction" convention already
+# used everywhere else, applied symmetrically: undoing a credit_used effect
+# (net_balance -= amount) means giving the credit back (credit_added, +amount);
+# undoing a balance_settled effect (net_balance += amount) means reinstating
+# the utang (balance_added, -amount) — both exactly matching
+# _auto_void_transaction's existing pattern. undoing a credit_added effect
+# (net_balance += amount) means taking that credit back away (credit_used,
+# -amount); undoing a balance_added effect (net_balance -= amount) means
+# settling that utang back out (balance_settled, +amount) — the two cases
+# _auto_void_transaction never needed (it only ever runs pre-payment) but a
+# cascaded adjustment/refund child's own resolution can produce.
+_LEDGER_REVERSAL: dict[LedgerEntryTypeEnum, tuple[LedgerEntryTypeEnum, int]] = {
+    LedgerEntryTypeEnum.credit_used: (LedgerEntryTypeEnum.credit_added, 1),
+    LedgerEntryTypeEnum.balance_settled: (LedgerEntryTypeEnum.balance_added, -1),
+    LedgerEntryTypeEnum.credit_added: (LedgerEntryTypeEnum.credit_used, -1),
+    LedgerEntryTypeEnum.balance_added: (LedgerEntryTypeEnum.balance_settled, 1),
+}
+
+
+async def void_transaction(
+    db: AsyncSession,
+    transaction_id: int,
+    data: VoidTransactionRequest,
+    admin_user_id: int,
+) -> TransactionResponse:
+    reason = data.reason.strip()
+
+    admin_user = await db.get(User, admin_user_id)
+    if admin_user is None or not verify_password(data.password, admin_user.password_hash):
+        raise VoidPasswordError("Incorrect password")
+
+    if len(reason) < 3:
+        raise VoidValidationError("A reason (at least 3 characters) is required")
+
+    target = await _get_transaction_for_update(db, transaction_id)
+    if target is None:
+        raise ValueError(f"Transaction {transaction_id} not found")
+    if target.transaction_status == TransactionStatusEnum.voided:
+        raise VoidValidationError("Transaction is already voided")
+    if target.transaction_status != TransactionStatusEnum.completed:
+        raise VoidValidationError("Only completed transactions can be voided")
+
+    void_set = await _collect_void_set(db, target)
+    voided_ids = [txn.id for txn in void_set]
+    stock_product_ids: set[int] = set()
+
+    try:
+        for txn in void_set:
+            old_status = txn.transaction_status.value
+
+            stock_restored = await _reverse_stock_for_transaction(db, txn)
+            for entry in stock_restored:
+                db.add(
+                    ProductAuditLog(
+                        product_id=entry.product_id,
+                        changed_by_user_id=admin_user_id,
+                        change_type=ProductChangeTypeEnum.stock_adjusted,
+                        old_value=json.dumps({"stock_quantity": str(entry.before)}),
+                        new_value=json.dumps({"stock_quantity": str(entry.after)}),
+                        stock_delta=entry.delta,
+                        notes=f"Stock restored — voided transaction {txn.order_number}",
+                    )
+                )
+                stock_product_ids.add(entry.product_id)
+
+            txn.transaction_status = TransactionStatusEnum.voided
+            db.add(
+                TransactionVoidLog(
+                    transaction_id=txn.id,
+                    void_reason=reason,
+                    voided_by_user_id=admin_user_id,
+                )
+            )
+            db.add(
+                TransactionAuditLog(
+                    transaction_id=txn.id,
+                    changed_by_user_id=admin_user_id,
+                    change_type=AuditChangeTypeEnum.transaction_status,
+                    old_value=old_status,
+                    new_value=TransactionStatusEnum.voided.value,
+                    notes="Manually voided by admin",
+                )
+            )
+
+        # Target-only: reverse the three Walk-In/Payment-time FIELDS a
+        # 'completed' original (or standalone balance_settlement) transaction
+        # may carry — mirrors _auto_void_transaction's credit_applied/
+        # balance_settled reversal verbatim, plus the additional
+        # change_given/change_claimed case (see findings above). Children
+        # never have these fields populated (finding 1), so this section is
+        # deliberately scoped to target only.
+        target_customer = await db.get(Customer, target.customer_id)
+
+        if target.credit_applied > 0:
+            target_customer.net_balance += target.credit_applied
+            db.add(
+                CustomerLedger(
+                    customer_id=target_customer.id,
+                    transaction_id=target.id,
+                    entry_type=LedgerEntryTypeEnum.credit_added,
+                    amount=target.credit_applied,
+                    running_balance=target_customer.net_balance,
+                    notes=f"Reversal of credit applied — voided transaction {target.order_number} (manual admin void)",
+                )
+            )
+
+        if target.balance_settled > 0:
+            target_customer.net_balance -= target.balance_settled
+            db.add(
+                CustomerLedger(
+                    customer_id=target_customer.id,
+                    transaction_id=target.id,
+                    entry_type=LedgerEntryTypeEnum.balance_added,
+                    amount=target.balance_settled,
+                    running_balance=target_customer.net_balance,
+                    notes=f"Reversal of balance settled — voided transaction {target.order_number} (manual admin void)",
+                )
+            )
+
+        if target.change_given > 0 and not target.change_claimed:
+            target_customer.net_balance -= target.change_given
+            db.add(
+                CustomerLedger(
+                    customer_id=target_customer.id,
+                    transaction_id=target.id,
+                    entry_type=LedgerEntryTypeEnum.credit_used,
+                    amount=target.change_given,
+                    running_balance=target_customer.net_balance,
+                    notes=(
+                        f"Reversal of unclaimed change added as credit — voided transaction "
+                        f"{target.order_number} (manual admin void)"
+                    ),
+                )
+            )
+
+        # Children only: reverse each of THEIR OWN credit_added/balance_added
+        # ledger rows (resolve_refund_as_credit / resolve_adjustment_as_balance
+        # — finding 1 above). balance_settled/credit_used rows are included
+        # too for defensive completeness (a child paid through normal /pay
+        # could in principle also carry balance/credit-checkbox ledger rows),
+        # symmetric via _LEDGER_REVERSAL either way.
+        for child in void_set[1:]:
+            child_customer = await db.get(Customer, child.customer_id)
+            for entry in child.ledger_entries:
+                if entry.entry_type not in _LEDGER_REVERSAL:
+                    continue
+                reversal_type, sign = _LEDGER_REVERSAL[entry.entry_type]
+                child_customer.net_balance += sign * entry.amount
+                db.add(
+                    CustomerLedger(
+                        customer_id=child_customer.id,
+                        transaction_id=child.id,
+                        entry_type=reversal_type,
+                        amount=entry.amount,
+                        running_balance=child_customer.net_balance,
+                        notes=f"Reversal of {entry.entry_type.value} — voided transaction {child.order_number} (manual admin void)",
+                    )
+                )
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+    for product_id in stock_product_ids:
+        rooms, event = product_changed(product_id, ProductChangeTypeEnum.stock_adjusted.value)
+        await manager.broadcast_multi(rooms, event)
+
+    for voided_id in voided_ids:
+        rooms, event = transaction_voided(voided_id)
+        await manager.broadcast_multi(rooms, event)
+
+    return await get_transaction(db, target.id)
