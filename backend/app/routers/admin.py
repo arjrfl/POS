@@ -214,6 +214,10 @@ async def get_dashboard_summary(
             SalesTransaction.payment_at >= effective_start,
             SalesTransaction.payment_at < effective_end,
             SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+            # Same as Total Sales Today above — payment_detail rows are never
+            # deleted when their transaction is voided, so without this a
+            # voided transaction's cash/online entries still count here.
+            SalesTransaction.transaction_status != TransactionStatusEnum.voided,
         )
     )
     actual_sales_today = (await db.execute(actual_sales_stmt)).scalar_one()
@@ -322,6 +326,10 @@ async def get_payment_user_sales(
         )
         .where(
             SalesTransaction.transaction_type.in_([TransactionTypeEnum.original, TransactionTypeEnum.adjustment]),
+            # Same as Total Sales Today (get_dashboard_summary) — a voided
+            # transaction keeps its payment_at/payment_user_id, so without
+            # this it still counts toward a sale that no longer exists.
+            SalesTransaction.transaction_status != TransactionStatusEnum.voided,
             *_payment_at_filters(),
         )
         .group_by(SalesTransaction.payment_user_id)
@@ -361,6 +369,10 @@ async def get_payment_user_sales(
             PaymentDetail.is_draft.is_(False),
             PaymentMethod.payment_method_name != "credit",
             SalesTransaction.transaction_type != TransactionTypeEnum.refund,
+            # Same as Actual Sales Today (get_dashboard_summary) — payment_detail
+            # rows survive a void untouched (append-only), so without this a
+            # voided transaction's cash/online entries still count here.
+            SalesTransaction.transaction_status != TransactionStatusEnum.voided,
             *_payment_at_filters(),
         )
         .group_by(SalesTransaction.payment_user_id)
