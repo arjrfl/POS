@@ -299,6 +299,90 @@ unchanged and unaffected by this addition.
 
 ---
 
+## 6d. Tabulation — Receiver Per-Unit Weight Entry
+
+An optional entry mode in Receiver's New Transaction modal, for orders
+where it's easier to weigh and key in each unit individually than to
+estimate one combined QTY.
+
+- Launched via a Tabulation button on `ProductSelector`, opening
+  `TabulationModal.jsx`. Receiver enters each unit's weight (e.g. 5 units
+  at 4kg each) instead of a single QTY (kg) value
+- The per-unit values are summed client-side into `quantity_kg` (QTY) —
+  QTY still drives `estimated_amount`/subtotal exactly as before;
+  Tabulation only changes how QTY is *entered*, not how it's used
+- The raw per-unit breakdown is persisted to
+  `transaction_item.tabulation_breakdown` as a JSON array (e.g.
+  `[4,4,4,4,4]`) — reference/audit only, no pricing role
+- `tabulation_edited_by_payment` (BOOLEAN, permanent once TRUE) flags an
+  item whose `quantity_kg` was later changed via Payment's Edit Items
+  while a `tabulation_breakdown` was present. The breakdown itself stays
+  intact when this happens — the original tabulated rows remain visible
+  in Tabulation Logs, the flag just signals they may no longer match the
+  current QTY
+- `tabulation_breakdown` is cleared back to NULL only when QTY or Unit
+  Count is hand-edited at Receiver after a Tabulation confirm — at that
+  point the breakdown no longer matches the row
+- Admin > Transaction History's transaction detail modal
+  (`TransactionDetailsModal.jsx`) includes a read-only "Tabulation Logs"
+  viewer (built inline in that same file) showing the per-unit breakdown
+  for tabulated items, and links through to "Order Items Update Logs"
+  when `tabulation_edited_by_payment = TRUE`
+- No standalone browsable log screen beyond this per-transaction viewer —
+  same deferred pattern as `transaction_item_audit_log` (see §6a)
+- Out of scope for now: extending Tabulation entry to Payment's "Add New
+  Item" flow
+
+---
+
+## 6e. Admin Manual Void (Transaction History)
+
+The one deliberate, fully audited exception to the "completed
+transactions are immutable" rule (§1/CLAUDE.md Critical Business Rules).
+Lets Admin reverse a `completed` transaction end-to-end — not just flip
+its status — when something needs to be undone after the fact.
+
+- `POST /api/transactions/{id}/void` (admin only) voids any `completed`
+  transaction
+- Cascades: voiding a parent also voids its own completed
+  adjustment/refund children (the substandard-kilo resolution chain)
+- Gated by two checks before anything is touched: re-entering the
+  admin's own login password, and a required free-text reason (minimum 3
+  characters)
+  - A wrong password returns an inline 401 that the modal shows as a
+    validation error — it does NOT trigger the app's normal
+    401-means-session-expired auto-logout, and no data is changed
+- Performs a full reversal, not a status flag:
+  - `product.stock_quantity` is restored using the same formulas already
+    used at Releasing handover, and a `product_audit_log` row is written
+    per line (`stock_adjusted`) — a deliberate exception to the rule
+    that routine fulfillment decrements aren't audit-logged, since this
+    is a manual admin action
+  - Any `credit_applied`/`balance_settled` on the transaction is reversed
+    via new compensating `customer_ledger` rows (append-only, same
+    approach as §6b's end-of-day auto-void)
+  - Unclaimed change that had been converted to credit is reversed too
+  - A cascaded child's own credit/balance ledger effects (from
+    resolving its adjustment/refund) are reversed symmetrically
+  - Standalone `balance_settlement` transactions are reversed the same
+    way
+- Writes one `transaction_void_log` row per voided transaction (target
+  plus any cascaded children), attributed to the acting admin's real
+  `user_id` — this is what distinguishes a manual void from a nightly
+  `system_auto_void`-attributed one
+- Also writes a `transaction_audit_log` row per voided transaction, and
+  broadcasts the change to the admin WebSocket room (a completed
+  transaction has already left every team's queue, so no team-queue room
+  needs to hear about it)
+- No schema change was needed — reuses the existing `voided` status value
+  and the `transaction_void_log` table, which previously was only ever
+  written by the nightly auto-void job
+- Frontend: lives in Admin > Transaction History > Transaction Details
+  modal. A completed transaction shows a Void button; once voided, that
+  button is replaced entirely by a Void Logs button
+
+---
+
 ## 7. Payment Team Responsibilities
 
 Payment handles ALL financial decisions:
@@ -566,6 +650,7 @@ TabBar navigation with tabs:
 2. **Transaction History** — ✅ DONE — full list with filters (date, status,
    customer type, customer search), paginated
    - Click row → expand full transaction chain (parent + children)
+   - Cascade void (with password re-auth) added 2026-08-03 — see §6e
 3. **Customers** — ✅ DONE — list with search, click → customer detail +
    "View Details" modal (customer info, balance/credit ledger, full
    transaction history)

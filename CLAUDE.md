@@ -37,6 +37,12 @@ No internet at runtime. No cloud. No external services.
 - Operations screen (`/operations`): built — single-screen, read-only,
   real-time stock monitoring table. No queue, no financial or edit
   actions. See Team Roles and WebSocket Rooms below.
+- Tabulation (Receiver per-unit weight entry, with a read-only Tabulation
+  Logs viewer in Admin > Transaction History): built and live — see
+  Critical Business Rules below.
+- Admin Manual Void (cascade void of completed transactions, password
+  re-auth + reason, full stock/ledger reversal): built and live — see
+  Critical Business Rules below.
 - All 27 client terminals must use Google Chrome (fixed version, auto-update disabled)
 
 ---
@@ -129,6 +135,11 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
 
 ### Transactions — Never Mutate, Always Extend
 - A completed or settled transaction is immutable
+- **Exception (2026-08-03):** Admin can manually void any `completed`
+  transaction via `POST /api/transactions/{id}/void`, gated by admin
+  password re-authentication + a required reason. This is the one
+  deliberate, fully audited exception to immutability — see "Admin Manual
+  Void" below for full behavior.
 - Substandard kilo outcomes always generate a **child transaction** linked via
   `parent_transaction_id` — never edit the original
 - transaction types: `original`, `adjustment`, `refund`, `balance_settlement`
@@ -239,6 +250,36 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   `transaction_item_audit_log` row (`edit_source = 'releasing_item_correction'`)
   on every successful edit — see Database Rules above
 
+### Tabulation (Receiver Per-Unit Weight Entry)
+- Receiver's New Transaction modal supports an optional per-unit weight
+  entry mode ("Tabulation"): instead of typing one QTY (kg) value, the
+  Receiver enters each unit's individual weight (e.g. 5 units at 4kg
+  each) via `TabulationModal.jsx`, launched from `ProductSelector`'s
+  Tabulation button
+- Per-unit values are summed client-side into `quantity_kg` (QTY) as
+  before — QTY still drives `estimated_amount`/subtotal, unchanged
+- The raw per-unit breakdown persists to
+  `transaction_item.tabulation_breakdown` (JSON array, e.g.
+  `[4,4,4,4,4]`) — reference/audit only
+- `tabulation_edited_by_payment` (BOOLEAN, permanent once TRUE) flags an
+  item whose `quantity_kg` was later changed by Payment's Edit Items
+  while `tabulation_breakdown` was non-null. The breakdown itself is NOT
+  cleared when this happens — original tabulated rows stay visible in
+  Tabulation Logs, the flag just signals they may no longer match the
+  current QTY
+- `tabulation_breakdown` is cleared back to NULL only when QTY or Unit
+  Count is hand-edited at Receiver after a Tabulation confirm (breakdown
+  no longer matches the row)
+- Admin > Transaction History > transaction detail (`TransactionDetailsModal.jsx`)
+  includes a read-only "Tabulation Logs" viewer (inline `TabulationLogsModal`
+  component in the same file) showing the per-unit breakdown for tabulated
+  items, linking to "Order Items Update Logs" when
+  `tabulation_edited_by_payment = TRUE`
+- No standalone browsable log screen beyond this per-transaction viewer
+  (same deferred pattern as `transaction_item_audit_log`)
+- Out of scope for now: extending Tabulation entry to Payment's "Add New
+  Item" flow (TODO comment left in code)
+
 ### End-of-Day Auto-Void
 - Scheduled nightly job only — no manual trigger endpoint. Runs from a plain
   asyncio background task started at FastAPI startup (`app/services/
@@ -303,6 +344,49 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   read-only, as a "Payment Resolved" card) → Releasing confirms handover
   (`POST /{id}/confirm-handover`, this is where stock actually leaves) → `completed`
   → disappears from Releasing queue
+
+### Admin Manual Void (exception to transaction immutability)
+- `POST /api/transactions/{id}/void` (admin only) — voids any `completed`
+  transaction
+- Cascades: voiding a parent also voids its completed adjustment/refund
+  children
+- Gated by password re-authentication (admin's own login password) +
+  required free-text reason (min 3 characters)
+  - Wrong password → inline 401 error, does NOT log the admin out
+    (carved out of the global 401 auto-logout interceptor via
+    `REAUTH_401_PATHS` in `frontend/src/services/api.js`), no mutation
+    occurs
+- Full reversal performed, not just a status flag:
+  - `product.stock_quantity` restored using the same formulas already
+    used at Releasing handover, with a new `product_audit_log` row per
+    line (`change_type = 'stock_adjusted'`) — deliberate exception to
+    the "routine decrements aren't audit-logged" rule, since a manual
+    void is a manual admin action
+  - `credit_applied`/`balance_settled` reversed via compensating
+    `customer_ledger` rows (append-only, same pattern as
+    `run_end_of_day_auto_void`)
+  - Cascaded children's `resolve_refund_as_credit`/
+    `resolve_adjustment_as_balance` ledger effects reversed
+    symmetrically
+  - Standalone `balance_settlement` transactions reversed the same way
+  - Unclaimed cash that became credit (`change_given`/`change_claimed`)
+    is also reversed
+- Writes one `transaction_void_log` row per voided transaction (target +
+  cascaded children), attributed to the real admin's `user_id` —
+  distinguishes it from `system_auto_void`-attributed nightly auto-voids
+- Also writes an inline `transaction_audit_log` row per voided
+  transaction
+- Broadcasts to the `admin` WebSocket room (`transaction_voided` event
+  never touches a team-queue room — a `completed` transaction has
+  already left every team's queue)
+- No schema change required — reuses existing
+  `transaction_status_enum.voided` and the existing `transaction_void_log`
+  table (previously written only by the nightly auto-void job)
+- Frontend: lives in Admin > Transaction History > Transaction Details
+  modal (`TransactionDetailsModal.jsx`). Void button (completed
+  transactions only) is replaced entirely by a Void Logs button once a
+  transaction is voided
+- Implementation: `void_transaction` in `transaction_service.py`
 
 ### Payment Draft Entries
 - Payment entries are saved as drafts (`is_draft = TRUE` in `payment_detail`)
@@ -519,6 +603,8 @@ provisioned databases — see Deployment Status below.
     transaction (plain online flow, no variance) → `completed` (releasing)
   - `POST /{id}/resolve-as-credit` — resolve a `refund`-type child as customer
     credit (payment only, `pending_payment` only, no payment method involved)
+  - `POST /{id}/void` — void a completed transaction, cascades to
+    completed children, password re-auth + reason required (admin)
 
   **Products** (`products.py`, prefix `/api/products`)
   - `GET /` — list (active-only unless caller is releasing/admin)
@@ -704,7 +790,11 @@ lash-meatshop-pos/
     │   ├── components/
     │   │   ├── admin/         ← DashboardSection, TopProductsChart, CustomersSection,
     │   │   │                     CustomerDetailPanel, ProductsSection, TransactionsSection,
-    │   │   │                     TransactionChainDetails, TabBar, QueueMonitorSection (unwired)
+    │   │   │                     TransactionChainDetails, TransactionDetailsModal (also hosts
+    │   │   │                     the inline Tabulation Logs viewer — TabulationLogsModal/
+    │   │   │                     TabulationLogsListRow/TabulationLogsDetail, not separate
+    │   │   │                     files), VoidTransactionModal, VoidLogsModal, TabBar,
+    │   │   │                     QueueMonitorSection (unwired)
     │   │   ├── inventory/     ← AdjustStockModal, ChangeHistoryModal, InventoryView
     │   │   │                     (shared by Releasing's Inventory tab and Admin's Products tab)
     │   │   ├── layout/        ← Navbar, PageLayout
@@ -718,7 +808,7 @@ lash-meatshop-pos/
     │   │   │                     PaymentConfirmedModal
     │   │   ├── ui/            ← Badge, Button, Card, FullScreenModal, Input, Modal, Toast
     │   │   ├── walkin/        ← CreateTransactionModal, CustomerSelector, AddCustomerModal,
-    │   │   │                     ProductSelector, OrderSummaryPanel
+    │   │   │                     ProductSelector, TabulationModal, OrderSummaryPanel
     │   │   ├── ErrorBoundary.jsx
     │   │   └── ProtectedRoute.jsx
     │   ├── hooks/
