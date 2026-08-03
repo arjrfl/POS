@@ -32,9 +32,9 @@ export default function WalkIn() {
   return (
     <PageLayout title="Receiver">
       <div className="h-full flex flex-col min-h-0">
-        <div className="flex-shrink-0 flex items-center justify-between mb-4">
+        <div className="flex-shrink-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <h1 className="text-lg font-semibold text-gray-900">Receiver</h1>
-          <Button type="button" onClick={() => setCreateOpen(true)}>
+          <Button type="button" className="w-full sm:w-auto" onClick={() => setCreateOpen(true)}>
             + Create Transaction
           </Button>
         </div>

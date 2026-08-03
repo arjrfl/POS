@@ -114,26 +114,28 @@ export function OrderSummaryPanel({
 
       <div className="flex-1 min-h-0 overflow-y-auto border-t border-gray-200 mb-4">
         {balanceSettlementRow ? (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-white">
-              <tr className="text-left text-gray-500 border-b border-gray-200">
-                <th className="py-2 pr-2 font-medium">QTY</th>
-                <th className="py-2 pr-2 font-medium">UNIT</th>
-                <th className="py-2 pr-2 font-medium">ARTICLES</th>
-                <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
-                <th className="py-2 pr-2 font-medium">AMOUNT</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="align-top">
-                <td className="py-2 pr-2 text-gray-400">—</td>
-                <td className="py-2 pr-2 text-gray-400">—</td>
-                <td className="py-2 pr-2 text-gray-500 italic">Balance Settlement</td>
-                <td className="py-2 pr-2 text-gray-400">—</td>
-                <td className="py-2 pr-2 font-medium text-red-600">{formatCurrency(total)}</td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white">
+                <tr className="text-left text-gray-500 border-b border-gray-200">
+                  <th className="py-2 pr-2 font-medium">QTY</th>
+                  <th className="py-2 pr-2 font-medium">UNIT</th>
+                  <th className="py-2 pr-2 font-medium">ARTICLES</th>
+                  <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
+                  <th className="py-2 pr-2 font-medium">AMOUNT</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="align-top">
+                  <td className="py-2 pr-2 text-gray-400">—</td>
+                  <td className="py-2 pr-2 text-gray-400">—</td>
+                  <td className="py-2 pr-2 text-gray-500 italic">Balance Settlement</td>
+                  <td className="py-2 pr-2 text-gray-400">—</td>
+                  <td className="py-2 pr-2 font-medium text-red-600">{formatCurrency(total)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         ) : itemsTable ? (
           <table className="w-full table-fixed text-sm">
             <thead className="sticky top-0 bg-white">
@@ -150,61 +152,63 @@ export function OrderSummaryPanel({
         ) : items.length === 0 ? (
           <p className="py-4 text-sm text-gray-500">No items added yet.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-white">
-              <tr className="text-left text-gray-500 border-b border-gray-200">
-                <th className="py-2 pr-2 font-medium">QTY</th>
-                <th className="py-2 pr-2 font-medium">UNIT</th>
-                <th className="py-2 pr-2 font-medium">ARTICLES</th>
-                <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
-                <th className="py-2 pr-2 font-medium">AMOUNT</th>
-                {!readOnly && <th className="py-2"></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr
-                  key={item.id}
-                  className={`border-b border-gray-100 last:border-b-0 align-top ${
-                    item.id === editingRowId ? 'bg-blue-50 border-l-4 border-l-blue-400' : ''
-                  }`}
-                >
-                  <td className="py-2 pr-2 text-gray-700">{Number(item.quantity_kg).toFixed(3)}</td>
-                  <td className="py-2 pr-2 text-gray-700">{item.unit_count}</td>
-                  <td className="py-2 pr-2">
-                    <div className="font-medium text-gray-900">{item.product_name}</div>
-                    {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
-                  </td>
-                  <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
-                  <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
-                  {!readOnly && (
-                    <td className="py-2 pl-1">
-                      <div className="flex items-center gap-2">
-                        {onEditItem && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white">
+                <tr className="text-left text-gray-500 border-b border-gray-200">
+                  <th className="py-2 pr-2 font-medium">QTY</th>
+                  <th className="py-2 pr-2 font-medium">UNIT</th>
+                  <th className="py-2 pr-2 font-medium">ARTICLES</th>
+                  <th className="py-2 pr-2 font-medium">UNIT PRICE</th>
+                  <th className="py-2 pr-2 font-medium">AMOUNT</th>
+                  {!readOnly && <th className="py-2"></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr
+                    key={item.id}
+                    className={`border-b border-gray-100 last:border-b-0 align-top ${
+                      item.id === editingRowId ? 'bg-blue-50 border-l-4 border-l-blue-400' : ''
+                    }`}
+                  >
+                    <td className="py-2 pr-2 text-gray-700">{Number(item.quantity_kg).toFixed(3)}</td>
+                    <td className="py-2 pr-2 text-gray-700">{item.unit_count}</td>
+                    <td className="py-2 pr-2">
+                      <div className="font-medium text-gray-900">{item.product_name}</div>
+                      {item.brand_name && <div className="text-xs text-gray-500">{item.brand_name}</div>}
+                    </td>
+                    <td className="py-2 pr-2 text-gray-700">{formatCurrency(item.unit_price)}</td>
+                    <td className="py-2 pr-2 font-medium text-gray-900">{formatCurrency(item.subtotal)}</td>
+                    {!readOnly && (
+                      <td className="py-2 pl-1">
+                        <div className="flex items-center gap-2">
+                          {onEditItem && (
+                            <button
+                              type="button"
+                              onClick={() => onEditItem(item.id)}
+                              className="text-gray-500 hover:text-gray-700"
+                              aria-label="Edit item"
+                            >
+                              <PencilIcon />
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => onEditItem(item.id)}
-                            className="text-gray-500 hover:text-gray-700"
-                            aria-label="Edit item"
+                            onClick={() => onRemoveItem(item.id)}
+                            className="text-red-600 hover:text-red-800"
+                            aria-label="Remove item"
                           >
-                            <PencilIcon />
+                            <TrashIcon />
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onRemoveItem(item.id)}
-                          className="text-red-600 hover:text-red-800"
-                          aria-label="Remove item"
-                        >
-                          <TrashIcon />
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
