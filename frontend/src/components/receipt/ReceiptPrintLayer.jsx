@@ -35,7 +35,11 @@ export function ReceiptPrintLayer() {
       {transactions.map((transaction, index) => (
         <div key={transaction.id} className={index < transactions.length - 1 ? 'receipt-page-break' : undefined}>
           {transaction.__pageType === 'tabulation-logs' ? (
-            <TabulationLogsReceipt orderNumber={transaction.order_number} items={transaction.items} />
+            <TabulationLogsReceipt
+              orderNumber={transaction.order_number}
+              receiverName={transaction.receiver_name}
+              items={transaction.items}
+            />
           ) : (
             <OrderSlipReceipt transaction={transaction} tin={tin} busStyle={busStyle} />
           )}

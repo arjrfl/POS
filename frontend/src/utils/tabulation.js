@@ -11,6 +11,7 @@ export function buildTabulationLogsPageEntry(transaction) {
     id: `${transaction.id}-tabulation-logs`,
     __pageType: 'tabulation-logs',
     order_number: transaction.order_number,
+    receiver_name: transaction.walkin_user_name,
     items: (transaction.items ?? []).filter(hasTabulationBreakdown),
   }
 }

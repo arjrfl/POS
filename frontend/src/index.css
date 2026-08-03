@@ -54,6 +54,15 @@
   break-inside: avoid;
 }
 
+/* Keeps a single Tabulation Logs item card from splitting across a physical
+   page break when the page itself overflows onto multiple printed sheets —
+   independent of .receipt-page-break above, which only forces breaks
+   between whole pages (original/child/tabulation-logs), not within one. */
+.tabulation-item-card {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
 /* Forces a fresh page before the next receipt in a multi-page print job
    (original + its linked adjustment/refund child) — applied to every page
    except the last, see ReceiptPrintLayer. */
