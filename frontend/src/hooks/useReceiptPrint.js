@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { get } from '../services/api'
 import { useReceiptPrintStore } from '../store/receiptPrintStore'
+import { transactionHasTabulation, buildTabulationLogsPageEntry } from '../utils/tabulation'
 
 const ADJUSTMENT_TYPES = new Set(['adjustment', 'refund'])
 
@@ -56,6 +57,15 @@ export function useReceiptPrint() {
       // Original first, child second — same page order regardless of which
       // of the two the user actually clicked Print on.
       const printables = childTxn ? [originalTxn, buildChildPrintable(childTxn, originalTxn)] : [originalTxn]
+
+      // Tabulation Logs page always last, and always sourced from the
+      // original's own items (tabulation only ever happens at Receiver, on
+      // the original transaction) — appended regardless of which of the
+      // original/child the user printed from.
+      if (transactionHasTabulation(originalTxn.items)) {
+        printables.push(buildTabulationLogsPageEntry(originalTxn))
+      }
+
       triggerPrint(printables, tin, busStyle)
     } finally {
       setPrinting(false)

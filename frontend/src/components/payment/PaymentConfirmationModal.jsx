@@ -10,6 +10,7 @@ import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
 import { useReceiptPrintStore } from '../../store/receiptPrintStore'
+import { transactionHasTabulation, buildTabulationLogsPageEntry } from '../../utils/tabulation'
 
 const EPS = 0.005
 
@@ -100,7 +101,12 @@ export function PaymentConfirmationModal({
       // app-root ReceiptPrintLayer (unaffected by this modal closing) picks
       // it up and calls window.print() on its own next frame — so closing
       // via onDone below does not wait on the print dialog being dismissed.
-      if (action === 'print') triggerPrint([paid])
+      if (action === 'print') {
+        const printables = transactionHasTabulation(paid.items)
+          ? [paid, buildTabulationLogsPageEntry(paid)]
+          : [paid]
+        triggerPrint(printables)
+      }
       onDone(paid)
     } catch (err) {
       setError(err.message)

@@ -17,6 +17,7 @@ import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
 import { formatCurrency } from '../../utils/format'
 import { getDisplayStatus, isViewablePaymentStatus } from '../../utils/transactionStatus'
+import { hasTabulationBreakdown } from '../../utils/tabulation'
 
 const ARTICLE_TABLE_COLUMNS = ['QTY', 'UNIT', 'ARTICLES', 'UNIT PRICE', 'AMOUNT']
 const PAYMENT_ENTRY_LABELS = { ...PAYMENT_METHOD_LABEL, credit: 'Credit' }
@@ -701,15 +702,6 @@ function PrintReceiptButton({ transaction }) {
       />
     </>
   )
-}
-
-// True when an item still carries a valid (non-cleared) breakdown from
-// Receiver's Tabulation modal — see database/schema.sql's tabulation_breakdown
-// column comment. Payment's Edit Items clears this to NULL the moment
-// quantity_kg is actually changed (see edit_transaction_items), so an empty
-// array is never stored, but the length check is kept as a defensive floor.
-function hasTabulationBreakdown(item) {
-  return Array.isArray(item.tabulation_breakdown) && item.tabulation_breakdown.length > 0
 }
 
 // Print + (conditionally) Tabulation Logs, side by side — same shared
