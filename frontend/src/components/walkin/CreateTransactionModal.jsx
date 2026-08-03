@@ -291,7 +291,7 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
         }
       >
         <div className="flex flex-col lg:flex-row gap-6 h-full min-h-0 overflow-y-auto lg:overflow-visible">
-          <div className="order-3 lg:order-1 lg:flex-1 lg:min-w-0 h-full min-h-0">
+          <div className="order-3 lg:order-1 lg:flex-1 lg:min-w-0 lg:h-full lg:min-h-0">
             <button
               type="button"
               onClick={() => setIsReferenceExpanded((prev) => !prev)}
@@ -300,12 +300,12 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
               <span>Product Reference</span>
               <span>{isReferenceExpanded ? '▾ Hide' : '▸ Show'}</span>
             </button>
-            <div className={`${isReferenceExpanded ? 'block' : 'hidden'} lg:block h-full min-h-0`}>
+            <div className={`${isReferenceExpanded ? 'block' : 'hidden'} lg:block lg:h-full lg:min-h-0`}>
               <ProductReferenceTable />
             </div>
           </div>
 
-          <div className="order-1 lg:order-2 flex flex-col gap-6 lg:w-80 lg:shrink-0 h-full min-h-0 overflow-y-auto pr-2">
+          <div className="order-1 lg:order-2 flex flex-col gap-6 lg:w-80 lg:shrink-0 lg:h-full lg:min-h-0 lg:overflow-y-auto pr-2">
             <div>
               <CustomerSelector value={customer} onSelect={handleSelectCustomer} onClear={requestClearCustomer} />
 
@@ -382,7 +382,7 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
             </div>
           </div>
 
-          <div className="order-2 lg:order-3 lg:w-1/2 lg:shrink-0 h-full min-h-0">
+          <div className="order-2 lg:order-3 lg:w-1/2 lg:shrink-0 lg:h-full lg:min-h-0">
             <OrderSummaryPanel
               customer={customer}
               customerType={customerType}
