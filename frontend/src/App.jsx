@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ReceiptPrintLayer } from './components/receipt/ReceiptPrintLayer'
+import { ThermalPrintLayer } from './components/receipt/ThermalPrintLayer'
 import Login from './pages/Login'
 import WalkIn from './pages/WalkIn'
 import Payment from './pages/Payment'
@@ -66,6 +67,7 @@ function App() {
         />
       </Routes>
       <ReceiptPrintLayer />
+      <ThermalPrintLayer />
     </>
   )
 }

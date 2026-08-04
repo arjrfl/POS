@@ -11,6 +11,7 @@ import { formatCurrency } from '../../utils/format'
 import { CUSTOMER_TYPE_LABEL } from '../../utils/customerType'
 import { generateId } from '../../utils/id'
 import { useAuthStore } from '../../store/authStore'
+import { useThermalPrintStore } from '../../store/thermalPrintStore'
 import { loadReceiverDraft, saveReceiverDraft, clearReceiverDraft } from '../../utils/receiverDraft'
 
 function initialState(draft) {
@@ -34,6 +35,11 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [confirmation, setConfirmation] = useState(null)
+  // Raw POST /transactions response, kept alongside confirmation's derived
+  // summary fields — Print Order Slip needs the full items array (product
+  // names, QTY, subtotals) which confirmation deliberately doesn't carry.
+  const [lastCreatedTransaction, setLastCreatedTransaction] = useState(null)
+  const triggerThermalPrint = useThermalPrintStore((state) => state.triggerThermalPrint)
   const [changeGuard, setChangeGuard] = useState(null) // null | 'customer' | 'customer_type'
   const [discardGuard, setDiscardGuard] = useState(false)
   const [settleOnlyGuard, setSettleOnlyGuard] = useState(false)
@@ -65,6 +71,7 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
     setEditingRowId(null)
     setError('')
     setConfirmation(null)
+    setLastCreatedTransaction(null)
     setChangeGuard(null)
     setDiscardGuard(false)
     setSettleOnlyGuard(false)
@@ -223,6 +230,7 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
         customer_type: customerType,
         is_balance_settlement: settleOnly,
       })
+      setLastCreatedTransaction(transaction)
       onCreated()
     } catch (err) {
       // Backend rejection (e.g. unpriced product, insufficient stock) — surfaced
@@ -232,6 +240,10 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handlePrintOrderSlip = () => {
+    triggerThermalPrint(lastCreatedTransaction)
   }
 
   const handleCloseConfirmation = () => {
@@ -492,7 +504,15 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
             <p className="text-sm text-gray-600 mt-2 pt-2 border-t border-gray-200">
               Customer directed to Payment team to complete the balance settlement.
             </p>
-            <Button className="mt-4" onClick={resetForm}>
+            <Button
+              variant="outline"
+              className="mt-4"
+              disabled={!lastCreatedTransaction}
+              onClick={handlePrintOrderSlip}
+            >
+              Print Order Slip
+            </Button>
+            <Button className="mt-2" onClick={resetForm}>
               New Transaction
             </Button>
           </div>
@@ -509,7 +529,15 @@ export function CreateTransactionModal({ open, onClose, onCreated, showToast }) 
                 ? 'Customer directed to Payment team'
                 : 'Order sent to Releasing team'}
             </p>
-            <div className="flex gap-2 mt-4">
+            <Button
+              variant="outline"
+              className="mt-4"
+              disabled={!lastCreatedTransaction}
+              onClick={handlePrintOrderSlip}
+            >
+              Print Order Slip
+            </Button>
+            <div className="flex gap-2 mt-2">
               <Button className="flex-1" onClick={resetForm}>
                 New Transaction
               </Button>
