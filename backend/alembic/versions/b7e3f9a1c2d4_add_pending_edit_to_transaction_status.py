@@ -20,7 +20,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.execute("ALTER TYPE transaction_status_enum ADD VALUE IF NOT EXISTS 'pending_edit'")
+    # Postgres forbids referencing a value added via ALTER TYPE ... ADD VALUE
+    # within the same transaction that added it (see 9c4f2a7e5d3b's safety-check
+    # SELECT against 'pending_edit'). Historically these ran as separate
+    # `alembic upgrade head` invocations days apart, so this never surfaced —
+    # it only does when the full chain replays in one shot (e.g. from empty).
+    # autocommit_block() commits this statement immediately, outside the
+    # ambient migration transaction, before resuming it for later migrations.
+    with op.get_context().autocommit_block():
+        op.execute("ALTER TYPE transaction_status_enum ADD VALUE IF NOT EXISTS 'pending_edit'")
 
 
 def downgrade() -> None:

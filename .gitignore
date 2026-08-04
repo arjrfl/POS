@@ -17,6 +17,11 @@ frontend/dist/
 # Docker / backups
 backups/
 
+# Load test tooling (loadtest/)
+loadtest/loadtest_data.json
+loadtest/venv/
+loadtest/*.csv
+
 # IDE / OS
 .vscode/
 .DS_Store

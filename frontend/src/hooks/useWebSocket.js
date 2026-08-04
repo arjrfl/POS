@@ -11,6 +11,7 @@ const ROLE_ROOM = {
   releasing: 'releasing-queue',
   admin: 'admin',
   receiver: 'receiver',
+  operations: 'operations',
 }
 
 export function useWebSocket() {

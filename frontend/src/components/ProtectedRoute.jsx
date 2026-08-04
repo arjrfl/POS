@@ -6,6 +6,7 @@ export const ROLE_HOME = {
   payment: '/payment',
   releasing: '/releasing',
   admin: '/admin',
+  operations: '/operations',
 }
 
 export function ProtectedRoute({ role, children }) {

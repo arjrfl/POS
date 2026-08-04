@@ -163,6 +163,20 @@ export default function Payment() {
     }
   }
 
+  const handleSaveAsBalance = async () => {
+    try {
+      await post(`/transactions/${selectedTransaction.id}/resolve-as-balance`)
+      showToast(
+        `${formatCurrency(selectedTransaction.total_due)} added to ${selectedCustomer?.full_name}'s balance`,
+        'success',
+      )
+      setSelectedTransaction(null)
+      refreshQueue()
+    } catch (err) {
+      showToast(err.message, 'error')
+    }
+  }
+
   return (
     <PageLayout
       title="Payment Queue"
@@ -225,6 +239,7 @@ export default function Payment() {
                 onPay={() => setPayModalOpen(true)}
                 onPark={handlePark}
                 onSaveAsCredit={handleSaveAsCredit}
+                onSaveAsBalance={handleSaveAsBalance}
                 onItemsUpdated={handleItemsUpdated}
                 onItemsReverted={handleItemsReverted}
               />

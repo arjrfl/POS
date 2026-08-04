@@ -34,6 +34,15 @@ No internet at runtime. No cloud. No external services.
   components (`frontend/src/components/inventory/`); changes made in either
   screen broadcast live to both.
 - Batch 5 (production readiness): NOT YET DONE
+- Operations screen (`/operations`): built — single-screen, read-only,
+  real-time stock monitoring table. No queue, no financial or edit
+  actions. See Team Roles and WebSocket Rooms below.
+- Tabulation (Receiver per-unit weight entry, with a read-only Tabulation
+  Logs viewer in Admin > Transaction History): built and live — see
+  Critical Business Rules below.
+- Admin Manual Void (cascade void of completed transactions, password
+  re-auth + reason, full stock/ledger reversal): built and live — see
+  Critical Business Rules below.
 - All 27 client terminals must use Google Chrome (fixed version, auto-update disabled)
 
 ---
@@ -46,6 +55,7 @@ No internet at runtime. No cloud. No external services.
 | `payment` | `payment` | Processes payment (cash/online/split), can park transactions, handles balance/credit decisions |
 | `releasing` | `releasing` | Confirms actual item weight, sends variance to Payment — NO financial decisions |
 | `admin` | `admin` | Full visibility — queues, reports, audit log, customer ledger |
+| `operations` | `operations` | Read-only, real-time stock monitoring only — no financial or edit actions, no queue |
 
 `role_id` on `"user"` is set once at account creation (`POST /api/users`) and
 is immutable afterward — `PATCH /api/users/{id}` only accepts `full_name` and
@@ -125,6 +135,11 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
 
 ### Transactions — Never Mutate, Always Extend
 - A completed or settled transaction is immutable
+- **Exception (2026-08-03):** Admin can manually void any `completed`
+  transaction via `POST /api/transactions/{id}/void`, gated by admin
+  password re-authentication + a required reason. This is the one
+  deliberate, fully audited exception to immutability — see "Admin Manual
+  Void" below for full behavior.
 - Substandard kilo outcomes always generate a **child transaction** linked via
   `parent_transaction_id` — never edit the original
 - transaction types: `original`, `adjustment`, `refund`, `balance_settlement`
@@ -169,6 +184,12 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
 - `payment-queue` → payment role only
 - `releasing-queue` → releasing role only
 - `admin` → admin role only
+- `operations` → operations role only. Receives `product_changed` (manual
+  Inventory CRUD: create/update/adjust-stock/deactivate/reactivate/deleted)
+  and `product_stock_changed` (routine sale-driven stock decrements at
+  confirm-items-ready/complete-exact/confirm-handover — does NOT write a
+  `product_audit_log` row, per the existing locked rule that routine
+  fulfillment decrements are not audit-logged)
 
 ### Customer Balance/Credit — Role Separation
 - `customer.net_balance`: positive = credit, negative = balance/utang
@@ -228,6 +249,36 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
 - Audit logging: this endpoint (like Payment's Edit Items) writes a
   `transaction_item_audit_log` row (`edit_source = 'releasing_item_correction'`)
   on every successful edit — see Database Rules above
+
+### Tabulation (Receiver Per-Unit Weight Entry)
+- Receiver's New Transaction modal supports an optional per-unit weight
+  entry mode ("Tabulation"): instead of typing one QTY (kg) value, the
+  Receiver enters each unit's individual weight (e.g. 5 units at 4kg
+  each) via `TabulationModal.jsx`, launched from `ProductSelector`'s
+  Tabulation button
+- Per-unit values are summed client-side into `quantity_kg` (QTY) as
+  before — QTY still drives `estimated_amount`/subtotal, unchanged
+- The raw per-unit breakdown persists to
+  `transaction_item.tabulation_breakdown` (JSON array, e.g.
+  `[4,4,4,4,4]`) — reference/audit only
+- `tabulation_edited_by_payment` (BOOLEAN, permanent once TRUE) flags an
+  item whose `quantity_kg` was later changed by Payment's Edit Items
+  while `tabulation_breakdown` was non-null. The breakdown itself is NOT
+  cleared when this happens — original tabulated rows stay visible in
+  Tabulation Logs, the flag just signals they may no longer match the
+  current QTY
+- `tabulation_breakdown` is cleared back to NULL only when QTY or Unit
+  Count is hand-edited at Receiver after a Tabulation confirm (breakdown
+  no longer matches the row)
+- Admin > Transaction History > transaction detail (`TransactionDetailsModal.jsx`)
+  includes a read-only "Tabulation Logs" viewer (inline `TabulationLogsModal`
+  component in the same file) showing the per-unit breakdown for tabulated
+  items, linking to "Order Items Update Logs" when
+  `tabulation_edited_by_payment = TRUE`
+- No standalone browsable log screen beyond this per-transaction viewer
+  (same deferred pattern as `transaction_item_audit_log`)
+- Out of scope for now: extending Tabulation entry to Payment's "Add New
+  Item" flow (TODO comment left in code)
 
 ### End-of-Day Auto-Void
 - Scheduled nightly job only — no manual trigger endpoint. Runs from a plain
@@ -294,6 +345,49 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   (`POST /{id}/confirm-handover`, this is where stock actually leaves) → `completed`
   → disappears from Releasing queue
 
+### Admin Manual Void (exception to transaction immutability)
+- `POST /api/transactions/{id}/void` (admin only) — voids any `completed`
+  transaction
+- Cascades: voiding a parent also voids its completed adjustment/refund
+  children
+- Gated by password re-authentication (admin's own login password) +
+  required free-text reason (min 3 characters)
+  - Wrong password → inline 401 error, does NOT log the admin out
+    (carved out of the global 401 auto-logout interceptor via
+    `REAUTH_401_PATHS` in `frontend/src/services/api.js`), no mutation
+    occurs
+- Full reversal performed, not just a status flag:
+  - `product.stock_quantity` restored using the same formulas already
+    used at Releasing handover, with a new `product_audit_log` row per
+    line (`change_type = 'stock_adjusted'`) — deliberate exception to
+    the "routine decrements aren't audit-logged" rule, since a manual
+    void is a manual admin action
+  - `credit_applied`/`balance_settled` reversed via compensating
+    `customer_ledger` rows (append-only, same pattern as
+    `run_end_of_day_auto_void`)
+  - Cascaded children's `resolve_refund_as_credit`/
+    `resolve_adjustment_as_balance` ledger effects reversed
+    symmetrically
+  - Standalone `balance_settlement` transactions reversed the same way
+  - Unclaimed cash that became credit (`change_given`/`change_claimed`)
+    is also reversed
+- Writes one `transaction_void_log` row per voided transaction (target +
+  cascaded children), attributed to the real admin's `user_id` —
+  distinguishes it from `system_auto_void`-attributed nightly auto-voids
+- Also writes an inline `transaction_audit_log` row per voided
+  transaction
+- Broadcasts to the `admin` WebSocket room (`transaction_voided` event
+  never touches a team-queue room — a `completed` transaction has
+  already left every team's queue)
+- No schema change required — reuses existing
+  `transaction_status_enum.voided` and the existing `transaction_void_log`
+  table (previously written only by the nightly auto-void job)
+- Frontend: lives in Admin > Transaction History > Transaction Details
+  modal (`TransactionDetailsModal.jsx`). Void button (completed
+  transactions only) is replaced entirely by a Void Logs button once a
+  transaction is voided
+- Implementation: `void_transaction` in `transaction_service.py`
+
 ### Payment Draft Entries
 - Payment entries are saved as drafts (`is_draft = TRUE` in `payment_detail`)
 - Drafts persist through park/unpark cycles
@@ -327,6 +421,17 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
 - Never assume a UI prompt "worked" from Claude Code's own summary —
   always confirm against http://localhost (real nginx), and expect the
   one-extra-reload SW quirk before flagging something as still broken.
+- Production is served over plain HTTP (no TLS) — decided over
+  self-signed HTTPS to keep LAN setup simple, since this is a closed
+  offline network. Because Chrome only registers Service Workers on a
+  secure context (HTTPS or localhost), and production runs on
+  http://meatshop.local (not localhost), every terminal's Chrome must
+  launch with --unsafely-treat-insecure-origin-as-secure covering
+  http://meatshop.local and http://192.168.1.58 (see
+  deployment/launch-chrome-terminal.bat) — otherwise the PWA's LAN
+  reconnect/service worker behavior silently fails to register in
+  production even though it works fine in dev (dev's http://localhost
+  gets Chrome's built-in secure-context exemption for free).
 
 ---
 
@@ -362,6 +467,76 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
   `audit_change_type_enum` above, which only tracks `transaction_status`/
   `queue_status` phase moves — the two audit systems never share rows,
   columns, or enum values. No UI currently reads this table.
+- **Fresh-install fix (2026-07-29):** `transaction_item_audit_log` was
+  previously positioned before `sales_transaction` in `schema.sql`, so its
+  `FOREIGN KEY` to `sales_transaction(id)` failed on any genuinely
+  fresh/empty database install. This was invisible in existing dev
+  databases because that table was added via Alembic migration against an
+  already-existing database — Alembic doesn't care about `schema.sql`'s
+  file order the way running the script top-to-bottom does. Fixed by
+  repositioning the table definition after `sales_transaction`/
+  `transaction_item`. Fresh-install correctness of `schema.sql` was then
+  verified end-to-end against a scratch empty-DB container (see
+  Deployment Status below).
+
+### Schema/Alembic Parity Verification
+Whenever schema.sql OR any Alembic migration file changes, run
+`scripts/verify-schema-parity.ps1` before committing. This builds two
+fully throwaway databases — one from schema.sql directly (the real
+fresh-install path), one from `alembic upgrade head` against a truly
+empty DB — and diffs the resulting schemas structurally. A passing run
+is a prerequisite for merging any schema-changing prompt. This replaces
+the previous ad hoc "spin up a scratch empty-DB container" step used to
+verify the 2026-07-29 transaction_item_audit_log FK-ordering fix, making
+it a standing, repeatable, mandatory check instead of a one-off.
+
+**Resolved 2026-07-29:** a baseline migration (`101b1dc45309_baseline_initial_schema`)
+was added as the new true root of the chain (`down_revision=None`;
+`1315883b38d2` — the old root — now points to it), making the chain
+fully replayable from empty. `verify-schema-parity.ps1` now passes both
+paths cleanly with zero diff. Two existing migrations
+(`b7e3f9a1c2d4`, `9c4f2a7e5d3b`) also needed
+`op.get_context().autocommit_block()` around their `'pending_edit'`
+enum add/check — Postgres won't let a value added via `ALTER TYPE ...
+ADD VALUE` be referenced until that add commits, which only surfaced
+when the full chain runs as a single `alembic upgrade head` transaction
+(never attempted before this baseline existed). Zero effect on already-
+provisioned databases — see Deployment Status below.
+
+---
+
+## Deployment Status
+
+- Production server PC: static IP `192.168.1.58` (manually assigned,
+  DHCP disabled). Intended hostname `http://meatshop.local` — requires a
+  manual `hosts` file entry added individually on each of the 27
+  terminals; not automatic.
+- As of 2026-07-29: a TEST deployment is in progress on this server,
+  running from the `staging` branch — not yet a full go-live to all 27
+  terminals.
+- Deployed via manual command relay: Claude Code Desktop is deliberately
+  NOT installed on the server PC (kept minimal footprint). Commands are
+  written in the planning chat and run manually on the server via
+  TeamViewer, one step at a time.
+- Fresh secrets (`DB_PASSWORD`, `SECRET_KEY`) were generated directly on
+  the server itself — never shared with or stored in the dev environment.
+- Backup destination: RESOLVED — relying solely on the existing docker
+  `backup` container's nightly local `pg_dump` (writes to ./backups on
+  the same server PC/drive as pgdata). No USB/NAS/off-site backup will
+  be configured. This is a deliberate, client-informed decision, not an
+  oversight. Accepted risk: this does not protect against the server's
+  drive failing, or the server PC itself being lost, stolen, or damaged
+  (fire, flood, etc.) — only against bad data, accidental deletes, bad
+  migrations, or Postgres container corruption.
+- ⚠️ Backend port 8000 is directly exposed in `docker-compose.yml`
+  alongside nginx's port 80 — bypasses nginx entirely. Flagged for the
+  still-deferred CORS/environment hardening Batch 5 item (see Open Items
+  in `PROJECT_CONTEXT.md`).
+- CORS hardening: env-driven allow_origins implemented on dev/staging
+  (CORS_ALLOWED_ORIGINS env var, no wildcard fallback). Still needs
+  CORS_ALLOWED_ORIGINS=http://meatshop.local,http://192.168.1.58 added
+  to the server's .env — pending, to be done on SERVER PC alongside the
+  remaining deployment steps.
 
 ---
 
@@ -428,6 +603,8 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
     transaction (plain online flow, no variance) → `completed` (releasing)
   - `POST /{id}/resolve-as-credit` — resolve a `refund`-type child as customer
     credit (payment only, `pending_payment` only, no payment method involved)
+  - `POST /{id}/void` — void a completed transaction, cascades to
+    completed children, password re-auth + reason required (admin)
 
   **Products** (`products.py`, prefix `/api/products`)
   - `GET /` — list (active-only unless caller is releasing/admin)
@@ -535,6 +712,16 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
     acting user's role ("Releasing" or "Admin"). Not admin-only — both
     screens read/write the same rows and stay in sync via the
     `product_changed` WebSocket broadcast
+- Operations screen (`/operations`): single full-width panel — no 60/40
+  queue/order-details split (no queue concept for this role). Read-only
+  `OperationsStockTable` (`components/operations/`) — client-side search
+  by product name, low-stock row highlighting via a frontend-only
+  `LOW_STOCK_THRESHOLD` constant (placeholder value, NOT a schema/DB
+  field — adjust the constant directly if the real business threshold
+  differs). Live updates via the `operations` WebSocket room
+  (`useOperationsLiveSync.js`), debounced ~300–500ms, no toast on
+  refetch. No edit/adjust-stock/toggle-status actions of any kind.
+  Navbar shows chrome only — no tabs, no queue links.
 - No page scroll on any screen — panels scroll internally only
 - All screens: 60% left (queue) / 40% right (order details) split
 - Queue panels: `bg-gray-100 border border-brand-black/20 rounded-lg`
@@ -563,6 +750,7 @@ Explicitly excluded from the brand palette — leave these exactly as-is:
 | releasing_user2 | releasing |
 | releasing_user3 | releasing |
 | admin_user | admin |
+| operations_user | operations |
 | system_auto_void | admin (system-only — `is_active = FALSE`, cannot log in; exists only for end-of-day auto-void attribution; never delete or reactivate) |
 
 ---
@@ -597,14 +785,20 @@ lash-meatshop-pos/
     │   │   ├── WalkIn.jsx     ← Receiver screen
     │   │   ├── Payment.jsx
     │   │   ├── Releasing.jsx
-    │   │   └── Admin.jsx      ← Admin screen (Dashboard/Customers/Products/Transaction History)
+    │   │   ├── Admin.jsx      ← Admin screen (Dashboard/Customers/Products/Transaction History)
+    │   │   └── Operations.jsx   ← Operations screen (stock monitor)
     │   ├── components/
     │   │   ├── admin/         ← DashboardSection, TopProductsChart, CustomersSection,
     │   │   │                     CustomerDetailPanel, ProductsSection, TransactionsSection,
-    │   │   │                     TransactionChainDetails, TabBar, QueueMonitorSection (unwired)
+    │   │   │                     TransactionChainDetails, TransactionDetailsModal (also hosts
+    │   │   │                     the inline Tabulation Logs viewer — TabulationLogsModal/
+    │   │   │                     TabulationLogsListRow/TabulationLogsDetail, not separate
+    │   │   │                     files), VoidTransactionModal, VoidLogsModal, TabBar,
+    │   │   │                     QueueMonitorSection (unwired)
     │   │   ├── inventory/     ← AdjustStockModal, ChangeHistoryModal, InventoryView
     │   │   │                     (shared by Releasing's Inventory tab and Admin's Products tab)
     │   │   ├── layout/        ← Navbar, PageLayout
+    │   │   ├── operations/    ← OperationsStockTable
     │   │   ├── payment/       ← QueuePanel, QueueTransactionRow, PaymentModal,
     │   │   │                     PaymentConfirmationModal, TransactionDetailPanel,
     │   │   │                     TransactionHistory, ArticleRows, OriginalTransactionLink
@@ -614,7 +808,7 @@ lash-meatshop-pos/
     │   │   │                     PaymentConfirmedModal
     │   │   ├── ui/            ← Badge, Button, Card, FullScreenModal, Input, Modal, Toast
     │   │   ├── walkin/        ← CreateTransactionModal, CustomerSelector, AddCustomerModal,
-    │   │   │                     ProductSelector, OrderSummaryPanel
+    │   │   │                     ProductSelector, TabulationModal, OrderSummaryPanel
     │   │   ├── ErrorBoundary.jsx
     │   │   └── ProtectedRoute.jsx
     │   ├── hooks/
@@ -623,6 +817,7 @@ lash-meatshop-pos/
     │   │   ├── useAuth.js
     │   │   ├── useArticleRows.js
     │   │   ├── useCustomer.js
+    │   │   ├── useOperationsLiveSync.js
     │   │   ├── usePaymentMethods.js
     │   │   ├── useProducts.js
     │   │   └── useTransactions.js

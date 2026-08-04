@@ -4,16 +4,20 @@ import { FullScreenModal } from '../ui/FullScreenModal'
 import { Modal } from '../ui/Modal'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { Toast } from '../ui/Toast'
 import { get } from '../../services/api'
 import { useCustomer } from '../../hooks/useCustomer'
 import { useReceiptPrint } from '../../hooks/useReceiptPrint'
 import { ArticleRows, ARTICLE_ROW_COLUMN_WIDTHS } from '../payment/ArticleRows'
 import { PrintDetailsModal } from '../receipt/PrintDetailsModal'
+import { VoidTransactionModal } from './VoidTransactionModal'
+import { VoidLogsModal } from './VoidLogsModal'
 import { getTransactionTypeLabel } from '../../utils/transactionType'
 import { CUSTOMER_TYPE_BADGE } from '../../utils/customerType'
 import { PAYMENT_METHOD_LABEL } from '../../utils/paymentMethod'
 import { formatCurrency } from '../../utils/format'
 import { getDisplayStatus, isViewablePaymentStatus } from '../../utils/transactionStatus'
+import { hasTabulationBreakdown } from '../../utils/tabulation'
 
 const ARTICLE_TABLE_COLUMNS = ['QTY', 'UNIT', 'ARTICLES', 'UNIT PRICE', 'AMOUNT']
 const PAYMENT_ENTRY_LABELS = { ...PAYMENT_METHOD_LABEL, credit: 'Credit' }
@@ -700,6 +704,171 @@ function PrintReceiptButton({ transaction }) {
   )
 }
 
+// Print + (conditionally) Tabulation Logs, side by side — same shared
+// originalTxn.items list backs both the existence check here and the modal's
+// own left-column list, so they can never disagree about which transaction
+// has tabulation data. Void/Void Logs (admin-only exception to "a completed
+// transaction is immutable" — see CLAUDE.md) sits on the opposite side of the
+// same row: a completed transaction gets a red Void button, a voided one gets
+// Void Logs instead (never both), anything else gets neither.
+function TransactionActionButtons({ transaction, hasTabulationLogs, onShowTabulationLogs, onVoid, onShowVoidLogs }) {
+  if (!transaction) return null
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <PrintReceiptButton transaction={transaction} />
+        {hasTabulationLogs && (
+          <Button
+            type="button"
+            variant="outline"
+            className="self-start !px-3 !py-1 text-xs inline-flex items-center gap-1"
+            onClick={onShowTabulationLogs}
+          >
+            Tabulation Logs
+          </Button>
+        )}
+      </div>
+      {transaction.transaction_status === 'completed' && (
+        <Button
+          type="button"
+          variant="danger"
+          className="self-start !px-3 !py-1 text-xs"
+          onClick={onVoid}
+        >
+          Void
+        </Button>
+      )}
+      {transaction.transaction_status === 'voided' && (
+        <Button
+          type="button"
+          variant="outline"
+          className="self-start !px-3 !py-1 text-xs"
+          onClick={onShowVoidLogs}
+        >
+          Void Logs
+        </Button>
+      )}
+    </div>
+  )
+}
+
+// Left column row — one per tabulated item. "Show" loads that item's
+// breakdown into the right column; the active row gets a highlighted
+// background so it's clear which item the right column is currently showing.
+function TabulationLogsListRow({ item, isSelected, onShow }) {
+  return (
+    <div
+      className={`flex items-center justify-between gap-2 px-3 py-2 rounded-md border ${
+        isSelected ? 'bg-brand-gold/10 border-brand-gold' : 'bg-white border-gray-200'
+      }`}
+    >
+      <div className="min-w-0">
+        <div className="font-medium text-gray-900 truncate">{item.product_name}</div>
+        {item.brand_name && <div className="text-xs text-gray-500 truncate">{item.brand_name}</div>}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        className="!px-2 !py-1 text-xs shrink-0"
+        onClick={onShow}
+      >
+        Show
+      </Button>
+    </div>
+  )
+}
+
+// Right column — read-only Row 1..N + Total for whichever item is currently
+// selected in the left column. No inputs/edit/delete anywhere in this modal;
+// it's a log viewer, not an editor. When the selected item's quantity_kg was
+// later changed by Payment's Edit Items (tabulation_edited_by_payment),
+// the breakdown/total above are still the original tabulated values — this
+// note + link (reusing the exact same Order Items Update Logs trigger as
+// the Handled By section, via onShowItemLogs) is how that staleness surfaces.
+function TabulationLogsDetail({ item, receiverName, onShowItemLogs }) {
+  if (!item) {
+    return (
+      <div className="flex-1 min-h-0 flex items-center justify-center">
+        <p className="text-sm text-gray-500">Select an item to view its tabulation entries.</p>
+      </div>
+    )
+  }
+
+  const breakdown = item.tabulation_breakdown ?? []
+  const total = breakdown.reduce((sum, value) => sum + Number(value), 0)
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="text-sm">
+        <span className="font-medium text-gray-900">{item.product_name}</span>
+        {item.brand_name && <span className="text-gray-500"> — {item.brand_name}</span>}
+      </div>
+      {/* Same walkin_user_name already shown in Handled By's Receiver row —
+          tabulation only ever happens during that same Receiver session, so
+          no separate backend field/query is needed here. */}
+      <div className="text-xs text-gray-500">Receiver: {receiverName ?? '—'}</div>
+      <div className="text-xs text-gray-500">Unit Count: {item.unit_count}</div>
+      <div className="flex flex-col mt-1">
+        {breakdown.map((value, index) => (
+          <div key={index} className="flex justify-between text-sm py-1 border-b border-gray-200">
+            <span className="text-gray-600">Unit {index + 1}</span>
+            <span className="text-gray-900">{Number(value).toFixed(3)} kg</span>
+          </div>
+        ))}
+        <div className="flex justify-between text-sm font-bold pt-2 mt-1 border-t border-gray-300">
+          <span>Total</span>
+          <span>{total.toFixed(3)} kg</span>
+        </div>
+      </div>
+
+      {item.tabulation_edited_by_payment && (
+        <div className="flex flex-col items-start gap-1.5 mt-2 pt-2 border-t border-gray-200">
+          <p className="text-xs text-amber-700">Payment updated this item's quantity after tabulation.</p>
+          <OrderItemsUpdateLogsButton onClick={onShowItemLogs} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// items here is always the pre-filtered tabulated-only list (see
+// tabulatedItems in TransactionDetailsModal) — this modal never has to
+// re-derive which items qualify. onShowItemLogs is the same
+// setItemLogsOpen(true) trigger DetailsColumn's Handled By section uses —
+// lifted to the common parent (TransactionDetailsModal) so both open the
+// exact same OrderItemsUpdateLogsModal instance rather than each building
+// their own.
+function TabulationLogsModal({ items, open, onClose, receiverName, onShowItemLogs }) {
+  const [selectedItemId, setSelectedItemId] = useState(null)
+
+  useEffect(() => {
+    if (open) setSelectedItemId(null)
+  }, [open])
+
+  const selectedItem = items.find((item) => item.id === selectedItemId) ?? null
+
+  return (
+    <Modal open={open} onClose={onClose} title="Tabulation Logs" size="lg">
+      <div className="flex-1 min-h-0 flex gap-[10px]">
+        <div className="flex-1 min-w-0 flex flex-col gap-2 min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-2">
+          {items.map((item) => (
+            <TabulationLogsListRow
+              key={item.id}
+              item={item}
+              isSelected={item.id === selectedItemId}
+              onShow={() => setSelectedItemId(item.id)}
+            />
+          ))}
+        </div>
+
+        <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-y-auto bg-gray-100 border border-brand-black/20 rounded-lg p-3">
+          <TabulationLogsDetail item={selectedItem} receiverName={receiverName} onShowItemLogs={onShowItemLogs} />
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // Lists each of the original transaction's items that varied (quantity_kg
 // and/or unit_count — see adjustedItemRows above), only shown on the
 // standalone Adjustment child view alongside the highlighted rows in the
@@ -917,10 +1086,18 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [itemLogsOpen, setItemLogsOpen] = useState(false)
+  const [tabulationLogsOpen, setTabulationLogsOpen] = useState(false)
+  const [voidModalOpen, setVoidModalOpen] = useState(false)
+  const [voidLogsOpen, setVoidLogsOpen] = useState(false)
+  const [toast, setToast] = useState(null)
 
-  useEffect(() => {
+  const showToast = (message, variant = 'info') => {
+    setToast({ message, variant })
+    window.setTimeout(() => setToast(null), 3500)
+  }
+
+  const loadChain = () => {
     let cancelled = false
-    setChain(null)
     setError(null)
     setLoading(true)
 
@@ -938,6 +1115,12 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
     return () => {
       cancelled = true
     }
+  }
+
+  useEffect(() => {
+    setChain(null)
+    return loadChain()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transactionId])
 
   // The chain's root — always parent_transaction_id === null. Almost always
@@ -955,6 +1138,17 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
       )
     : null
   const hasLinkedAdjustment = Boolean(linkedChildTxn)
+
+  // Void's cascade set (see backend void_transaction/_collect_void_set) is the
+  // original's own direct 'completed' children — surfaced as a warning in the
+  // confirm modal before it happens. Once voided, those same children show up
+  // as 'voided' instead — that's the set Void Logs lists alongside the parent.
+  const voidCascadeChildren = originalTxn
+    ? chain.filter((t) => t.parent_transaction_id === originalTxn.id && t.transaction_status === 'completed')
+    : []
+  const voidedChildren = originalTxn
+    ? chain.filter((t) => t.parent_transaction_id === originalTxn.id && t.transaction_status === 'voided')
+    : []
 
   // "View Details" can be opened directly on a child row (Transaction History
   // lists adjustment/refund children as their own rows) — the chain endpoint
@@ -996,6 +1190,14 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
     if (!originalTxn) return null
     return { parent: originalTxn }
   }, [originalTxn])
+
+  // Backs both the Tabulation Logs button's existence check and the modal's
+  // own left-column list — always sourced from the original's real item rows
+  // (tabulation only ever happens at Receiver, on the original transaction).
+  const tabulatedItems = useMemo(
+    () => originalTxn?.items?.filter(hasTabulationBreakdown) ?? [],
+    [originalTxn]
+  )
 
   // Which of the original's items actually varied — quantity_kg OR unit_count,
   // independently (a substandard resolution can adjust either dimension) —
@@ -1059,7 +1261,13 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                     />
                     <BalanceSettlementRows transaction={originalTxn} align="center" />
                   </ArticleTable>
-                  <PrintReceiptButton transaction={originalTxn} />
+                  <TransactionActionButtons
+                    transaction={originalTxn}
+                    hasTabulationLogs={tabulatedItems.length > 0}
+                    onShowTabulationLogs={() => setTabulationLogsOpen(true)}
+                    onVoid={() => setVoidModalOpen(true)}
+                    onShowVoidLogs={() => setVoidLogsOpen(true)}
+                  />
                 </div>
               ) : hasLinkedAdjustment ? (
                 <>
@@ -1078,7 +1286,13 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                       />
                       <BalanceSettlementRows transaction={originalTxn} align="center" />
                     </ArticleTable>
-                    <PrintReceiptButton transaction={originalTxn} />
+                    <TransactionActionButtons
+                      transaction={originalTxn}
+                      hasTabulationLogs={tabulatedItems.length > 0}
+                      onShowTabulationLogs={() => setTabulationLogsOpen(true)}
+                      onVoid={() => setVoidModalOpen(true)}
+                      onShowVoidLogs={() => setVoidLogsOpen(true)}
+                    />
                   </div>
                   <div className="flex-1 min-h-0 flex flex-col gap-2">
                     <span className="text-sm font-medium">
@@ -1095,7 +1309,13 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
                     <ArticleRows transaction={originalAsParent} variant="plain" align="center" preferActual={false} />
                     <BalanceSettlementRows transaction={originalTxn} align="center" />
                   </ArticleTable>
-                  <PrintReceiptButton transaction={originalTxn} />
+                  <TransactionActionButtons
+                    transaction={originalTxn}
+                    hasTabulationLogs={tabulatedItems.length > 0}
+                    onShowTabulationLogs={() => setTabulationLogsOpen(true)}
+                    onVoid={() => setVoidModalOpen(true)}
+                    onShowVoidLogs={() => setVoidLogsOpen(true)}
+                  />
                 </div>
               )}
             </div>
@@ -1127,6 +1347,42 @@ export function TransactionDetailsModal({ transactionId, onClose, onNavigate }) 
         open={itemLogsOpen}
         onClose={() => setItemLogsOpen(false)}
       />
+
+      <TabulationLogsModal
+        items={tabulatedItems}
+        open={tabulationLogsOpen}
+        onClose={() => setTabulationLogsOpen(false)}
+        receiverName={originalTxn?.walkin_user_name}
+        onShowItemLogs={() => {
+          // Close this modal before opening Order Items Update Logs so only
+          // one is ever visible at a time — closing that one lands cleanly
+          // back on the Transaction History detail view underneath, with no
+          // need to reopen Tabulation Logs automatically.
+          setTabulationLogsOpen(false)
+          setItemLogsOpen(true)
+        }}
+      />
+
+      <VoidTransactionModal
+        open={voidModalOpen}
+        transaction={originalTxn}
+        childOrderNumbers={voidCascadeChildren.map((t) => t.order_number)}
+        onClose={() => setVoidModalOpen(false)}
+        onVoided={() => {
+          loadChain()
+          showToast('Transaction voided', 'success')
+        }}
+        onError={(message) => showToast(message, 'error')}
+      />
+
+      <VoidLogsModal
+        open={voidLogsOpen}
+        transaction={originalTxn}
+        childTransactions={voidedChildren}
+        onClose={() => setVoidLogsOpen(false)}
+      />
+
+      <Toast toast={toast} />
     </FullScreenModal>
   )
 }

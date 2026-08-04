@@ -23,10 +23,16 @@ def upgrade() -> None:
     # Safety check first — the Return to Receiver flow that produced this status
     # has been removed from the app; abort rather than silently orphaning data
     # if any transaction is still sitting in 'pending_edit'.
-    conn = op.get_bind()
-    count = conn.execute(
-        sa.text("SELECT COUNT(*) FROM sales_transaction WHERE transaction_status = 'pending_edit'")
-    ).scalar_one()
+    # Wrapped in autocommit_block(): 'pending_edit' was added via ALTER TYPE
+    # ... ADD VALUE in b7e3f9a1c2d4, and Postgres won't let a query reference
+    # a value added that way until the adding transaction commits. That
+    # migration commits it independently via its own autocommit_block, but
+    # this SELECT is wrapped too so it doesn't rely on that ordering detail.
+    with op.get_context().autocommit_block():
+        conn = op.get_bind()
+        count = conn.execute(
+            sa.text("SELECT COUNT(*) FROM sales_transaction WHERE transaction_status = 'pending_edit'")
+        ).scalar_one()
     if count > 0:
         raise RuntimeError(
             f"Aborting migration: {count} sales_transaction row(s) have "

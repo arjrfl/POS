@@ -2,11 +2,13 @@ import { Route, Routes } from 'react-router-dom'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ReceiptPrintLayer } from './components/receipt/ReceiptPrintLayer'
+import { ThermalPrintLayer } from './components/receipt/ThermalPrintLayer'
 import Login from './pages/Login'
 import WalkIn from './pages/WalkIn'
 import Payment from './pages/Payment'
 import Releasing from './pages/Releasing'
 import Admin from './pages/Admin'
+import Operations from './pages/Operations'
 
 function App() {
   return (
@@ -53,8 +55,19 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/operations"
+          element={
+            <ProtectedRoute role="operations">
+              <ErrorBoundary>
+                <Operations />
+              </ErrorBoundary>
+            </ProtectedRoute>
+          }
+        />
       </Routes>
       <ReceiptPrintLayer />
+      <ThermalPrintLayer />
     </>
   )
 }

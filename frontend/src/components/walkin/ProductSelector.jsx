@@ -1,11 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { get } from '../../services/api'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
+import { TabulationModal } from './TabulationModal'
 import { formatCurrency, formatWeight, formatStock } from '../../utils/format'
 
-export function ProductSelector({ onAddItem }) {
+// enableTabulation defaults off — the Tabulation button/modal is Receiver-only
+// (see CreateTransactionModal.jsx). Payment's Add New Item (EditItemsModal.jsx)
+// reuses this same component but omits the prop, so it stays unaffected.
+export function ProductSelector({
+  onAddItem,
+  editingItem = null,
+  onUpdateItem,
+  onCancelEdit,
+  enableTabulation = false,
+}) {
   const [searchTerm, setSearchTerm] = useState('')
   const [isOpen, setIsOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState(null)
@@ -13,6 +23,12 @@ export function ProductSelector({ onAddItem }) {
   const [unitCount, setUnitCount] = useState('')
   const [qty, setQty] = useState('')
   const [itemError, setItemError] = useState('')
+  // Per-unit weight breakdown from the Tabulation modal — null when this
+  // pending line was never tabulated, or was invalidated by a manual QTY/
+  // Unit Count edit since the last Tabulation confirm (see handleQtyChange/
+  // handleUnitCountChange below).
+  const [tabulationBreakdown, setTabulationBreakdown] = useState(null)
+  const [tabulationOpen, setTabulationOpen] = useState(false)
 
   // Small, static catalog and the search endpoint only matches product_name —
   // fetch once and filter name/brand client-side instead of round-tripping per keystroke.
@@ -33,7 +49,39 @@ export function ProductSelector({ onAddItem }) {
     setUnitCount('')
     setQty('')
     setItemError('')
+    setTabulationBreakdown(null)
   }
+
+  // Mirrors the row being edited (or clears back to blank/Add state) into this
+  // component's own local fields. Only reruns when the parent hands us a
+  // different row (a new pencil click, a save, a cancel, or a delete of the
+  // row mid-edit) — never while the user is actively typing within one edit.
+  useEffect(() => {
+    if (editingItem) {
+      const product = products?.find((p) => p.id === editingItem.product_id) ?? {
+        id: editingItem.product_id,
+        product_name: editingItem.product_name,
+        brand_name: editingItem.brand_name,
+        unit_price_php: editingItem.unit_price,
+        unit_weight_kg: null,
+        stock_quantity: Infinity,
+      }
+      setSelectedProduct(product)
+      setSearchTerm('')
+      setIsOpen(false)
+      setEstimatedWeight(editingItem.estimated_weight_kg != null ? String(editingItem.estimated_weight_kg) : '')
+      setUnitCount(editingItem.unit_count != null ? String(editingItem.unit_count) : '')
+      setQty(editingItem.quantity_kg != null ? String(editingItem.quantity_kg) : '')
+      setItemError('')
+      setTabulationBreakdown(Array.isArray(editingItem.tabulation_breakdown) ? editingItem.tabulation_breakdown : null)
+    } else {
+      setSelectedProduct(null)
+      setSearchTerm('')
+      setIsOpen(false)
+      resetItemFields()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingItem])
 
   const handleSelect = (product) => {
     setSelectedProduct(product)
@@ -43,6 +91,7 @@ export function ProductSelector({ onAddItem }) {
     setUnitCount('')
     setQty('')
     setItemError('')
+    setTabulationBreakdown(null)
   }
 
   const handleDeselect = () => {
@@ -69,13 +118,27 @@ export function ProductSelector({ onAddItem }) {
     setUnitCount(value)
     const weight = estimatedWeight === '' ? 0 : Number(estimatedWeight)
     setQty(value === '' || !weight ? value : String(multiplyKg(weight, Number(value))))
+    // Row count would no longer match the new Unit Count — clear rather than
+    // keep a stale breakdown. QTY itself is left exactly as computed above,
+    // not re-derived from the (now cleared) breakdown.
+    setTabulationBreakdown(null)
   }
 
   const handleQtyChange = (value) => {
     setQty(value)
+    // Manual QTY edit no longer matches whatever breakdown produced the old
+    // value — clear it. QTY is left as whatever the user typed.
+    setTabulationBreakdown(null)
+  }
+
+  const handleTabulationConfirm = (values, total) => {
+    setQty(String(total))
+    setTabulationBreakdown(values)
+    setTabulationOpen(false)
   }
 
   const parsedUnitCount = unitCount === '' ? null : Number(unitCount)
+  const unitCountValid = parsedUnitCount != null && Number.isInteger(parsedUnitCount) && parsedUnitCount > 0
   const parsedQty = qty === '' ? null : Number(qty)
   const parsedWeight = estimatedWeight === '' ? null : Number(estimatedWeight)
   const subtotal = (parsedQty || 0) * unitPrice
@@ -83,21 +146,21 @@ export function ProductSelector({ onAddItem }) {
   const stockAvailable = selectedProduct ? Number(selectedProduct.stock_quantity) : null
   const exceedsStock = selectedProduct && parsedQty != null && parsedQty > stockAvailable
 
-  const handleAdd = () => {
+  const buildItemPayload = () => {
     if (!parsedUnitCount || parsedUnitCount <= 0) {
       setItemError('Unit count is required')
-      return
+      return null
     }
     if (!parsedQty || parsedQty <= 0) {
       setItemError('QTY is required')
-      return
+      return null
     }
     if (exceedsStock) {
       setItemError(`Only ${formatStock(stockAvailable)} kg left in stock`)
-      return
+      return null
     }
 
-    onAddItem({
+    return {
       item_type: 'product',
       product_id: selectedProduct.id,
       product_name: selectedProduct.product_name,
@@ -106,11 +169,30 @@ export function ProductSelector({ onAddItem }) {
       unit_price: unitPrice,
       unit_count: parsedUnitCount,
       quantity_kg: parsedQty,
+      tabulation_breakdown: tabulationBreakdown,
       subtotal,
-    })
+    }
+  }
+
+  const handleAdd = () => {
+    const payload = buildItemPayload()
+    if (!payload) return
+
+    onAddItem(payload)
     setSelectedProduct(null)
     setSearchTerm('')
     resetItemFields()
+  }
+
+  const handleUpdate = () => {
+    const payload = buildItemPayload()
+    if (!payload) return
+
+    onUpdateItem(editingItem.id, payload)
+  }
+
+  const handleCancel = () => {
+    onCancelEdit()
   }
 
   return (
@@ -217,7 +299,14 @@ export function ProductSelector({ onAddItem }) {
             />
             <Input
               id="qty"
-              label="QTY (kg)"
+              label={
+                <>
+                  QTY (kg)
+                  {enableTabulation && tabulationBreakdown && (
+                    <span className="ml-1.5 text-xs font-normal text-brand-gold-dark">Tabulated</span>
+                  )}
+                </>
+              }
               type="number"
               step="0.001"
               placeholder="0.000"
@@ -225,6 +314,20 @@ export function ProductSelector({ onAddItem }) {
               onChange={(e) => handleQtyChange(e.target.value)}
             />
           </div>
+
+          {enableTabulation && (
+            <div className="grid grid-cols-2 gap-3">
+              <div />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setTabulationOpen(true)}
+                disabled={!unitCountValid}
+              >
+                Tabulation
+              </Button>
+            </div>
+          )}
 
           {exceedsStock && <p className="text-sm text-red-600">Only {formatStock(stockAvailable)} kg left in stock</p>}
 
@@ -237,10 +340,31 @@ export function ProductSelector({ onAddItem }) {
 
           {itemError && <p className="text-sm text-red-600">{itemError}</p>}
 
-          <Button type="button" onClick={handleAdd} className="w-full" disabled={exceedsStock}>
-            + Add to Order
-          </Button>
+          {editingItem ? (
+            <div className="flex gap-2">
+              <Button type="button" onClick={handleUpdate} className="flex-1" disabled={exceedsStock}>
+                Update Item
+              </Button>
+              <Button type="button" variant="outline" onClick={handleCancel} className="flex-1">
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button type="button" onClick={handleAdd} className="w-full" disabled={exceedsStock}>
+              + Add to Order
+            </Button>
+          )}
         </div>
+      )}
+
+      {enableTabulation && (
+        <TabulationModal
+          open={tabulationOpen}
+          unitCount={unitCountValid ? parsedUnitCount : 0}
+          initialValues={tabulationBreakdown}
+          onConfirm={handleTabulationConfirm}
+          onClose={() => setTabulationOpen(false)}
+        />
       )}
     </div>
   )

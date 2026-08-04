@@ -13,8 +13,14 @@
 | Payment | 10 | 10 |
 | Releasing | 10 | 10 |
 | Admin | 1 | 1 |
+| Operations | 1 (seed user) | TBD — terminal count not yet decided by client |
 | **Total client terminals** | | **27** |
 | Database/app server | — | 1 |
+
+> Note: the table above reflects the original 27-terminal count. The
+> Operations role was added later; how many additional physical terminals
+> it needs has not been decided yet (client hasn't specified). Update this
+> table once that's confirmed.
 
 ---
 
@@ -264,6 +270,119 @@ linger into the next business day.
 
 ---
 
+## 6c. Operations Role — Stock Monitoring
+
+A single-purpose, read-only role added for live stock oversight —
+separate from Releasing/Admin's Inventory CRUD, which remains
+unchanged and unaffected by this addition.
+
+- **Scope:** sees ALL products (active + inactive) — the only role
+  besides releasing/admin with this visibility. No create/update/
+  delete/adjust-stock/toggle-status access of any kind.
+- **Real-time mechanism:** subscribes to the `operations` WebSocket
+  room. Receives:
+  - `product_changed` — same event manual Inventory edits already
+    broadcast to releasing-queue + admin (now also operations)
+  - `product_stock_changed` — new event, fires on routine sale-driven
+    stock decrements (confirm-items-ready, complete-exact,
+    confirm-handover) that intentionally do NOT write a
+    `product_audit_log` row per the existing locked rule. This is
+    what makes the monitoring screen genuinely real-time across
+    normal sales, not just manual inventory edits.
+- **Frontend:** single full-width panel, no queue/order-details
+  split. Client-side search by product name. Low-stock rows
+  highlighted in place (not resorted) via a frontend-only threshold
+  constant — see CLAUDE.md Frontend Rules for the exact detail.
+- **Not built:** any configurable per-product low-stock threshold in
+  the database — current threshold is a hardcoded frontend constant,
+  a placeholder pending a real business number from the client.
+
+---
+
+## 6d. Tabulation — Receiver Per-Unit Weight Entry
+
+An optional entry mode in Receiver's New Transaction modal, for orders
+where it's easier to weigh and key in each unit individually than to
+estimate one combined QTY.
+
+- Launched via a Tabulation button on `ProductSelector`, opening
+  `TabulationModal.jsx`. Receiver enters each unit's weight (e.g. 5 units
+  at 4kg each) instead of a single QTY (kg) value
+- The per-unit values are summed client-side into `quantity_kg` (QTY) —
+  QTY still drives `estimated_amount`/subtotal exactly as before;
+  Tabulation only changes how QTY is *entered*, not how it's used
+- The raw per-unit breakdown is persisted to
+  `transaction_item.tabulation_breakdown` as a JSON array (e.g.
+  `[4,4,4,4,4]`) — reference/audit only, no pricing role
+- `tabulation_edited_by_payment` (BOOLEAN, permanent once TRUE) flags an
+  item whose `quantity_kg` was later changed via Payment's Edit Items
+  while a `tabulation_breakdown` was present. The breakdown itself stays
+  intact when this happens — the original tabulated rows remain visible
+  in Tabulation Logs, the flag just signals they may no longer match the
+  current QTY
+- `tabulation_breakdown` is cleared back to NULL only when QTY or Unit
+  Count is hand-edited at Receiver after a Tabulation confirm — at that
+  point the breakdown no longer matches the row
+- Admin > Transaction History's transaction detail modal
+  (`TransactionDetailsModal.jsx`) includes a read-only "Tabulation Logs"
+  viewer (built inline in that same file) showing the per-unit breakdown
+  for tabulated items, and links through to "Order Items Update Logs"
+  when `tabulation_edited_by_payment = TRUE`
+- No standalone browsable log screen beyond this per-transaction viewer —
+  same deferred pattern as `transaction_item_audit_log` (see §6a)
+- Out of scope for now: extending Tabulation entry to Payment's "Add New
+  Item" flow
+
+---
+
+## 6e. Admin Manual Void (Transaction History)
+
+The one deliberate, fully audited exception to the "completed
+transactions are immutable" rule (§1/CLAUDE.md Critical Business Rules).
+Lets Admin reverse a `completed` transaction end-to-end — not just flip
+its status — when something needs to be undone after the fact.
+
+- `POST /api/transactions/{id}/void` (admin only) voids any `completed`
+  transaction
+- Cascades: voiding a parent also voids its own completed
+  adjustment/refund children (the substandard-kilo resolution chain)
+- Gated by two checks before anything is touched: re-entering the
+  admin's own login password, and a required free-text reason (minimum 3
+  characters)
+  - A wrong password returns an inline 401 that the modal shows as a
+    validation error — it does NOT trigger the app's normal
+    401-means-session-expired auto-logout, and no data is changed
+- Performs a full reversal, not a status flag:
+  - `product.stock_quantity` is restored using the same formulas already
+    used at Releasing handover, and a `product_audit_log` row is written
+    per line (`stock_adjusted`) — a deliberate exception to the rule
+    that routine fulfillment decrements aren't audit-logged, since this
+    is a manual admin action
+  - Any `credit_applied`/`balance_settled` on the transaction is reversed
+    via new compensating `customer_ledger` rows (append-only, same
+    approach as §6b's end-of-day auto-void)
+  - Unclaimed change that had been converted to credit is reversed too
+  - A cascaded child's own credit/balance ledger effects (from
+    resolving its adjustment/refund) are reversed symmetrically
+  - Standalone `balance_settlement` transactions are reversed the same
+    way
+- Writes one `transaction_void_log` row per voided transaction (target
+  plus any cascaded children), attributed to the acting admin's real
+  `user_id` — this is what distinguishes a manual void from a nightly
+  `system_auto_void`-attributed one
+- Also writes a `transaction_audit_log` row per voided transaction, and
+  broadcasts the change to the admin WebSocket room (a completed
+  transaction has already left every team's queue, so no team-queue room
+  needs to hear about it)
+- No schema change was needed — reuses the existing `voided` status value
+  and the `transaction_void_log` table, which previously was only ever
+  written by the nightly auto-void job
+- Frontend: lives in Admin > Transaction History > Transaction Details
+  modal. A completed transaction shows a Void button; once voided, that
+  button is replaced entirely by a Void Logs button
+
+---
+
 ## 7. Payment Team Responsibilities
 
 Payment handles ALL financial decisions:
@@ -454,18 +573,71 @@ volumes:
 
 ## 13. Open Items (Batch 5 — Production Readiness)
 
-- [ ] Plain HTTP vs self-signed HTTPS across the LAN
-- [ ] Backup destination: USB drive vs NAS vs second PC
+- [x] Plain HTTP vs self-signed HTTPS — DECIDED: staying on plain HTTP.
+    Chrome's --unsafely-treat-insecure-origin-as-secure flag covers the
+    PWA service-worker secure-context requirement instead. See
+    deployment/launch-chrome-terminal.bat and CLAUDE.md Frontend Deploy
+    Notes. To be applied to all 27 terminals alongside the still-pending
+    kiosk-mode setup.
+- [x] Backup destination — RESOLVED: relying on the existing docker
+    `backup` container's nightly local pg_dump only. Off-machine backup
+    explicitly declined by client. See §13a for full note.
 - [ ] Static IP scheme for server + `hosts` file entries for all 27 terminals
 - [ ] Whether a standby/failover server PC is in budget
 - [x] Parked transaction timeout threshold — DONE: flat 3-hour, client-side
   visual highlight only (red card + "Parked Xh Ym" badge) on Payment and
   Releasing queue cards, no alert/notification. See Queue Mechanism note above.
 - [ ] Load test with ~27 simulated concurrent connections
-- [ ] Alembic migration workflow finalized
-- [ ] Environment hardening (CORS tightened for production)
+- [x] Alembic migration workflow — FINALIZED: dual-source (schema.sql +
+    Alembic) retained, with scripts/verify-schema-parity.ps1 as a
+    mandatory drift-check before any schema-changing commit. A baseline
+    migration (`101b1dc45309`) was added 2026-07-29 so the Alembic chain
+    is now fully replayable from an empty database — verify-schema-parity.ps1
+    passes both paths with zero diff, and this has zero effect on
+    already-provisioned databases (schema.sql + `alembic stamp head`
+    remains the only real deploy path). See CLAUDE.md Database Rules for
+    details.
+- [~] CORS hardening — code done (dev/staging), env value still needs
+  to be set on the production server's .env (see §13a)
 - [ ] Chrome kiosk mode setup on all 27 terminals
 - [ ] Chrome auto-update disabled on all terminals
+
+---
+
+## 13a. Deployment Status
+
+- Production server PC: static IP `192.168.1.58` (manually assigned,
+  DHCP disabled). Intended hostname `http://meatshop.local` — requires a
+  manual `hosts` file entry added individually on each of the 27
+  terminals; not automatic.
+- As of 2026-07-29: a TEST deployment is in progress on this server,
+  running from the `staging` branch — not yet a full go-live to all 27
+  terminals.
+- Deployed via manual command relay: Claude Code Desktop is deliberately
+  NOT installed on the server PC (kept minimal footprint). Commands are
+  written in the planning chat and run manually on the server via
+  TeamViewer, one step at a time.
+- Fresh secrets (`DB_PASSWORD`, `SECRET_KEY`) were generated directly on
+  the server itself — never shared with or stored in the dev environment.
+- Backup destination: RESOLVED — client has decided to rely solely on
+  the existing docker `backup` container's nightly local `pg_dump`
+  (writes to ./backups on the same server PC/drive as pgdata). No
+  USB/NAS/off-site backup will be configured. Client is explicitly
+  aware this does not protect against server drive failure or physical
+  loss/theft/disaster — accepted risk, not an oversight.
+- ⚠️ Backend port 8000 is directly exposed in `docker-compose.yml`
+  alongside nginx's port 80 — bypasses nginx entirely. Flagged for the
+  still-deferred CORS/environment hardening Batch 5 item above.
+- CORS hardening: env-driven allow_origins implemented on dev/staging
+  (CORS_ALLOWED_ORIGINS env var, no wildcard fallback). Still needs
+  CORS_ALLOWED_ORIGINS=http://meatshop.local,http://192.168.1.58 added
+  to the server's .env — pending, to be done on SERVER PC alongside the
+  remaining deployment steps.
+- This test deployment runs `schema.sql` against a genuinely fresh
+  database, which is exactly the scenario that surfaced the
+  `transaction_item_audit_log` FK-ordering bug fixed just before this
+  deployment — see the "Fresh-install fix" note in CLAUDE.md's Database
+  Rules section.
 
 ---
 
@@ -478,6 +650,7 @@ TabBar navigation with tabs:
 2. **Transaction History** — ✅ DONE — full list with filters (date, status,
    customer type, customer search), paginated
    - Click row → expand full transaction chain (parent + children)
+   - Cascade void (with password re-auth) added 2026-08-03 — see §6e
 3. **Customers** — ✅ DONE — list with search, click → customer detail +
    "View Details" modal (customer info, balance/credit ledger, full
    transaction history)

@@ -437,6 +437,28 @@ CREATE TABLE transaction_item (
     -- purely an estimate for reference — does NOT drive subtotal
     -- NULL for balance_settlement and credit_usage items, and may be left NULL for product items
 
+    tabulation_breakdown      TEXT           NULL,
+    -- JSON array of per-unit weight values (kg) entered via Receiver's
+    -- "Tabulation" modal, e.g. '[4,4,4,4,4]' when Unit Count = 5.
+    -- Reference/audit only — quantity_kg (already set to the tabulated
+    -- sum client-side) still drives subtotal/estimated_amount, UNCHANGED.
+    -- NULL when the item was never tabulated, OR when QTY (kg) or
+    -- Unit Count was hand-edited after a Tabulation confirm (breakdown
+    -- no longer matches, so it's cleared rather than kept stale).
+    -- Backend-only for now — no Admin UI consumer yet (same deferred
+    -- pattern as transaction_item_audit_log).
+
+    tabulation_edited_by_payment BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Set to TRUE the first time Payment's Edit Items (PATCH /{id}/items)
+    -- changes this item's quantity_kg while tabulation_breakdown is
+    -- non-null. Like items_edited_at_payment, this is a PERMANENT
+    -- historical marker — once TRUE, never reset back to FALSE.
+    -- tabulation_breakdown itself is NOT cleared when this happens
+    -- (reversing the previous prompt's behavior) — the original
+    -- tabulated rows remain visible in Tabulation Logs, this flag
+    -- just signals they may no longer match the current quantity_kg.
+    -- Irrelevant/stays FALSE for items that were never tabulated.
+
     quantity_kg              DECIMAL(10,3)  NULL,
     -- QTY — the value that actually drives subtotal for product items
     -- defaults to Estimated Weight or Unit Count depending on which the
@@ -622,7 +644,7 @@ CREATE INDEX idx_tal_change_type ON transaction_audit_log (change_type);
 -- =============================================================
 
 INSERT INTO role (role_name)
-VALUES ('receiver'), ('payment'), ('releasing'), ('admin');
+VALUES ('receiver'), ('payment'), ('releasing'), ('admin'), ('operations');
 
 INSERT INTO payment_method (payment_method_name)
 VALUES ('cash'), ('gcash'), ('maya'), ('bank_transfer'), ('credit');

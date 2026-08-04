@@ -9,6 +9,7 @@ const ROLE_BADGE_STYLES = {
   payment: 'bg-yellow-100 text-yellow-800',
   releasing: 'bg-orange-100 text-orange-800',
   admin: 'bg-red-100 text-red-800',
+  operations: 'bg-purple-100 text-purple-800',
 }
 
 export function Navbar({ title, actions }) {
@@ -16,7 +17,7 @@ export function Navbar({ title, actions }) {
   const [confirmLogout, setConfirmLogout] = useState(false)
 
   return (
-    <header className="grid grid-cols-3 items-center gap-4 px-6 py-3 bg-brand-black text-brand-white">
+    <header className="flex flex-col gap-2 px-4 py-3 sm:grid sm:grid-cols-3 sm:items-center sm:gap-4 sm:px-6 bg-brand-black text-brand-white">
       <div className="flex items-center gap-3">
         <img src={logo} alt="Lash Meatshop" className="h-8 w-8 object-contain" />
         <span className="font-semibold">Lash Meatshop POS</span>
@@ -24,7 +25,7 @@ export function Navbar({ title, actions }) {
 
       <h1 className="text-center font-medium truncate">{title}</h1>
 
-      <div className="flex items-center justify-end gap-3">
+      <div className="flex items-center justify-between sm:justify-end gap-3 flex-wrap">
         {user && (
           <>
             <span className="text-sm">{user.full_name}</span>
