@@ -19,8 +19,8 @@ export function Navbar({ title, actions }) {
   return (
     <header className="flex flex-col gap-2 px-4 py-3 sm:grid sm:grid-cols-3 sm:items-center sm:gap-4 sm:px-6 bg-brand-black text-brand-white">
       <div className="flex items-center gap-3">
-        <img src={logo} alt="Lash Meatshop" className="h-8 w-8 object-contain" />
-        <span className="font-semibold">Lash Meatshop POS</span>
+        <img src={logo} alt="Tamara POS" className="h-8 w-8 object-contain" />
+        <span className="font-semibold">Tamara POS</span>
       </div>
 
       <h1 className="text-center font-medium truncate">{title}</h1>

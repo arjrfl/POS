@@ -212,7 +212,7 @@ async def seed() -> None:
                 continue
 
             placeholder_transaction = SalesTransaction(
-                order_number=f"LSH-SEED-{customer.id:04d}",
+                order_number=f"TMR-SEED-{customer.id:04d}",
                 transaction_type=TransactionTypeEnum.original,
                 transaction_status=TransactionStatusEnum.completed,
                 customer_type=CustomerTypeEnum.walk_in,

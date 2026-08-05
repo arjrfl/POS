@@ -9,8 +9,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Lash Meatshop POS',
-        short_name: 'LM POS',
+        name: 'Tamara POS',
+        short_name: 'Tamara POS',
         theme_color: '#0A0A0A',
         background_color: '#FAF9F4',
         display: 'standalone',

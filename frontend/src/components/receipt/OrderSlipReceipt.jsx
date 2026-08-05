@@ -76,8 +76,8 @@ export function OrderSlipReceipt({ transaction, tin, busStyle }) {
   return (
     <div className="order-slip bg-white text-black text-[10pt] leading-tight w-full">
       <div className="text-center py-0 px-2">
-        <div className="font-bold text-[13pt]">LASH FROZEN MEAT TRADING, INC.</div>
-        <div className="text-[7pt]">112 Macabagdal St. Brgy. 86 Dist. II 1400 Caloocan City NCR, Third District Philippines</div>
+        <div className="font-bold text-[13pt]">TAMARA FROZEN MEAT TRADING, INC</div>
+        <div className="text-[7pt]">4 William Shaw St. Brgy. 86, East Grace Park Caloocan City</div>
         <div className="text-[7pt]">Non VAT Reg. TIN: 010-561-596-00000</div>
       </div>
 

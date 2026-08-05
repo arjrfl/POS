@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(title="Lash Meatshop POS", lifespan=lifespan)
+app = FastAPI(title="Tamara POS", lifespan=lifespan)
 
 # LAN-only deployment behind nginx, no public internet exposure. Allowed
 # origins come from CORS_ALLOWED_ORIGINS (see app/core/config.py) — never a

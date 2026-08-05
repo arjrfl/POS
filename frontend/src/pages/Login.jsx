@@ -29,8 +29,8 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-brand-cream px-4">
       <Card className="w-full max-w-sm !bg-brand-white !border-brand-black/10">
         <div className="flex flex-col items-center mb-6">
-          <img src={logo} alt="Lash Meatshop" className="h-16 w-16 object-contain mb-3" />
-          <h1 className="text-xl font-semibold text-brand-black">Lash Meatshop POS</h1>
+          <img src={logo} alt="Tamara POS" className="h-16 w-16 object-contain mb-3" />
+          <h1 className="text-xl font-semibold text-brand-black">Tamara POS</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
